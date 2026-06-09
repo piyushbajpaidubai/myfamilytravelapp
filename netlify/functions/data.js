@@ -21,25 +21,25 @@ exports.handler = async (event) => {
   };
 
   if (event.httpMethod === 'GET') {
-    const r = await fetch('https://raw.githubusercontent.com/' + REPO + '/main/' + FILE_PATH + '?t=' + Date.now(), {
-      headers: { 'Cache-Control': 'no-cache' }
+    const r = await fetch('https://api.github.com/repos/' + REPO + '/contents/' + FILE_PATH, {
+      headers: ghHeaders
     });
-    const data = await r.json();
+    const fileInfo = await r.json();
+    const decoded = Buffer.from(fileInfo.content, 'base64').toString('utf8');
+    const data = JSON.parse(decoded);
     return { statusCode: 200, headers, body: JSON.stringify(data) };
   }
 
   if (event.httpMethod === 'POST') {
-    const newData = JSON.parse(event.body);
+    const { trips } = JSON.parse(event.body);
 
-    // Get current file SHA
     const fileRes = await fetch('https://api.github.com/repos/' + REPO + '/contents/' + FILE_PATH, {
       headers: ghHeaders
     });
-    const fileInfo = await fileRes.json();
-    const sha = fileInfo.sha;
+    const fileData = await fileRes.json();
+    const sha = fileData.sha;
 
-    // Update the file
-    const content = Buffer.from(JSON.stringify(newData, null, 2)).toString('base64');
+    const content = Buffer.from(JSON.stringify({ trips }, null, 2)).toString('base64');
     const updateRes = await fetch('https://api.github.com/repos/' + REPO + '/contents/' + FILE_PATH, {
       method: 'PUT',
       headers: ghHeaders,
