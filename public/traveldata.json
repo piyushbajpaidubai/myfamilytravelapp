@@ -1,3 +1,16 @@
 {
-  "trips": []
+  "trips": [
+    {
+      "id": "gjrz9f7",
+      "name": "Chalo Mandali!!",
+      "destination": "Kanchi & Almorah",
+      "startDate": "2026-06-21",
+      "endDate": "2026-06-27",
+      "days": [],
+      "expenses": [],
+      "packItems": [],
+      "locations": [],
+      "budget": ""
+    }
+  ]
 }
