@@ -368,6 +368,40 @@ export default function App() {
   const [activeTrip, setActiveTrip] = useState(null);
   const [activeTab, setActiveTab] = useState("Schedule");
   const [showNewTrip, setShowNewTrip] = useState(false);
+  const [savedStatus, setSavedStatus] = useState(''); // '', 'saving', 'saved'
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('travelPlannerData');
+      if (saved) {
+        const { trips: savedTrips } = JSON.parse(saved);
+        if (savedTrips && savedTrips.length > 0) setTrips(savedTrips);
+      }
+    } catch (e) {}
+  }, []);
+
+  // Auto-save: debounce 1.5s after any change to trips
+  useEffect(() => {
+    if (trips.length === 0) return;
+    setSavedStatus('saving');
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('travelPlannerData', JSON.stringify({ trips }));
+        setSavedStatus('saved');
+        setTimeout(() => setSavedStatus(''), 2000);
+      } catch (e) { setSavedStatus(''); }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [trips]);
+
+  const handleSave = () => {
+    try {
+      localStorage.setItem('travelPlannerData', JSON.stringify({ trips }));
+      setSavedStatus('saved');
+      setTimeout(() => setSavedStatus(''), 2000);
+    } catch (e) {}
+  };
   const [tripForm, setTripForm] = useState({ name:"", destination:"", startDate:"", endDate:"" });
   const [loading, setLoading] = useState(true);
 
@@ -424,6 +458,27 @@ export default function App() {
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
           <h1 style={{ margin:0,fontSize:20,fontWeight:700 }}>✈️ Travel Planner</h1>
           <Btn onClick={()=>setShowNewTrip(true)}>+ New Trip</Btn>
+          <button
+            onClick={handleSave}
+            style={{
+              padding: '8px 16px',
+              borderRadius: 8,
+              border: savedStatus === 'saved' ? '2px solid #22c55e' : '2px solid #6366f1',
+              background: savedStatus === 'saved' ? '#22c55e' : savedStatus === 'saving' ? '#a5b4fc' : '#6366f1',
+              color: '#fff',
+              fontWeight: 600,
+              fontSize: 14,
+              cursor: 'pointer',
+              transition: 'all 0.3s',
+              marginLeft: 8,
+              minWidth: 90,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4
+            }}
+          >
+            {savedStatus === 'saved' ? '✓ Saved' : savedStatus === 'saving' ? '...' : '💾 Save'}
+          </button>
         </div>
         {/* Trip tabs */}
         <div style={{ display:"flex",gap:4,overflowX:"auto",paddingBottom:0 }}>
