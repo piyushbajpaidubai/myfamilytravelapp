@@ -19,7 +19,7 @@ function Modal({ title, onClose, children }) {
       <div style={{ background:"#fff",borderRadius:12,padding:24,minWidth:320,maxWidth:480,width:"90%",boxShadow:"0 8px 32px rgba(0,0,0,0.12)" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
           <h3 style={{ margin:0,fontSize:16,fontWeight:600 }}>{title}</h3>
-          <button onClick={onClose} style={{ background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888" }}>Ã</button>
+          <button onClick={onClose} style={{ background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888" }}>×</button>
         </div>
         {children}
       </div>
@@ -101,7 +101,7 @@ function ScheduleTab({ trip, update }) {
             </div>
             <div style={{ display:"flex",gap:6 }}>
               <Btn variant="ghost" style={{ padding:"4px 10px",fontSize:12 }} onClick={()=>{ setShowEvent(day.id); setEvForm({ time:"",title:"",location:"",category:"Sightseeing",notes:"" }); }}>+ Event</Btn>
-              <Btn variant="danger" style={{ padding:"4px 10px",fontSize:12 }} onClick={()=>delDay(day.id)}>â</Btn>
+              <Btn variant="danger" style={{ padding:"4px 10px",fontSize:12 }} onClick={()=>delDay(day.id)}>✕</Btn>
             </div>
           </div>
           {(day.events||[]).length===0 && <p style={{ color:"#bbb",fontSize:13,padding:"10px 14px",margin:0 }}>No events</p>}
@@ -113,10 +113,10 @@ function ScheduleTab({ trip, update }) {
                   <span style={{ fontSize:13,fontWeight:500 }}>{ev.title}</span>
                   <span style={{ fontSize:11,background:"#e9ecef",borderRadius:4,padding:"1px 6px",color:"#555" }}>{ev.category}</span>
                 </div>
-                {ev.location && <div style={{ fontSize:12,color:"#888",marginTop:2 }}>ð {ev.location}</div>}
+                {ev.location && <div style={{ fontSize:12,color:"#888",marginTop:2 }}>📍 {ev.location}</div>}
                 {ev.notes && <div style={{ fontSize:12,color:"#999",marginTop:2 }}>{ev.notes}</div>}
               </div>
-              <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>delEvent(day.id,ev.id)}>â</Btn>
+              <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>delEvent(day.id,ev.id)}>✕</Btn>
             </div>
           ))}
         </div>
@@ -217,7 +217,7 @@ function BudgetTab({ trip, update }) {
           </div>
           <div style={{ display:"flex",alignItems:"center",gap:10 }}>
             <span style={{ fontWeight:600 }}>${parseFloat(e.amount).toFixed(2)}</span>
-            <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>delExp(e.id)}>â</Btn>
+            <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>delExp(e.id)}>✕</Btn>
           </div>
         </div>
       ))}
@@ -278,7 +278,7 @@ function PackingTab({ trip, update }) {
             <div key={item.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #f3f4f6" }}>
               <input type="checkbox" checked={item.packed} onChange={()=>toggle(item.id)} style={{ accentColor:"#2d2d2d",width:15,height:15 }} />
               <span style={{ flex:1,fontSize:13,textDecoration:item.packed?"line-through":"none",color:item.packed?"#bbb":"#333" }}>{item.name}</span>
-              <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>del(item.id)}>â</Btn>
+              <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>del(item.id)}>✕</Btn>
             </div>
           ))}
         </div>
@@ -287,7 +287,7 @@ function PackingTab({ trip, update }) {
         <div key={item.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #f3f4f6" }}>
           <input type="checkbox" checked={item.packed} onChange={()=>toggle(item.id)} style={{ accentColor:"#2d2d2d" }} />
           <span style={{ flex:1,fontSize:13,textDecoration:item.packed?"line-through":"none",color:item.packed?"#bbb":"#333" }}>{item.name}</span>
-          <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>del(item.id)}>â</Btn>
+          <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>del(item.id)}>✕</Btn>
         </div>
       ))}
 
@@ -336,12 +336,12 @@ function LocationsTab({ trip, update }) {
               {loc.address && (
                 <a href={`https://maps.google.com/?q=${encodeURIComponent(loc.address)}`} target="_blank" rel="noreferrer"
                   style={{ fontSize:12,color:"#2d7ef5",textDecoration:"none" }}>
-                  ð {loc.address}
+                  📍 {loc.address}
                 </a>
               )}
               {loc.notes && <div style={{ fontSize:12,color:"#888",marginTop:4 }}>{loc.notes}</div>}
             </div>
-            <Btn variant="danger" style={{ padding:"4px 10px",fontSize:12,marginLeft:8 }} onClick={()=>del(loc.id)}>â</Btn>
+            <Btn variant="danger" style={{ padding:"4px 10px",fontSize:12,marginLeft:8 }} onClick={()=>del(loc.id)}>✕</Btn>
           </div>
         </div>
       ))}
@@ -415,14 +415,14 @@ export default function App() {
 
   const trip = trips.find(t=>t.id===activeTrip);
 
-  if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#aaa",fontSize:14 }}>Loadingâ¦</div>;
+  if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#aaa",fontSize:14 }}>Loading…</div>;
 
   return (
     <div style={{ fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#fff" }}>
       {/* Header */}
       <div style={{ padding:"20px 20px 0",borderBottom:"1px solid #efefef" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
-          <h1 style={{ margin:0,fontSize:20,fontWeight:700 }}>âï¸ Travel Planner</h1>
+          <h1 style={{ margin:0,fontSize:20,fontWeight:700 }}>✈️ Travel Planner</h1>
           <Btn onClick={()=>setShowNewTrip(true)}>+ New Trip</Btn>
         </div>
         {/* Trip tabs */}
@@ -443,7 +443,7 @@ export default function App() {
       {/* Trip content */}
       {!trip ? (
         <div style={{ textAlign:"center",marginTop:80,color:"#bbb" }}>
-          <div style={{ fontSize:48,marginBottom:12 }}>ðºï¸</div>
+          <div style={{ fontSize:48,marginBottom:12 }}>🗺️</div>
           <p style={{ fontSize:15 }}>No trips yet. Create your first one!</p>
           <Btn onClick={()=>setShowNewTrip(true)} style={{ marginTop:8 }}>+ New Trip</Btn>
         </div>
@@ -454,8 +454,8 @@ export default function App() {
             <div>
               <h2 style={{ margin:"0 0 2px",fontSize:18,fontWeight:700 }}>{trip.name}</h2>
               <div style={{ fontSize:13,color:"#888" }}>
-                {trip.destination && <span>ð {trip.destination}</span>}
-                {trip.startDate && <span style={{ marginLeft:8 }}>ð {trip.startDate}{trip.endDate?` â ${trip.endDate}`:""}</span>}
+                {trip.destination && <span>📍 {trip.destination}</span>}
+                {trip.startDate && <span style={{ marginLeft:8 }}>🗓 {trip.startDate}{trip.endDate?` → ${trip.endDate}`:""}</span>}
               </div>
             </div>
             <Btn variant="danger" style={{ fontSize:12,padding:"4px 10px" }} onClick={()=>deleteTrip(trip.id)}>Delete Trip</Btn>
