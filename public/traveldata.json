@@ -6,7 +6,14 @@
       "destination": "Kanchi & Almorah",
       "startDate": "2026-06-21",
       "endDate": "2026-06-27",
-      "days": [],
+      "days": [
+        {
+          "id": "wl3r6x8",
+          "date": "2026-06-21",
+          "label": "Delhi arrival",
+          "events": []
+        }
+      ],
       "expenses": [],
       "packItems": [],
       "locations": [],
