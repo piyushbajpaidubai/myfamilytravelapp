@@ -370,37 +370,65 @@ export default function App() {
   const [showNewTrip, setShowNewTrip] = useState(false);
   const [savedStatus, setSavedStatus] = useState(''); // '', 'saving', 'saved'
 
-  // Load from localStorage on mount
+  // Load from online store on mount
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('travelPlannerData');
-      if (saved) {
-        const { trips: savedTrips } = JSON.parse(saved);
-        if (savedTrips && savedTrips.length > 0) setTrips(savedTrips);
-      }
-    } catch (e) {}
+    fetch('/.netlify/functions/data')
+      .then(r => r.json())
+      .then(data => {
+        if (data.trips && data.trips.length > 0) setTrips(data.trips);
+      })
+      .catch(() => {
+        // Fallback to localStorage if offline
+        try {
+          const saved = localStorage.getItem('travelPlannerData');
+          if (saved) { const { trips: t } = JSON.parse(saved); if (t && t.length > 0) setTrips(t); }
+        } catch (e) {}
+      });
   }, []);
 
-  // Auto-save: debounce 1.5s after any change to trips
+  // Auto-save: debounce 2s after any change to trips
   useEffect(() => {
     if (trips.length === 0) return;
     setSavedStatus('saving');
     const timer = setTimeout(() => {
-      try {
-        localStorage.setItem('travelPlannerData', JSON.stringify({ trips }));
-        setSavedStatus('saved');
-        setTimeout(() => setSavedStatus(''), 2000);
-      } catch (e) { setSavedStatus(''); }
-    }, 1500);
+      fetch('/.netlify/functions/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trips })
+      })
+        .then(r => r.json())
+        .then(() => {
+          localStorage.setItem('travelPlannerData', JSON.stringify({ trips }));
+          setSavedStatus('saved');
+          setTimeout(() => setSavedStatus(''), 2500);
+        })
+        .catch(() => {
+          try { localStorage.setItem('travelPlannerData', JSON.stringify({ trips })); } catch(e) {}
+          setSavedStatus('saved');
+          setTimeout(() => setSavedStatus(''), 2500);
+        });
+    }, 2000);
     return () => clearTimeout(timer);
   }, [trips]);
 
   const handleSave = () => {
-    try {
-      localStorage.setItem('travelPlannerData', JSON.stringify({ trips }));
-      setSavedStatus('saved');
-      setTimeout(() => setSavedStatus(''), 2000);
-    } catch (e) {}
+    setSavedStatus('saving');
+    fetch('/.netlify/functions/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trips })
+    })
+      .then(r => r.json())
+      .then(() => {
+        localStorage.setItem('travelPlannerData', JSON.stringify({ trips }));
+        setSavedStatus('saved');
+        setTimeout(() => setSavedStatus(''), 2500);
+      })
+      .catch(() => {
+        try { localStorage.setItem('travelPlannerData', JSON.stringify({ trips })); } catch(e) {}
+        setSavedStatus('saved');
+        setTimeout(() => setSavedStatus(''), 2500);
+      });
   };
   const [tripForm, setTripForm] = useState({ name:"", destination:"", startDate:"", endDate:"" });
   const [loading, setLoading] = useState(true);
