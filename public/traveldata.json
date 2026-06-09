@@ -1,1 +1,8 @@
-{"trips":[]}
+{
+  "trips": [
+    {
+      "id": "test123",
+      "name": "TEST"
+    }
+  ]
+}
