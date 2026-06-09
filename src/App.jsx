@@ -375,7 +375,7 @@ export default function App() {
     fetch('/.netlify/functions/data')
       .then(r => r.json())
       .then(data => {
-        if (data.trips && data.trips.length > 0) setTrips(data.trips);
+        if (data.trips && data.trips.length > 0) { setTrips(data.trips); setActiveTrip(data.trips[0]); }
       })
       .catch(() => {
         // Fallback to localStorage if offline
