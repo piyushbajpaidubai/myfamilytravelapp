@@ -64,59 +64,215 @@ function ScheduleTab({ trip, update }) {
   const [showEvent, setShowEvent] = useState(null); // dayId
   const [dayForm, setDayForm] = useState({ date:"", label:"" });
   const [evForm, setEvForm] = useState({ time:"", title:"", location:"", category:"Sightseeing", notes:"" });
+  // Activity state: { [eventId]: inputText }
+  const [activityInput, setActivityInput] = useState({});
+  // Which event is showing the activity input box
+  const [addingActivityFor, setAddingActivityFor] = useState(null);
 
   const addDay = () => {
     if (!dayForm.date) return;
-    const days = [...(trip.days||[]), { id:uid(), ...dayForm, events:[] }]
-      .sort((a,b) => a.date.localeCompare(b.date));
-    update({ days });
+    update({ days: [...(trip.days||[]), { id:uid(), date:dayForm.date, label:dayForm.label, events:[] }].sort((a,b)=>a.date>b.date?1:-1) });
     setShowDay(false); setDayForm({ date:"", label:"" });
   };
 
+  const delDay = (id) => update({ days: (trip.days||[]).filter(d=>d.id!==id) });
+
   const addEvent = (dayId) => {
     if (!evForm.title) return;
-    const days = trip.days.map(d => d.id===dayId
-      ? { ...d, events:[...(d.events||[]), { id:uid(), ...evForm }].sort((a,b)=>a.time.localeCompare(b.time)) }
+    const newEvent = { id:uid(), ...evForm, activities:[], docs:[] };
+    const days = (trip.days||[]).map(d => d.id===dayId
+      ? { ...d, events:[...(d.events||[]), newEvent].sort((a,b)=>a.time>b.time?1:-1) }
       : d);
     update({ days });
     setShowEvent(null); setEvForm({ time:"", title:"", location:"", category:"Sightseeing", notes:"" });
   };
 
-  const delDay = (id) => update({ days: trip.days.filter(d=>d.id!==id) });
-  const delEvent = (dayId, evId) => update({ days: trip.days.map(d => d.id===dayId ? { ...d, events:d.events.filter(e=>e.id!==evId) } : d) });
+  const delEvent = (dayId, evId) => {
+    const days = (trip.days||[]).map(d => d.id===dayId
+      ? { ...d, events:(d.events||[]).filter(e=>e.id!==evId) }
+      : d);
+    update({ days });
+  };
+
+  // Add a text activity to an event
+  const addActivity = (dayId, evId) => {
+    const text = (activityInput[evId]||'').trim();
+    if (!text) return;
+    const days = (trip.days||[]).map(d => d.id===dayId
+      ? { ...d, events:(d.events||[]).map(e => e.id===evId
+          ? { ...e, activities:[...(e.activities||[]), { id:uid(), text }] }
+          : e) }
+      : d);
+    update({ days });
+    setActivityInput(prev => ({ ...prev, [evId]: '' }));
+    setAddingActivityFor(null);
+  };
+
+  const delActivity = (dayId, evId, actId) => {
+    const days = (trip.days||[]).map(d => d.id===dayId
+      ? { ...d, events:(d.events||[]).map(e => e.id===evId
+          ? { ...e, activities:(e.activities||[]).filter(a=>a.id!==actId) }
+          : e) }
+      : d);
+    update({ days });
+  };
+
+  // Attach a document (file) to an event or activity
+  const attachDoc = (dayId, evId, actId, file) => {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const doc = { id:uid(), name:file.name, size:file.size, type:file.type, data:evt.target.result };
+      const days = (trip.days||[]).map(d => d.id===dayId
+        ? { ...d, events:(d.events||[]).map(e => {
+            if (e.id !== evId) return e;
+            if (actId) {
+              // attach to activity
+              return { ...e, activities:(e.activities||[]).map(a => a.id===actId
+                ? { ...a, docs:[...(a.docs||[]), doc] }
+                : a) };
+            } else {
+              // attach to event
+              return { ...e, docs:[...(e.docs||[]), doc] };
+            }
+          }) }
+        : d);
+      update({ days });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const delDoc = (dayId, evId, actId, docId) => {
+    const days = (trip.days||[]).map(d => d.id===dayId
+      ? { ...d, events:(d.events||[]).map(e => {
+          if (e.id !== evId) return e;
+          if (actId) {
+            return { ...e, activities:(e.activities||[]).map(a => a.id===actId
+              ? { ...a, docs:(a.docs||[]).filter(doc=>doc.id!==docId) }
+              : a) };
+          } else {
+            return { ...e, docs:(e.docs||[]).filter(doc=>doc.id!==docId) };
+          }
+        }) }
+      : d);
+    update({ days });
+  };
+
+  const fmtSize = (bytes) => bytes < 1024 ? bytes+'B' : bytes < 1048576 ? (bytes/1024).toFixed(1)+'KB' : (bytes/1048576).toFixed(1)+'MB';
+
+  // Reusable doc attachment row
+  const DocList = ({ docs=[], onAdd, onDel }) => (
+    <div style={{ marginTop:6 }}>
+      {docs.map(doc => (
+        <div key={doc.id} style={{ display:'flex',alignItems:'center',gap:6,padding:'3px 0',borderBottom:'1px solid #E8E2D4' }}>
+          <span style={{ fontSize:14 }}>📎</span>
+          <a href={doc.data} download={doc.name} style={{ fontSize:12,color:'#8B2A14',textDecoration:'underline',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{doc.name}</a>
+          <span style={{ fontSize:11,color:'#C05040',flexShrink:0 }}>{fmtSize(doc.size)}</span>
+          <button onClick={()=>onDel(doc.id)} style={{ background:'none',border:'none',cursor:'pointer',color:'#C04428',fontSize:13,padding:'0 2px',lineHeight:1 }}>✕</button>
+        </div>
+      ))}
+      <label style={{ display:'inline-flex',alignItems:'center',gap:4,marginTop:docs.length?4:2,cursor:'pointer',fontSize:12,color:'#8B2A14',fontWeight:500 }}>
+        <span style={{ fontSize:14 }}>📎</span> Attach document
+        <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) onAdd(e.target.files[0]); e.target.value=''; }} />
+      </label>
+    </div>
+  );
 
   return (
     <div>
       <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
-        <span style={{ fontWeight:600 }}>Days</span>
+        <h2 style={{ margin:0,fontSize:16,fontWeight:700 }}>Days</h2>
         <Btn onClick={()=>setShowDay(true)}>+ Add Day</Btn>
       </div>
-      {(!trip.days||trip.days.length===0) && <p style={{ color:"#C86050",textAlign:"center",marginTop:40 }}>No days yet. Add your first day!</p>}
+
+      {(!trip.days||trip.days.length===0) && (
+        <p style={{ color:"#C05040",fontSize:13,textAlign:"center",padding:"24px 0" }}>No days added yet.</p>
+      )}
+
       {(trip.days||[]).map(day => (
-        <div key={day.id} style={{ background:"#EDE7D9",border:"1px solid #D4BFB0",borderRadius:10,marginBottom:14,overflow:"hidden" }}>
-          <div style={{ padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",background:"#E8E2D4" }}>
+        <div key={day.id} style={{ marginBottom:16,border:"1px solid #D4BFB0",borderRadius:10,overflow:"hidden",background:"#EDE7D9" }}>
+          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"#DDD8CB" }}>
             <div>
-              <span style={{ fontWeight:600,fontSize:14 }}>{day.date}</span>
-              {day.label && <span style={{ marginLeft:8,color:"#A83020",fontSize:13 }}>{day.label}</span>}
+              <strong style={{ fontSize:14 }}>{day.date}</strong>
+              {day.label && <span style={{ marginLeft:8,fontSize:13,color:"#8B2A14" }}>{day.label}</span>}
             </div>
             <div style={{ display:"flex",gap:6 }}>
-              <Btn variant="ghost" style={{ padding:"4px 10px",fontSize:12 }} onClick={()=>{ setShowEvent(day.id); setEvForm({ time:"",title:"",location:"",category:"Sightseeing",notes:"" }); }}>+ Event</Btn>
-              <Btn variant="danger" style={{ padding:"4px 10px",fontSize:12 }} onClick={()=>delDay(day.id)}>✕</Btn>
+              <Btn onClick={()=>setShowEvent(day.id)} style={{ padding:"4px 10px",fontSize:12 }}>+ Event</Btn>
+              <Btn variant="danger" style={{ padding:"4px 8px",fontSize:12 }} onClick={()=>delDay(day.id)}>✕</Btn>
             </div>
           </div>
-          {(day.events||[]).length===0 && <p style={{ color:"#D47060",fontSize:13,padding:"10px 14px",margin:0 }}>No events</p>}
+
+          {(!day.events||day.events.length===0) && (
+            <p style={{ color:"#C05040",fontSize:13,padding:"10px 14px",margin:0 }}>No events</p>
+          )}
+
           {(day.events||[]).map(ev => (
-            <div key={ev.id} style={{ padding:"10px 14px",borderTop:"1px solid #D4BFB0",display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
-              <div>
-                <div style={{ display:"flex",alignItems:"center",gap:8 }}>
-                  {ev.time && <span style={{ fontSize:12,color:"#B54030" }}>{ev.time}</span>}
-                  <span style={{ fontSize:13,fontWeight:500 }}>{ev.title}</span>
-                  <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#8B2A14" }}>{ev.category}</span>
+            <div key={ev.id} style={{ padding:"10px 14px",borderTop:"1px solid #D4BFB0" }}>
+              {/* ── Event Header ── */}
+              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
+                    {ev.time && <span style={{ fontSize:12,color:"#B54030",fontWeight:600 }}>{ev.time}</span>}
+                    <span style={{ fontSize:13,fontWeight:500 }}>{ev.title}</span>
+                    <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#8B2A14" }}>{ev.category}</span>
+                  </div>
+                  {ev.location && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {ev.location}</div>}
+                  {ev.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{ev.notes}</div>}
                 </div>
-                {ev.location && <div style={{ fontSize:12,color:"#B54030",marginTop:2 }}>📍 {ev.location}</div>}
-                {ev.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{ev.notes}</div>}
+                <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12,flexShrink:0,marginLeft:8 }} onClick={()=>delEvent(day.id,ev.id)}>✕</Btn>
               </div>
-              <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>delEvent(day.id,ev.id)}>✕</Btn>
+
+              {/* ── Documents for Event ── */}
+              <DocList
+                docs={ev.docs||[]}
+                onAdd={(file)=>attachDoc(day.id,ev.id,null,file)}
+                onDel={(docId)=>delDoc(day.id,ev.id,null,docId)}
+              />
+
+              {/* ── Activities ── */}
+              {(ev.activities||[]).length > 0 && (
+                <div style={{ marginTop:10,paddingLeft:12,borderLeft:"2px solid #D4BFB0" }}>
+                  {(ev.activities||[]).map(act => (
+                    <div key={act.id} style={{ marginBottom:6 }}>
+                      <div style={{ display:"flex",alignItems:"flex-start",gap:6 }}>
+                        <span style={{ fontSize:12,color:"#8B2A14",marginTop:1 }}>▸</span>
+                        <div style={{ flex:1 }}>
+                          <span style={{ fontSize:13,color:"#6E1A10" }}>{act.text}</span>
+                          {/* Docs for this activity */}
+                          <DocList
+                            docs={act.docs||[]}
+                            onAdd={(file)=>attachDoc(day.id,ev.id,act.id,file)}
+                            onDel={(docId)=>delDoc(day.id,ev.id,act.id,docId)}
+                          />
+                        </div>
+                        <button onClick={()=>delActivity(day.id,ev.id,act.id)} style={{ background:'none',border:'none',cursor:'pointer',color:'#C04428',fontSize:12,padding:'0 2px',lineHeight:1,flexShrink:0,marginTop:2 }}>✕</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── Add Activity ── */}
+              {addingActivityFor === ev.id ? (
+                <div style={{ display:'flex',gap:6,marginTop:8,alignItems:'center' }}>
+                  <input
+                    autoFocus
+                    placeholder="Describe the activity…"
+                    value={activityInput[ev.id]||''}
+                    onChange={e=>setActivityInput(prev=>({...prev,[ev.id]:e.target.value}))}
+                    onKeyDown={e=>{ if(e.key==='Enter') addActivity(day.id,ev.id); if(e.key==='Escape') setAddingActivityFor(null); }}
+                    style={{ flex:1,padding:'5px 9px',border:'1px solid #C8B09A',borderRadius:6,fontSize:13,background:'#F0EBE0',color:'#6E1A10',outline:'none' }}
+                  />
+                  <Btn style={{ padding:'4px 10px',fontSize:12 }} onClick={()=>addActivity(day.id,ev.id)}>Add</Btn>
+                  <Btn variant="ghost" style={{ padding:'4px 8px',fontSize:12 }} onClick={()=>setAddingActivityFor(null)}>Cancel</Btn>
+                </div>
+              ) : (
+                <button
+                  onClick={()=>setAddingActivityFor(ev.id)}
+                  style={{ marginTop:8,background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}
+                >
+                  + Activity
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -125,23 +281,25 @@ function ScheduleTab({ trip, update }) {
       {showDay && (
         <Modal title="Add Day" onClose={()=>setShowDay(false)}>
           <Input label="Date" type="date" value={dayForm.date} onChange={e=>setDayForm({...dayForm,date:e.target.value})} />
-          <Input label="Label (optional)" placeholder="e.g. Arrival Day" value={dayForm.label} onChange={e=>setDayForm({...dayForm,label:e.target.value})} />
-          <div style={{ display:"flex",gap:8,justifyContent:"flex-end" }}>
+          <Input label="Label (optional)" value={dayForm.label} onChange={e=>setDayForm({...dayForm,label:e.target.value})} placeholder="e.g. Travel Day" />
+          <div style={{ display:"flex",gap:8,marginTop:8 }}>
+            <Btn onClick={addDay}>Add Day</Btn>
             <Btn variant="ghost" onClick={()=>setShowDay(false)}>Cancel</Btn>
-            <Btn onClick={addDay}>Add</Btn>
           </div>
         </Modal>
       )}
+
       {showEvent && (
         <Modal title="Add Event" onClose={()=>setShowEvent(null)}>
           <Input label="Time" type="time" value={evForm.time} onChange={e=>setEvForm({...evForm,time:e.target.value})} />
-          <Input label="Title *" value={evForm.title} onChange={e=>setEvForm({...evForm,title:e.target.value})} />
-          <Input label="Location" value={evForm.location} onChange={e=>setEvForm({...evForm,location:e.target.value})} />
-          <Select label="Category" options={CATEGORIES} value={evForm.category} onChange={e=>setEvForm({...evForm,category:e.target.value})} />
-          <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} />
-          <div style={{ display:"flex",gap:8,justifyContent:"flex-end" }}>
+          <Input label="Title *" value={evForm.title} onChange={e=>setEvForm({...evForm,title:e.target.value})} placeholder="e.g. Visit Kedarnath" />
+          <Input label="Location" value={evForm.location} onChange={e=>setEvForm({...evForm,location:e.target.value})} placeholder="e.g. Kedarnath Temple" />
+          <Select label="Category" value={evForm.category} onChange={e=>setEvForm({...evForm,category:e.target.value})}
+            options={["Sightseeing","Transport","Food","Accommodation","Activity","Other"]} />
+          <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Any notes…" />
+          <div style={{ display:"flex",gap:8,marginTop:8 }}>
+            <Btn onClick={()=>addEvent(showEvent)}>Add Event</Btn>
             <Btn variant="ghost" onClick={()=>setShowEvent(null)}>Cancel</Btn>
-            <Btn onClick={()=>addEvent(showEvent)}>Add</Btn>
           </div>
         </Modal>
       )}
@@ -149,7 +307,6 @@ function ScheduleTab({ trip, update }) {
   );
 }
 
-// ---- Budget Tab ----
 function BudgetTab({ trip, update }) {
   const [showExp, setShowExp] = useState(false);
   const [form, setForm] = useState({ desc:"", amount:"", category:"Food" });
