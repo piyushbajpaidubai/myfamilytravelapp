@@ -11,7 +11,18 @@
           "id": "wl3r6x8",
           "date": "2026-06-21",
           "label": "Delhi arrival",
-          "events": []
+          "events": [
+            {
+              "id": "vr7wu3n",
+              "time": "",
+              "title": "Arrive at Delhi Airport",
+              "location": "",
+              "category": "Sightseeing",
+              "notes": "",
+              "activities": [],
+              "docs": []
+            }
+          ]
         }
       ],
       "expenses": [],
