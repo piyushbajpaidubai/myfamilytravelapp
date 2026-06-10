@@ -19,7 +19,12 @@
               "location": "",
               "category": "Sightseeing",
               "notes": "",
-              "activities": [],
+              "activities": [
+                {
+                  "id": "xsfeksq",
+                  "text": "Collect baggage from carousel 3"
+                }
+              ],
               "docs": []
             }
           ]
