@@ -491,8 +491,8 @@ export default function App() {
             style={{
               padding: '8px 16px',
               borderRadius: 8,
-              border: savedStatus === 'saved' ? '2px solid #22c55e' : '2px solid #6366f1',
-              background: savedStatus === 'saved' ? '#22c55e' : savedStatus === 'saving' ? '#a5b4fc' : '#6366f1',
+              border: savedStatus === 'saved' ? '2px solid #5B8A4A' : '2px solid #B5341C',
+              background: savedStatus === 'saved' ? '#5B8A4A' : savedStatus === 'saving' ? '#C88070' : '#B5341C',
               color: '#fff',
               fontWeight: 600,
               fontSize: 14,
