@@ -19,7 +19,7 @@ function Modal({ title, onClose, children }) {
       <div style={{ background:"#F0EBE0",borderRadius:12,padding:24,minWidth:320,maxWidth:480,width:"90%",boxShadow:"0 8px 32px rgba(44,24,16,0.15)" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
           <h3 style={{ margin:0,fontSize:16,fontWeight:600 }}>{title}</h3>
-          <button onClick={onClose} style={{ background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#8B6355" }}>×</button>
+          <button onClick={onClose} style={{ background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#B54030" }}>×</button>
         </div>
         {children}
       </div>
@@ -30,7 +30,7 @@ function Modal({ title, onClose, children }) {
 function Input({ label, ...props }) {
   return (
     <div style={{ marginBottom:12 }}>
-      {label && <label style={{ display:"block",fontSize:12,color:"#6B4535",marginBottom:4 }}>{label}</label>}
+      {label && <label style={{ display:"block",fontSize:12,color:"#A83020",marginBottom:4 }}>{label}</label>}
       <input {...props} style={{ width:"100%",padding:"8px 10px",border:"1px solid #C8B09A",borderRadius:7,fontSize:14,boxSizing:"border-box",...props.style }} />
     </div>
   );
@@ -39,7 +39,7 @@ function Input({ label, ...props }) {
 function Select({ label, options, ...props }) {
   return (
     <div style={{ marginBottom:12 }}>
-      {label && <label style={{ display:"block",fontSize:12,color:"#6B4535",marginBottom:4 }}>{label}</label>}
+      {label && <label style={{ display:"block",fontSize:12,color:"#A83020",marginBottom:4 }}>{label}</label>}
       <select {...props} style={{ width:"100%",padding:"8px 10px",border:"1px solid #C8B09A",borderRadius:7,fontSize:14,boxSizing:"border-box" }}>
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
@@ -50,10 +50,10 @@ function Select({ label, options, ...props }) {
 function Btn({ children, variant="primary", ...props }) {
   const base = { padding:"8px 16px",borderRadius:7,fontSize:13,fontWeight:500,cursor:"pointer",border:"none" };
   const styles = {
-    primary: { ...base, background:"#2C1810",color:"#fff" },
-    ghost: { ...base, background:"transparent",color:"#4A2F20",border:"1px solid #C8B09A" },
+    primary: { ...base, background:"#6E1A10",color:"#fff" },
+    ghost: { ...base, background:"transparent",color:"#8B2A14",border:"1px solid #C8B09A" },
     danger: { ...base, background:"#F5E0D8",color:"#8B2A14" },
-    soft: { ...base, background:"#E8E2D4",color:"#2C1810" },
+    soft: { ...base, background:"#E8E2D4",color:"#6E1A10" },
   };
   return <button {...props} style={{ ...styles[variant],...props.style }}>{children}</button>;
 }
@@ -91,30 +91,30 @@ function ScheduleTab({ trip, update }) {
         <span style={{ fontWeight:600 }}>Days</span>
         <Btn onClick={()=>setShowDay(true)}>+ Add Day</Btn>
       </div>
-      {(!trip.days||trip.days.length===0) && <p style={{ color:"#A88070",textAlign:"center",marginTop:40 }}>No days yet. Add your first day!</p>}
+      {(!trip.days||trip.days.length===0) && <p style={{ color:"#C86050",textAlign:"center",marginTop:40 }}>No days yet. Add your first day!</p>}
       {(trip.days||[]).map(day => (
         <div key={day.id} style={{ background:"#EDE7D9",border:"1px solid #D4BFB0",borderRadius:10,marginBottom:14,overflow:"hidden" }}>
           <div style={{ padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",background:"#E8E2D4" }}>
             <div>
               <span style={{ fontWeight:600,fontSize:14 }}>{day.date}</span>
-              {day.label && <span style={{ marginLeft:8,color:"#6B4535",fontSize:13 }}>{day.label}</span>}
+              {day.label && <span style={{ marginLeft:8,color:"#A83020",fontSize:13 }}>{day.label}</span>}
             </div>
             <div style={{ display:"flex",gap:6 }}>
               <Btn variant="ghost" style={{ padding:"4px 10px",fontSize:12 }} onClick={()=>{ setShowEvent(day.id); setEvForm({ time:"",title:"",location:"",category:"Sightseeing",notes:"" }); }}>+ Event</Btn>
               <Btn variant="danger" style={{ padding:"4px 10px",fontSize:12 }} onClick={()=>delDay(day.id)}>✕</Btn>
             </div>
           </div>
-          {(day.events||[]).length===0 && <p style={{ color:"#C0A090",fontSize:13,padding:"10px 14px",margin:0 }}>No events</p>}
+          {(day.events||[]).length===0 && <p style={{ color:"#D47060",fontSize:13,padding:"10px 14px",margin:0 }}>No events</p>}
           {(day.events||[]).map(ev => (
             <div key={ev.id} style={{ padding:"10px 14px",borderTop:"1px solid #D4BFB0",display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
               <div>
                 <div style={{ display:"flex",alignItems:"center",gap:8 }}>
-                  {ev.time && <span style={{ fontSize:12,color:"#8B6355" }}>{ev.time}</span>}
+                  {ev.time && <span style={{ fontSize:12,color:"#B54030" }}>{ev.time}</span>}
                   <span style={{ fontSize:13,fontWeight:500 }}>{ev.title}</span>
-                  <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#4A2F20" }}>{ev.category}</span>
+                  <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#8B2A14" }}>{ev.category}</span>
                 </div>
-                {ev.location && <div style={{ fontSize:12,color:"#8B6355",marginTop:2 }}>📍 {ev.location}</div>}
-                {ev.notes && <div style={{ fontSize:12,color:"#9B7365",marginTop:2 }}>{ev.notes}</div>}
+                {ev.location && <div style={{ fontSize:12,color:"#B54030",marginTop:2 }}>📍 {ev.location}</div>}
+                {ev.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{ev.notes}</div>}
               </div>
               <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>delEvent(day.id,ev.id)}>✕</Btn>
             </div>
@@ -172,20 +172,20 @@ function BudgetTab({ trip, update }) {
     <div>
       <div style={{ background:"#EDE7D9",border:"1px solid #D4BFB0",borderRadius:10,padding:16,marginBottom:16 }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8 }}>
-          <span style={{ fontSize:13,color:"#6B4535" }}>Trip Budget</span>
+          <span style={{ fontSize:13,color:"#A83020" }}>Trip Budget</span>
           <input value={trip.budget||""} onChange={e=>update({budget:e.target.value})} placeholder="0.00" type="number"
             style={{ width:120,padding:"4px 8px",border:"1px solid #C8B09A",borderRadius:6,fontSize:14,textAlign:"right" }} />
         </div>
         <div style={{ display:"flex",justifyContent:"space-between" }}>
-          <span style={{ fontSize:13,color:"#6B4535" }}>Spent</span>
-          <span style={{ fontWeight:600,color: budget&&total>budget?"#8B2A14":"#2C1810" }}>${total.toFixed(2)}</span>
+          <span style={{ fontSize:13,color:"#A83020" }}>Spent</span>
+          <span style={{ fontWeight:600,color: budget&&total>budget?"#8B2A14":"#6E1A10" }}>${total.toFixed(2)}</span>
         </div>
         {budget>0 && (
           <>
             <div style={{ marginTop:10,height:6,background:"#DDD8CB",borderRadius:3,overflow:"hidden" }}>
-              <div style={{ height:"100%",background: total>budget?"#C04428":"#2C1810",width:`${Math.min(100,(total/budget)*100)}%`,transition:"width .3s" }} />
+              <div style={{ height:"100%",background: total>budget?"#C04428":"#6E1A10",width:`${Math.min(100,(total/budget)*100)}%`,transition:"width .3s" }} />
             </div>
-            <div style={{ display:"flex",justifyContent:"space-between",marginTop:4,fontSize:12,color:"#8B6355" }}>
+            <div style={{ display:"flex",justifyContent:"space-between",marginTop:4,fontSize:12,color:"#B54030" }}>
               <span>Remaining: ${Math.max(0,budget-total).toFixed(2)}</span>
               <span>{budget>0?Math.round((total/budget)*100):0}%</span>
             </div>
@@ -195,7 +195,7 @@ function BudgetTab({ trip, update }) {
 
       {bycat.length>0 && (
         <div style={{ marginBottom:16 }}>
-          <div style={{ fontSize:12,color:"#8B6355",marginBottom:8 }}>By Category</div>
+          <div style={{ fontSize:12,color:"#B54030",marginBottom:8 }}>By Category</div>
           {bycat.map(x=>(
             <div key={x.cat} style={{ display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0",borderBottom:"1px solid #f3f4f6" }}>
               <span>{x.cat}</span><span style={{ fontWeight:500 }}>${x.total.toFixed(2)}</span>
@@ -208,12 +208,12 @@ function BudgetTab({ trip, update }) {
         <span style={{ fontWeight:600 }}>Expenses</span>
         <Btn onClick={()=>setShowExp(true)}>+ Add Expense</Btn>
       </div>
-      {(trip.expenses||[]).length===0 && <p style={{ color:"#A88070",textAlign:"center",marginTop:24 }}>No expenses logged yet.</p>}
+      {(trip.expenses||[]).length===0 && <p style={{ color:"#C86050",textAlign:"center",marginTop:24 }}>No expenses logged yet.</p>}
       {(trip.expenses||[]).map(e=>(
         <div key={e.id} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #f3f4f6" }}>
           <div>
             <div style={{ fontSize:13,fontWeight:500 }}>{e.desc}</div>
-            <div style={{ fontSize:11,color:"#8B6355" }}>{e.category}</div>
+            <div style={{ fontSize:11,color:"#B54030" }}>{e.category}</div>
           </div>
           <div style={{ display:"flex",alignItems:"center",gap:10 }}>
             <span style={{ fontWeight:600 }}>${parseFloat(e.amount).toFixed(2)}</span>
@@ -261,23 +261,23 @@ function PackingTab({ trip, update }) {
       <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
         <div>
           <span style={{ fontWeight:600 }}>Packing List</span>
-          {total>0 && <span style={{ fontSize:12,color:"#8B6355",marginLeft:8 }}>{packed}/{total} packed</span>}
+          {total>0 && <span style={{ fontSize:12,color:"#B54030",marginLeft:8 }}>{packed}/{total} packed</span>}
         </div>
         <Btn onClick={()=>setShowAdd(true)}>+ Add Item</Btn>
       </div>
       {total>0 && (
         <div style={{ height:4,background:"#DDD8CB",borderRadius:2,marginBottom:16,overflow:"hidden" }}>
-          <div style={{ height:"100%",background:"#2C1810",width:`${total?Math.round((packed/total)*100):0}%`,transition:"width .3s" }} />
+          <div style={{ height:"100%",background:"#6E1A10",width:`${total?Math.round((packed/total)*100):0}%`,transition:"width .3s" }} />
         </div>
       )}
-      {total===0 && <p style={{ color:"#A88070",textAlign:"center",marginTop:40 }}>Nothing to pack yet!</p>}
+      {total===0 && <p style={{ color:"#C86050",textAlign:"center",marginTop:40 }}>Nothing to pack yet!</p>}
       {grouped.map(({ cat, items })=>(
         <div key={cat} style={{ marginBottom:14 }}>
-          <div style={{ fontSize:12,fontWeight:600,color:"#8B6355",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em" }}>{cat}</div>
+          <div style={{ fontSize:12,fontWeight:600,color:"#B54030",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em" }}>{cat}</div>
           {items.map(item=>(
             <div key={item.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #f3f4f6" }}>
-              <input type="checkbox" checked={item.packed} onChange={()=>toggle(item.id)} style={{ accentColor:"#2C1810",width:15,height:15 }} />
-              <span style={{ flex:1,fontSize:13,textDecoration:item.packed?"line-through":"none",color:item.packed?"#C0A090":"#2C1810" }}>{item.name}</span>
+              <input type="checkbox" checked={item.packed} onChange={()=>toggle(item.id)} style={{ accentColor:"#6E1A10",width:15,height:15 }} />
+              <span style={{ flex:1,fontSize:13,textDecoration:item.packed?"line-through":"none",color:item.packed?"#D47060":"#6E1A10" }}>{item.name}</span>
               <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>del(item.id)}>✕</Btn>
             </div>
           ))}
@@ -285,8 +285,8 @@ function PackingTab({ trip, update }) {
       ))}
       {uncatted.map(item=>(
         <div key={item.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #f3f4f6" }}>
-          <input type="checkbox" checked={item.packed} onChange={()=>toggle(item.id)} style={{ accentColor:"#2C1810" }} />
-          <span style={{ flex:1,fontSize:13,textDecoration:item.packed?"line-through":"none",color:item.packed?"#C0A090":"#2C1810" }}>{item.name}</span>
+          <input type="checkbox" checked={item.packed} onChange={()=>toggle(item.id)} style={{ accentColor:"#6E1A10" }} />
+          <span style={{ flex:1,fontSize:13,textDecoration:item.packed?"line-through":"none",color:item.packed?"#D47060":"#6E1A10" }}>{item.name}</span>
           <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>del(item.id)}>✕</Btn>
         </div>
       ))}
@@ -324,14 +324,14 @@ function LocationsTab({ trip, update }) {
         <span style={{ fontWeight:600 }}>Locations</span>
         <Btn onClick={()=>setShowAdd(true)}>+ Add Location</Btn>
       </div>
-      {(trip.locations||[]).length===0 && <p style={{ color:"#A88070",textAlign:"center",marginTop:40 }}>No locations added yet.</p>}
+      {(trip.locations||[]).length===0 && <p style={{ color:"#C86050",textAlign:"center",marginTop:40 }}>No locations added yet.</p>}
       {(trip.locations||[]).map(loc=>(
         <div key={loc.id} style={{ background:"#EDE7D9",border:"1px solid #D4BFB0",borderRadius:10,padding:14,marginBottom:12 }}>
           <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
             <div style={{ flex:1 }}>
               <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:4 }}>
                 <span style={{ fontWeight:600,fontSize:14 }}>{loc.name}</span>
-                <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#4A2F20" }}>{loc.type}</span>
+                <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#8B2A14" }}>{loc.type}</span>
               </div>
               {loc.address && (
                 <a href={`https://maps.google.com/?q=${encodeURIComponent(loc.address)}`} target="_blank" rel="noreferrer"
@@ -339,7 +339,7 @@ function LocationsTab({ trip, update }) {
                   📍 {loc.address}
                 </a>
               )}
-              {loc.notes && <div style={{ fontSize:12,color:"#8B6355",marginTop:4 }}>{loc.notes}</div>}
+              {loc.notes && <div style={{ fontSize:12,color:"#B54030",marginTop:4 }}>{loc.notes}</div>}
             </div>
             <Btn variant="danger" style={{ padding:"4px 10px",fontSize:12,marginLeft:8 }} onClick={()=>del(loc.id)}>✕</Btn>
           </div>
@@ -477,10 +477,10 @@ export default function App() {
 
   const trip = trips.find(t=>t.id===activeTrip);
 
-  if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#A88070",fontSize:14 }}>Loading…</div>;
+  if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#C86050",fontSize:14 }}>Loading…</div>;
 
   return (
-    <div style={{ fontFamily:"Georgia,'Playfair Display','Times New Roman',serif",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0" }}>
+    <div style={{ fontFamily:"'Jost','Futura PT','Century Gothic','Trebuchet MS',sans-serif",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0" }}>
       {/* Header */}
       <div style={{ padding:"20px 20px 0",borderBottom:"2px solid #B5341C" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
@@ -516,7 +516,7 @@ export default function App() {
                 borderColor: activeTrip===t.id?"#D4BFB0":"transparent",
                 background: activeTrip===t.id?"#F0EBE0":"transparent",
                 fontWeight: activeTrip===t.id?600:400,
-                fontSize:13,cursor:"pointer",color: activeTrip===t.id?"#2C1810":"#8B6355",whiteSpace:"nowrap" }}>
+                fontSize:13,cursor:"pointer",color: activeTrip===t.id?"#6E1A10":"#B54030",whiteSpace:"nowrap" }}>
               {t.name||"Unnamed"}
             </button>
           ))}
@@ -525,7 +525,7 @@ export default function App() {
 
       {/* Trip content */}
       {!trip ? (
-        <div style={{ textAlign:"center",marginTop:80,color:"#C0A090" }}>
+        <div style={{ textAlign:"center",marginTop:80,color:"#D47060" }}>
           <div style={{ fontSize:48,marginBottom:12 }}>🗺️</div>
           <p style={{ fontSize:15 }}>No trips yet. Create your first one!</p>
           <Btn onClick={()=>setShowNewTrip(true)} style={{ marginTop:8 }}>+ New Trip</Btn>
@@ -536,7 +536,7 @@ export default function App() {
           <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20 }}>
             <div>
               <h2 style={{ margin:"0 0 2px",fontSize:18,fontWeight:700 }}>{trip.name}</h2>
-              <div style={{ fontSize:13,color:"#8B6355" }}>
+              <div style={{ fontSize:13,color:"#B54030" }}>
                 {trip.destination && <span>📍 {trip.destination}</span>}
                 {trip.startDate && <span style={{ marginLeft:8 }}>🗓 {trip.startDate}{trip.endDate?` → ${trip.endDate}`:""}</span>}
               </div>
@@ -550,7 +550,7 @@ export default function App() {
               <button key={tab} onClick={()=>setActiveTab(tab)}
                 style={{ flex:1,padding:"6px 0",border:"none",borderRadius:6,fontSize:13,cursor:"pointer",fontWeight:500,
                   background: activeTab===tab?"#F0EBE0":"transparent",
-                  color: activeTab===tab?"#2C1810":"#8B6355",
+                  color: activeTab===tab?"#6E1A10":"#B54030",
                   boxShadow: activeTab===tab?"0 1px 3px rgba(0,0,0,.08)":"none" }}>
                 {tab}
               </button>
