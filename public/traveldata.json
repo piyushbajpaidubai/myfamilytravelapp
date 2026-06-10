@@ -16,7 +16,15 @@
       ],
       "expenses": [],
       "packItems": [],
-      "locations": [],
+      "locations": [
+        {
+          "id": "jlj9xc6",
+          "name": "Delhi",
+          "address": "",
+          "type": "Hotel",
+          "notes": ""
+        }
+      ],
       "budget": ""
     },
     {
