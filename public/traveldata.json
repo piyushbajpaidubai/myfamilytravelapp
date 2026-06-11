@@ -67,6 +67,16 @@
           "label": "Arrival in Dilli",
           "events": [
             {
+              "id": "680kl2e",
+              "time": "19:00",
+              "title": "Hotel Check in",
+              "location": "CP",
+              "category": "Accommodation",
+              "notes": "",
+              "activities": [],
+              "docs": []
+            },
+            {
               "id": "8bxphm0",
               "time": "20:00",
               "title": "Dinner at Vermas",
