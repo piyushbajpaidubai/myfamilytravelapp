@@ -100,7 +100,18 @@
           "id": "nyitf1q",
           "date": "2026-06-22",
           "label": "To Kainchi Dham",
-          "events": []
+          "events": [
+            {
+              "id": "yida3wm",
+              "time": "06:30",
+              "title": "Train to Kathgodam",
+              "location": "Delhi Station",
+              "category": "Transport",
+              "notes": "",
+              "activities": [],
+              "docs": []
+            }
+          ]
         }
       ],
       "expenses": [
