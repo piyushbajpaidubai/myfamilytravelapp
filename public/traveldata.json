@@ -97,7 +97,14 @@
           ]
         }
       ],
-      "expenses": [],
+      "expenses": [
+        {
+          "id": "7ytzugl",
+          "desc": "dubai-delhi tickets",
+          "amount": "75000",
+          "category": "Transport"
+        }
+      ],
       "packItems": [],
       "locations": [],
       "budget": "150000"
