@@ -65,7 +65,18 @@
           "id": "ukthkil",
           "date": "2026-06-21",
           "label": "Arrival in Dilli",
-          "events": []
+          "events": [
+            {
+              "id": "8bxphm0",
+              "time": "20:00",
+              "title": "Dinner at Vermas",
+              "location": "Huaz Khas",
+              "category": "Food",
+              "notes": "",
+              "activities": [],
+              "docs": []
+            }
+          ]
         }
       ],
       "expenses": [],
