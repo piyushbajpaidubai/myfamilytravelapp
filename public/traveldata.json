@@ -60,7 +60,14 @@
       "destination": "Dubai- Delhi- Uttarakhand- delhi- mumbai- pune - dubai",
       "startDate": "2026-06-21",
       "endDate": "2026-06-10",
-      "days": [],
+      "days": [
+        {
+          "id": "ukthkil",
+          "date": "2026-06-21",
+          "label": "Arrival in Dilli",
+          "events": []
+        }
+      ],
       "expenses": [],
       "packItems": [],
       "locations": [],
