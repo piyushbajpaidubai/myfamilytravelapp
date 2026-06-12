@@ -554,8 +554,8 @@ export default function App() {
         if (data.trips && data.trips.length > 0) { setTrips(data.trips); setActiveTrip(data.trips[0].id); }
         else {
           try {
-            const sv = localStorage.getItem('trips');
-            if (sv) { const t = JSON.parse(sv); if (t && t.length) { setTrips(t); setActiveTrip(t[0].id); } }
+            const sv = localStorage.getItem('travelPlannerData');
+            if (sv) { const { trips: t } = JSON.parse(sv); if (t && t.length) { setTrips(t); setActiveTrip(t[0].id); } }
           } catch(e) {}
         }
       })
