@@ -162,9 +162,29 @@ function ScheduleTab({ trip, update }) {
   // Reusable doc attachment row
   function DocList({ docs=[], onAdd, onDel }) {
   const [preview, setPreview] = useState(null);
+  const [blobUrl, setBlobUrl] = useState(null);
 
   function openPreview(doc) {
+    // Convert base64 data URI to Blob URL for reliable in-browser preview
+    try {
+      const arr = doc.data.split(',');
+      const mime = arr[0].match(/:(.*?);/)[1];
+      const bstr = atob(arr[1]);
+      const u8arr = new Uint8Array(bstr.length);
+      for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i);
+      const blob = new Blob([u8arr], { type: mime });
+      const url = URL.createObjectURL(blob);
+      setBlobUrl(url);
+    } catch(e) {
+      setBlobUrl(null);
+    }
     setPreview(doc);
+  }
+
+  function closePreview() {
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
+    setBlobUrl(null);
+    setPreview(null);
   }
 
   const isPdf = doc => doc.name && doc.name.toLowerCase().endsWith('.pdf');
@@ -182,7 +202,7 @@ function ScheduleTab({ trip, update }) {
       ))}
 
       {preview && (
-        <div onClick={()=>setPreview(null)}
+        <div onClick={closePreview}
           style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.82)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px' }}>
           <div onClick={e=>e.stopPropagation()}
             style={{ background:'#fff',borderRadius:12,overflow:'hidden',boxShadow:'0 8px 40px rgba(0,0,0,0.5)',display:'flex',flexDirection:'column',maxWidth:'90vw',maxHeight:'90vh',minWidth:'320px' }}>
@@ -194,14 +214,14 @@ function ScheduleTab({ trip, update }) {
                   style={{ fontSize:12,padding:'4px 12px',borderRadius:6,background:'rgba(255,255,255,0.15)',color:'#fff',textDecoration:'none',fontFamily:"'Jost',sans-serif",cursor:'pointer' }}>
                   ⬇ Download
                 </a>
-                <button onClick={()=>setPreview(null)}
+                <button onClick={closePreview}
                   style={{ background:'rgba(255,255,255,0.15)',border:'none',borderRadius:6,color:'#fff',cursor:'pointer',fontSize:16,width:28,height:28,lineHeight:'28px',textAlign:'center',padding:0 }}>×</button>
               </div>
             </div>
             {/* Preview pane */}
             <div style={{ flex:1,overflow:'auto',background:'#F5F0E8',display:'flex',alignItems:'center',justifyContent:'center',minHeight:'300px' }}>
               {isPdf(preview) ? (
-                <object data={preview.data} type="application/pdf"
+                <object data={blobUrl || preview.data} type="application/pdf"
                   style={{ width:'80vw',height:'75vh',maxWidth:'900px',border:'none' }}>
                   <div style={{ textAlign:'center',padding:'40px',fontFamily:"'Jost',sans-serif",color:'#6E1A10' }}>
                     <div style={{ fontSize:32,marginBottom:12 }}>📄</div>
