@@ -653,25 +653,11 @@ export default function App() {
   // Auto-save: debounce 2s after any change to trips
   useEffect(() => {
     if (trips.length === 0) return;
-    setSavedStatus('saving');
     const timer = setTimeout(() => {
-      fetch('/.netlify/functions/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trips })
-      })
-        .then(r => r.json())
-        .then(() => {
-          localStorage.setItem('travelPlannerData', JSON.stringify({ trips }));
-          setSavedStatus('saved');
-          setTimeout(() => setSavedStatus(''), 2500);
-        })
-        .catch(() => {
-          try { localStorage.setItem('travelPlannerData', JSON.stringify({ trips })); } catch(e) {}
-          setSavedStatus('saved');
-          setTimeout(() => setSavedStatus(''), 2500);
-        });
-    }, 2000);
+      try {
+        localStorage.setItem('travelPlannerData', JSON.stringify({ trips }));
+      } catch(e) {}
+    }, 1000);
     return () => clearTimeout(timer);
   }, [trips]);
 
