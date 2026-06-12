@@ -201,8 +201,17 @@ function ScheduleTab({ trip, update }) {
             {/* Preview pane */}
             <div style={{ flex:1,overflow:'auto',background:'#F5F0E8',display:'flex',alignItems:'center',justifyContent:'center',minHeight:'300px' }}>
               {isPdf(preview) ? (
-                <iframe src={preview.data} title={preview.name}
-                  style={{ width:'80vw',height:'75vh',maxWidth:'900px',border:'none' }} />
+                <object data={preview.data} type="application/pdf"
+                  style={{ width:'80vw',height:'75vh',maxWidth:'900px',border:'none' }}>
+                  <div style={{ textAlign:'center',padding:'40px',fontFamily:"'Jost',sans-serif",color:'#6E1A10' }}>
+                    <div style={{ fontSize:32,marginBottom:12 }}>📄</div>
+                    <p style={{ fontSize:14,marginBottom:16 }}>Your browser cannot preview this PDF inline.</p>
+                    <a href={preview.data} download={preview.name}
+                      style={{ background:'#3D0C02',color:'#fff',padding:'8px 20px',borderRadius:8,textDecoration:'none',fontSize:13 }}>
+                      ⬇ Download to View
+                    </a>
+                  </div>
+                </object>
               ) : isImage(preview) ? (
                 <img src={preview.data} alt={preview.name}
                   style={{ maxWidth:'85vw',maxHeight:'75vh',objectFit:'contain',display:'block' }} />
