@@ -464,7 +464,7 @@ function PackingTab({ trip, update }) {
 
 // ---- Locations Tab ----
 function PicturesTab({ trip, update }) {
-  const [lightbox, setLightbox] = React.useState(null);
+  const [lightbox, setLightbox] = useState(null);
   const pics = trip.pictures || [];
 
   function addPics(e) {
