@@ -681,7 +681,6 @@ export default function App() {
             </button>
           ))}
         </div>
-      </div>
 
       {/* Trip content */}
       {!trip ? (
