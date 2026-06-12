@@ -160,18 +160,71 @@ function ScheduleTab({ trip, update }) {
   const fmtSize = (bytes) => bytes < 1024 ? bytes+'B' : bytes < 1048576 ? (bytes/1024).toFixed(1)+'KB' : (bytes/1048576).toFixed(1)+'MB';
 
   // Reusable doc attachment row
-  const DocList = ({ docs=[], onAdd, onDel }) => (
+  function DocList({ docs=[], onAdd, onDel }) {
+  const [preview, setPreview] = useState(null);
+
+  function openPreview(doc) {
+    setPreview(doc);
+  }
+
+  const isPdf = doc => doc.name && doc.name.toLowerCase().endsWith('.pdf');
+  const isImage = doc => doc.data && doc.data.startsWith('data:image');
+
+  return (
     <div style={{ marginTop:6 }}>
       {docs.map(doc => (
         <div key={doc.id} style={{ display:'flex',alignItems:'center',gap:6,padding:'3px 0',borderBottom:'1px solid #E8E2D4' }}>
           <span style={{ fontSize:14 }}>📎</span>
-          <a href={doc.data} download={doc.name} style={{ fontSize:12,color:'#8B2A14',textDecoration:'underline',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{doc.name}</a>
+          <span onClick={()=>openPreview(doc)} style={{ fontSize:12,color:'#8B2A14',textDecoration:'underline',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:'pointer' }}>{doc.name}</span>
           <span style={{ fontSize:11,color:'#C05040',flexShrink:0 }}>{fmtSize(doc.size)}</span>
           <button onClick={()=>onDel(doc.id)} style={{ background:'none',border:'none',cursor:'pointer',color:'#C04428',fontSize:13,padding:'0 2px',lineHeight:1 }}>✕</button>
         </div>
       ))}
+
+      {preview && (
+        <div onClick={()=>setPreview(null)}
+          style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.82)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px' }}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{ background:'#fff',borderRadius:12,overflow:'hidden',boxShadow:'0 8px 40px rgba(0,0,0,0.5)',display:'flex',flexDirection:'column',maxWidth:'90vw',maxHeight:'90vh',minWidth:'320px' }}>
+            {/* Header */}
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',background:'#3D0C02',color:'#fff' }}>
+              <span style={{ fontFamily:"'Jost','Futura PT',sans-serif",fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'60vw' }}>{preview.name}</span>
+              <div style={{ display:'flex',gap:8,flexShrink:0 }}>
+                <a href={preview.data} download={preview.name}
+                  style={{ fontSize:12,padding:'4px 12px',borderRadius:6,background:'rgba(255,255,255,0.15)',color:'#fff',textDecoration:'none',fontFamily:"'Jost',sans-serif",cursor:'pointer' }}>
+                  ⬇ Download
+                </a>
+                <button onClick={()=>setPreview(null)}
+                  style={{ background:'rgba(255,255,255,0.15)',border:'none',borderRadius:6,color:'#fff',cursor:'pointer',fontSize:16,width:28,height:28,lineHeight:'28px',textAlign:'center',padding:0 }}>×</button>
+              </div>
+            </div>
+            {/* Preview pane */}
+            <div style={{ flex:1,overflow:'auto',background:'#F5F0E8',display:'flex',alignItems:'center',justifyContent:'center',minHeight:'300px' }}>
+              {isPdf(preview) ? (
+                <iframe src={preview.data} title={preview.name}
+                  style={{ width:'80vw',height:'75vh',maxWidth:'900px',border:'none' }} />
+              ) : isImage(preview) ? (
+                <img src={preview.data} alt={preview.name}
+                  style={{ maxWidth:'85vw',maxHeight:'75vh',objectFit:'contain',display:'block' }} />
+              ) : (
+                <div style={{ textAlign:'center',padding:'40px',fontFamily:"'Jost',sans-serif",color:'#6E1A10' }}>
+                  <div style={{ fontSize:48,marginBottom:12 }}>📄</div>
+                  <p style={{ fontSize:14,marginBottom:16 }}>Preview not available for this file type.</p>
+                  <a href={preview.data} download={preview.name}
+                    style={{ background:'#3D0C02',color:'#fff',padding:'8px 20px',borderRadius:8,textDecoration:'none',fontSize:13,fontFamily:"'Jost',sans-serif" }}>
+                    ⬇ Download File
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
+        </div>
+      )}
+    </div>
   );
+}
+
+
 
   return (
     <div>
