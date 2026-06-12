@@ -525,6 +525,7 @@ export default function App() {
   const [activeTrip, setActiveTrip] = useState(null);
   const [activeTab, setActiveTab] = useState("Schedule");
   const [showNewTrip, setShowNewTrip] = useState(false);
+  const [headerNote, setHeaderNote] = useState('');
   const [savedStatus, setSavedStatus] = useState(''); // '', 'saving', 'saved'
 
   // Load from online store on mount
@@ -641,7 +642,7 @@ export default function App() {
       {/* Header */}
       <div style={{ padding:"20px 20px 0",borderBottom:"2px solid #B5341C" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
-          <h1 style={{ margin:0,fontSize:20,fontWeight:700 }}>✈️ Travel Planner</h1>
+          <h1 style={{ margin:0,fontSize:20,fontWeight:700 }}>✈️ My Travel Hub</h1>
           <Btn onClick={()=>setShowNewTrip(true)}>+ New Trip</Btn>
           <button
             onClick={handleSave}
@@ -665,6 +666,8 @@ export default function App() {
             {savedStatus === 'saved' ? '✓ Saved' : savedStatus === 'saving' ? '...' : '💾 Save'}
           </button>
         </div>
+                {/* Header note textarea */}
+        <textarea value={headerNote} onChange={e=>setHeaderNote(e.target.value)} placeholder="Add a note, quote or travel tagline…" rows={2} style={{ width:"100%",boxSizing:"border-box",resize:"vertical",padding:"8px 12px",marginBottom:12,border:"1px solid #D4BFB0",borderRadius:8,background:"#F0EBE0",color:"#6E1A10",fontSize:13,fontFamily:"inherit",outline:"none",lineHeight:1.5 }} />
         {/* Trip tabs */}
         <div style={{ display:"flex",gap:4,overflowX:"auto",paddingBottom:0 }}>
           {trips.map(t=>(
