@@ -170,11 +170,7 @@ function ScheduleTab({ trip, update }) {
           <button onClick={()=>onDel(doc.id)} style={{ background:'none',border:'none',cursor:'pointer',color:'#C04428',fontSize:13,padding:'0 2px',lineHeight:1 }}>✕</button>
         </div>
       ))}
-      <label style={{ display:'inline-flex',alignItems:'center',gap:4,marginTop:docs.length?4:2,cursor:'pointer',fontSize:12,color:'#8B2A14',fontWeight:500 }}>
-        <span style={{ fontSize:14 }}>📎</span> Attach document
-        <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) onAdd(e.target.files[0]); e.target.value=''; }} />
-      </label>
-    </div>
+          </div>
   );
 
   return (
@@ -218,6 +214,10 @@ function ScheduleTab({ trip, update }) {
                   {ev.location && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {ev.location}</div>}
                   {ev.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{ev.notes}</div>}
                 </div>
+                <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0,marginLeft:6 }}>
+                  <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
+                  <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,null,e.target.files[0]); e.target.value=''; }} />
+                </label>
                 <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12,flexShrink:0,marginLeft:8 }} onClick={()=>delEvent(day.id,ev.id)}>✕</Btn>
               </div>
 
@@ -244,7 +244,11 @@ function ScheduleTab({ trip, update }) {
                             onDel={(docId)=>delDoc(day.id,ev.id,act.id,docId)}
                           />
                         </div>
-                        <button onClick={()=>delActivity(day.id,ev.id,act.id)} style={{ background:'none',border:'none',cursor:'pointer',color:'#C04428',fontSize:12,padding:'0 2px',lineHeight:1,flexShrink:0,marginTop:2 }}>✕</button>
+                        <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:22,height:22,borderRadius:5,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0,marginTop:2 }}>
+                        <span style={{ fontSize:12, lineHeight:1 }}>📎</span>
+                        <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,act.id,e.target.files[0]); e.target.value=''; }} />
+                      </label>
+                      <button onClick={()=>delActivity(day.id,ev.id,act.id)} style={{ background:'none',border:'none',cursor:'pointer',color:'#C04428',fontSize:12,padding:'0 2px',lineHeight:1,flexShrink:0,marginTop:2 }}>✕</button>
                       </div>
                     </div>
                   ))}
