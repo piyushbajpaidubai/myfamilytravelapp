@@ -533,13 +533,19 @@ export default function App() {
     fetch('/.netlify/functions/data')
       .then(r => r.json())
       .then(data => {
-        if (data.trips && data.trips.length > 0) { setTrips(data.trips); setActiveTrip(data.trips[0]); }
+        if (data.trips && data.trips.length > 0) {
+          setTrips(data.trips); setActiveTrip(data.trips[0].id);
+        } else {
+          try {
+            const saved = localStorage.getItem('travelPlannerData');
+            if (saved) { const { trips: t } = JSON.parse(saved); if (t && t.length > 0) { setTrips(t); setActiveTrip(t[0].id); } }
+          } catch (e) {}
+        }
       })
       .catch(() => {
-        // Fallback to localStorage if offline
         try {
           const saved = localStorage.getItem('travelPlannerData');
-          if (saved) { const { trips: t } = JSON.parse(saved); if (t && t.length > 0) setTrips(t); }
+          if (saved) { const { trips: t } = JSON.parse(saved); if (t && t.length > 0) { setTrips(t); setActiveTrip(t[0].id); } }
         } catch (e) {}
       });
   }, []);
