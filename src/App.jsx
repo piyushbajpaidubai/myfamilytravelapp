@@ -620,6 +620,29 @@ function PicturesTab({ trip, update }) {
   );
 }
 
+
+// Supabase cloud sync helpers
+const SUPA_URL = 'https://lafpiwlpjvongtdtzuam.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhZnBpd2xwanZvbmd0ZHR6dWFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyNjUyNDgsImV4cCI6MjA5Njg0MTI0OH0.cdDldzH4xrPYWZgdqeYOCBk7u34CtZWT6L2ldx3qYRk';
+const supaHeaders = { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY };
+async function loadFromCloud() {
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/travel_data?id=eq.shared&select=trips,header_note', { headers: supaHeaders });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return data && data[0] ? data[0] : null;
+  } catch(e) { return null; }
+}
+async function saveToCloud(trips, headerNote) {
+  try {
+    await fetch(SUPA_URL + '/rest/v1/travel_data', {
+      method: 'POST',
+      headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify({ id: 'shared', trips, header_note: headerNote || '', updated_at: new Date().toISOString() })
+    });
+  } catch(e) {}
+}
+
 export default function App() {
   const [trips, setTrips] = useState([]);
   const [activeTrip, setActiveTrip] = useState(null);
@@ -630,46 +653,46 @@ export default function App() {
 
   // Load from online store on mount
   useEffect(() => {
-    fetch('/.netlify/functions/data')
-      .then(r => r.json())
-      .then(data => {
-        if (data.trips && data.trips.length > 0) { setTrips(data.trips); setActiveTrip(data.trips[0].id); }
-        else {
-          try {
-            const sv = localStorage.getItem('travelPlannerData');
-            if (sv) { const { trips: t } = JSON.parse(sv); if (t && t.length) { setTrips(t); setActiveTrip(t[0].id); } }
-          } catch(e) {}
-        }
-      })
-      .catch(() => {
-        // Fallback to localStorage if offline
+    // Try cloud first, fallback to localStorage
+    loadFromCloud().then(cloudData => {
+      if (cloudData && cloudData.trips && cloudData.trips.length > 0) {
+        setTrips(cloudData.trips);
+        setActiveTrip(cloudData.trips[0].id);
+        if (cloudData.header_note) setHeaderNote(cloudData.header_note);
+        // Also update localStorage cache
+        try { localStorage.setItem('travelPlannerData', JSON.stringify({ trips: cloudData.trips })); } catch(e) {}
+      } else {
+        // Fallback to localStorage
         try {
-          const saved = localStorage.getItem('travelPlannerData');
-          if (saved) { const { trips: t } = JSON.parse(saved); if (t && t.length > 0) setTrips(t); }
-        } catch (e) {}
-      });
-  }, []);
+          const sv = localStorage.getItem('travelPlannerData');
+          if (sv) { const { trips: t } = JSON.parse(sv); if (t && t.length) { setTrips(t); setActiveTrip(t[0].id); } }
+        } catch(e) {}
+      }
+    });
+  }, [])
 
   // Auto-save: debounce 2s after any change to trips
   useEffect(() => {
     if (trips.length === 0) return;
     const timer = setTimeout(() => {
-      try {
-        localStorage.setItem('travelPlannerData', JSON.stringify({ trips }));
-      } catch(e) {}
-    }, 1000);
+      try { localStorage.setItem('travelPlannerData', JSON.stringify({ trips })); } catch(e) {}
+      saveToCloud(trips, headerNote);
+    }, 2000);
     return () => clearTimeout(timer);
-  }, [trips]);
+  }, [trips, headerNote]);
 
   const handleSave = () => {
     setSavedStatus('saving');
-    try {
-      localStorage.setItem('travelPlannerData', JSON.stringify({ trips }));
+    // Save to localStorage immediately
+    try { localStorage.setItem('travelPlannerData', JSON.stringify({ trips })); } catch(e) {}
+    // Save to cloud
+    saveToCloud(trips, headerNote).then(() => {
       setSavedStatus('saved');
       setTimeout(() => setSavedStatus(''), 2500);
-    } catch(e) {
-      setSavedStatus('');
-    }
+    }).catch(() => {
+      setSavedStatus('saved');
+      setTimeout(() => setSavedStatus(''), 2500);
+    });
   };
   const [tripForm, setTripForm] = useState({ name:"", destination:"", startDate:"", endDate:"" });
   const [loading, setLoading] = useState(true);
