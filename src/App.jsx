@@ -227,10 +227,18 @@ function ScheduleTab({ trip, update }) {
                     <div style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px',fontFamily:"'Jost',sans-serif",color:'#6E1A10',gap:16 }}>
                       <div style={{ fontSize:48 }}>📄</div>
                       <p style={{ fontSize:14,margin:0,textAlign:'center' }}>{preview.name}</p>
-                      <a href={blobUrl || preview.data} target="_blank" rel="noreferrer"
-                        style={{ background:'#3D0C02',color:'#fff',padding:'10px 24px',borderRadius:8,textDecoration:'none',fontSize:13,fontWeight:600 }}>
+                      <button onClick={()=>{
+                        try{
+                          const arr=preview.data.split(','),mime=arr[0].match(/:(.*?);/)[1],bstr=atob(arr[1]),u8=new Uint8Array(bstr.length);
+                          for(let i=0;i<bstr.length;i++)u8[i]=bstr.charCodeAt(i);
+                          const url=URL.createObjectURL(new Blob([u8],{type:mime}));
+                          window.open(url,'_blank');
+                          setTimeout(()=>URL.revokeObjectURL(url),10000);
+                        }catch(e){window.open(preview.data,'_blank');}
+                      }}
+                        style={{ background:'#3D0C02',color:'#fff',padding:'10px 24px',borderRadius:8,border:'none',fontSize:13,fontWeight:600,cursor:'pointer' }}>
                         🔗 Open PDF
-                      </a>
+                      </button>
                       <a href={preview.data} download={preview.name}
                         style={{ background:'rgba(61,12,2,0.12)',color:'#3D0C02',padding:'8px 20px',borderRadius:8,textDecoration:'none',fontSize:13 }}>
                         ⬇ Download
