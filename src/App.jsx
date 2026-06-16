@@ -187,6 +187,7 @@ function ScheduleTab({ trip, update }) {
     setPreview(null);
   }
 
+  const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   const isPdf = doc => doc.name && doc.name.toLowerCase().endsWith('.pdf');
   const isImage = doc => doc.data && doc.data.startsWith('data:image');
 
@@ -221,17 +222,34 @@ function ScheduleTab({ trip, update }) {
             {/* Preview pane */}
             <div style={{ flex:1,overflow:'auto',background:'#F5F0E8',display:'flex',alignItems:'center',justifyContent:'center',minHeight:'300px' }}>
               {isPdf(preview) ? (
-                <object data={blobUrl || preview.data} type="application/pdf"
-                  style={{ width:'80vw',height:'75vh',maxWidth:'900px',border:'none' }}>
-                  <div style={{ textAlign:'center',padding:'40px',fontFamily:"'Jost',sans-serif",color:'#6E1A10' }}>
-                    <div style={{ fontSize:32,marginBottom:12 }}>📄</div>
-                    <p style={{ fontSize:14,marginBottom:16 }}>Your browser cannot preview this PDF inline.</p>
-                    <a href={preview.data} download={preview.name}
-                      style={{ background:'#3D0C02',color:'#fff',padding:'8px 20px',borderRadius:8,textDecoration:'none',fontSize:13 }}>
-                      ⬇ Download to View
-                    </a>
-                  </div>
-                </object>
+                <div style={{ width:'80vw',height:'75vh',maxWidth:'900px',display:'flex',flexDirection:'column',overflow:'hidden' }}>
+                  {isMobile ? (
+                    <div style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px',fontFamily:"'Jost',sans-serif",color:'#6E1A10',gap:16 }}>
+                      <div style={{ fontSize:48 }}>📄</div>
+                      <p style={{ fontSize:14,margin:0,textAlign:'center' }}>{preview.name}</p>
+                      <a href={blobUrl || preview.data} target="_blank" rel="noreferrer"
+                        style={{ background:'#3D0C02',color:'#fff',padding:'10px 24px',borderRadius:8,textDecoration:'none',fontSize:13,fontWeight:600 }}>
+                        🔗 Open PDF
+                      </a>
+                      <a href={preview.data} download={preview.name}
+                        style={{ background:'rgba(61,12,2,0.12)',color:'#3D0C02',padding:'8px 20px',borderRadius:8,textDecoration:'none',fontSize:13 }}>
+                        ⬇ Download
+                      </a>
+                    </div>
+                  ) : (
+                    <object data={blobUrl || preview.data} type="application/pdf"
+                      style={{ width:'100%',height:'100%',border:'none' }}>
+                      <div style={{ textAlign:'center',padding:'40px',fontFamily:"'Jost',sans-serif",color:'#6E1A10' }}>
+                        <div style={{ fontSize:32,marginBottom:12 }}>📄</div>
+                        <p style={{ fontSize:14,marginBottom:16 }}>Your browser cannot preview this PDF inline.</p>
+                        <a href={preview.data} download={preview.name}
+                          style={{ background:'#3D0C02',color:'#fff',padding:'8px 20px',borderRadius:8,textDecoration:'none',fontSize:13 }}>
+                          ⬇ Download to View
+                        </a>
+                      </div>
+                    </object>
+                  )}
+                </div>
               ) : isImage(preview) ? (
                 <img src={preview.data} alt={preview.name}
                   style={{ maxWidth:'85vw',maxHeight:'75vh',objectFit:'contain',display:'block' }} />
