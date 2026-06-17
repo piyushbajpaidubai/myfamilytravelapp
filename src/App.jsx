@@ -721,34 +721,12 @@ export default function App() {
     });
   };
   const [tripForm, setTripForm] = useState({ name:"", destination:"", startDate:"", endDate:"" });
-  const [loading, setLoading] = useState(true);
-
-  // Load from storage
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await window.storage.get("trips");
-        if (res?.value) {
-          const data = JSON.parse(res.value);
-          setTrips(data);
-          if (data.length>0) setActiveTrip(data[0].id);
-        }
-      } catch {}
-      setLoading(false);
-    })();
-  }, []);
-
-  // Save to storage
-  const saveTrips = async (updated) => {
-    setTrips(updated);
-    try { await window.storage.set("trips", JSON.stringify(updated)); } catch {}
-  };
 
   const createTrip = () => {
     if (!tripForm.name) return;
     const t = { ...defaultTrip(), ...tripForm };
     const updated = [...trips, t];
-    saveTrips(updated);
+    setTrips(updated);
     setActiveTrip(t.id);
     setShowNewTrip(false);
     setTripForm({ name:"", destination:"", startDate:"", endDate:"" });
@@ -756,18 +734,17 @@ export default function App() {
 
   const deleteTrip = (id) => {
     const updated = trips.filter(t=>t.id!==id);
-    saveTrips(updated);
+    setTrips(updated);
     setActiveTrip(updated.length>0 ? updated[0].id : null);
   };
 
   const updateTrip = (id, patch) => {
     const updated = trips.map(t=>t.id===id?{...t,...patch}:t);
-    saveTrips(updated);
+    setTrips(updated);
   };
 
   const trip = trips.find(t=>t.id===activeTrip);
 
-  if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#C86050",fontSize:14 }}>Loading…</div>;
 
   return (
     <div style={{ fontFamily:"'Jost','Futura PT','Century Gothic','Trebuchet MS',sans-serif",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0" }}>
