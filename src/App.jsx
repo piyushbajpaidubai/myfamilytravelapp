@@ -749,43 +749,56 @@ export default function App() {
   return (
     <div style={{ fontFamily:"'Jost','Futura PT','Century Gothic','Trebuchet MS',sans-serif",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0" }}>
       {/* Header */}
-      <div style={{ padding:"20px 20px 0",borderBottom:"2px solid #B5341C" }}>
-        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
-          <h1 style={{ margin:0,fontSize:20,fontWeight:700 }}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="#6E1A10" style={{verticalAlign:"middle",marginRight:4,marginBottom:2}}><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg> My Travel Hub</h1>
-          <Btn onClick={()=>setShowNewTrip(true)}>+ New Trip</Btn>
-          <button
-            onClick={handleSave}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 8,
-              border: savedStatus === 'saved' ? '2px solid #5B8A4A' : '2px solid #B5341C',
-              background: savedStatus === 'saved' ? '#5B8A4A' : savedStatus === 'saving' ? '#C88070' : '#B5341C',
-              color: '#fff',
-              fontWeight: 600,
-              fontSize: 14,
-              cursor: 'pointer',
-              transition: 'all 0.3s',
-              marginLeft: 8,
-              minWidth: 90,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4
-            }}
-          >
-            {savedStatus === 'saved' ? '✓ Saved' : savedStatus === 'saving' ? '...' : '💾 Save'}
-          </button>
+      <div style={{ background:"#5C1A1A",borderBottom:"none",boxShadow:"0 2px 12px rgba(0,0,0,0.18)" }}>
+        {/* Top bar: logo + actions */}
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 20px 10px" }}>
+          {/* Logo + Title */}
+          <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" fill="#F5ECD7" style={{flexShrink:0}}><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
+            <div>
+              <h1 style={{ margin:0,fontSize:22,fontWeight:800,color:"#F5ECD7",letterSpacing:"0.06em",lineHeight:1.1,textTransform:"uppercase" }}>My Travel Hub</h1>
+              <p style={{ margin:0,fontSize:11,color:"rgba(245,236,215,0.6)",letterSpacing:"0.12em",textTransform:"uppercase",fontWeight:500,marginTop:2 }}>Your trips, all in one place</p>
+            </div>
+          </div>
+          {/* Actions */}
+          <div style={{ display:"flex",gap:8,alignItems:"center" }}>
+            <button
+              onClick={()=>setShowNewTrip(true)}
+              style={{ padding:"7px 14px",borderRadius:7,border:"1.5px solid rgba(245,236,215,0.35)",background:"rgba(245,236,215,0.1)",color:"#F5ECD7",fontSize:13,fontWeight:600,cursor:"pointer",letterSpacing:"0.02em" }}
+            >+ New Trip</button>
+            <button
+              onClick={handleSave}
+              style={{
+                padding:"7px 14px",
+                borderRadius:7,
+                border: savedStatus==='saved'?'1.5px solid #7DB87A':'1.5px solid rgba(245,236,215,0.35)',
+                background: savedStatus==='saved'?'rgba(125,184,122,0.25)':savedStatus==='saving'?'rgba(245,236,215,0.12)':'rgba(245,236,215,0.1)',
+                color: savedStatus==='saved'?'#A8E6A0':'#F5ECD7',
+                fontWeight:600,fontSize:13,cursor:"pointer",transition:"all 0.3s",minWidth:72,letterSpacing:"0.02em"
+              }}
+            >{savedStatus==='saved'?'✓ Saved':savedStatus==='saving'?'…':'Save'}</button>
+          </div>
         </div>
-                {/* Header note textarea */}
-        <textarea value={headerNote} onChange={e=>setHeaderNote(e.target.value)} placeholder="Add a note, quote or travel tagline…" rows={2} style={{ width:"100%",boxSizing:"border-box",resize:"vertical",padding:"8px 12px",marginBottom:12,border:"1px solid #D4BFB0",borderRadius:8,background:"#F0EBE0",color:"#6E1A10",fontSize:13,fontFamily:"inherit",outline:"none",lineHeight:1.5 }} />
+        {/* Header note */}
+        <div style={{ padding:"0 20px 10px" }}>
+          <textarea value={headerNote} onChange={e=>setHeaderNote(e.target.value)} placeholder="Add a trip note or travel tagline…" rows={1} style={{ width:"100%",boxSizing:"border-box",resize:"none",padding:"7px 12px",border:"1px solid rgba(245,236,215,0.2)",borderRadius:7,background:"rgba(0,0,0,0.15)",color:"rgba(245,236,215,0.85)",fontSize:12,fontFamily:"inherit",outline:"none",lineHeight:1.5,letterSpacing:"0.01em" }} />
+        </div>
         {/* Trip tabs */}
-        <div style={{ display:"flex",gap:4,overflowX:"auto",paddingBottom:0 }}>
+        <div style={{ display:"flex",gap:2,overflowX:"auto",padding:"0 20px",paddingBottom:0 }}>
           {trips.map(t=>(
             <button key={t.id} onClick={()=>setActiveTrip(t.id)}
-              style={{ padding:"7px 14px",borderRadius:"7px 7px 0 0",border:"1px solid",borderBottom:"none",
-                borderColor: activeTrip===t.id?"#D4BFB0":"transparent",
-                background: activeTrip===t.id?"#F0EBE0":"transparent",
-                fontWeight: activeTrip===t.id?600:400,
-                fontSize:13,cursor:"pointer",color: activeTrip===t.id?"#6E1A10":"#B54030",whiteSpace:"nowrap" }}>
+              style={{
+                padding:"8px 16px",
+                borderRadius:"6px 6px 0 0",
+                border:"none",
+                borderTop: activeTrip===t.id?"2px solid rgba(245,236,215,0.7)":"2px solid transparent",
+                background: activeTrip===t.id?"#F0EBE0":"rgba(0,0,0,0.18)",
+                fontWeight: activeTrip===t.id?700:400,
+                fontSize:13,cursor:"pointer",
+                color: activeTrip===t.id?"#5C1A1A":"rgba(245,236,215,0.65)",
+                whiteSpace:"nowrap",
+                transition:"all 0.15s"
+              }}>
               {t.name||"Unnamed"}
             </button>
           ))}
