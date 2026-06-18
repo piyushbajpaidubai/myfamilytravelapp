@@ -751,7 +751,7 @@ export default function App() {
       {/* Header */}
       <div style={{ padding:"20px 20px 0",borderBottom:"2px solid #B5341C" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
-          <h1 style={{ margin:0,fontSize:20,fontWeight:700 }}>✈️ My Travel Hub</h1>
+          <h1 style={{ margin:0,fontSize:20,fontWeight:700 }}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="#6E1A10" style={{verticalAlign:"middle",marginRight:4,marginBottom:2}}><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg> My Travel Hub</h1>
           <Btn onClick={()=>setShowNewTrip(true)}>+ New Trip</Btn>
           <button
             onClick={handleSave}
