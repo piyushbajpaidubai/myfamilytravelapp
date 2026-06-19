@@ -117,12 +117,18 @@ function ScheduleTab({ trip, update }) {
     update({ days });
   };
 
-  // Attach a document (file) to an event or activity
-  const attachDoc = (dayId, evId, actId, file) => {
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const doc = { id:uid(), name:file.name, size:file.size, type:file.type, data:evt.target.result };
-      const days = (trip.days||[]).map(d => d.id===dayId
+  // Attach a document (file) to an event or activity — uploads to Supabase Storage
+  const attachDoc = async (dayId, evId, actId, file) => {
+    let doc;
+    try {
+      const url = await uploadToStorage(file, 'docs');
+      doc = { id:uid(), name:file.name, size:file.size, type:file.type, url };
+    } catch(err) {
+      alert('Could not upload "' + file.name + '". ' + err.message);
+      return;
+    }
+    update(t => {
+      const days = (t.days||[]).map(d => d.id===dayId
         ? { ...d, events:(d.events||[]).map(e => {
             if (e.id !== evId) return e;
             if (actId) {
@@ -136,12 +142,17 @@ function ScheduleTab({ trip, update }) {
             }
           }) }
         : d);
-      update({ days });
-    };
-    reader.readAsDataURL(file);
+      return { days };
+    });
   };
 
   const delDoc = (dayId, evId, actId, docId) => {
+    // best-effort remove the stored file
+    const _day = (trip.days||[]).find(d=>d.id===dayId);
+    const _ev = _day && (_day.events||[]).find(e=>e.id===evId);
+    const _list = _ev ? (actId ? (((_ev.activities||[]).find(a=>a.id===actId)||{}).docs||[]) : (_ev.docs||[])) : [];
+    const _target = _list.find(x=>x.id===docId);
+    if (_target && _target.url) deleteFromStorage(_target.url);
     const days = (trip.days||[]).map(d => d.id===dayId
       ? { ...d, events:(d.events||[]).map(e => {
           if (e.id !== evId) return e;
@@ -165,6 +176,8 @@ function ScheduleTab({ trip, update }) {
   const [blobUrl, setBlobUrl] = useState(null);
 
   function openPreview(doc) {
+    // Files in Storage are served by URL directly; only legacy base64 needs Blob conversion
+    if (doc.url) { setBlobUrl(null); setPreview(doc); return; }
     // Convert base64 data URI to Blob URL for reliable in-browser preview
     try {
       const arr = doc.data.split(',');
@@ -188,8 +201,9 @@ function ScheduleTab({ trip, update }) {
   }
 
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const srcOf = doc => doc.url || doc.data;
   const isPdf = doc => doc.name && doc.name.toLowerCase().endsWith('.pdf');
-  const isImage = doc => doc.data && doc.data.startsWith('data:image');
+  const isImage = doc => (doc.type && doc.type.startsWith('image')) || (doc.data && doc.data.startsWith('data:image')) || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(doc.name||'');
 
   return (
     <div style={{ marginTop:6 }}>
@@ -211,7 +225,7 @@ function ScheduleTab({ trip, update }) {
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',background:'#3D0C02',color:'#fff' }}>
               <span style={{ fontFamily:"'Jost','Futura PT',sans-serif",fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'60vw' }}>{preview.name}</span>
               <div style={{ display:'flex',gap:8,flexShrink:0 }}>
-                <a href={preview.data} download={preview.name}
+                <a href={srcOf(preview)} download={preview.name}
                   style={{ fontSize:12,padding:'4px 12px',borderRadius:6,background:'rgba(255,255,255,0.15)',color:'#fff',textDecoration:'none',fontFamily:"'Jost',sans-serif",cursor:'pointer' }}>
                   ⬇ Download
                 </a>
@@ -228,29 +242,30 @@ function ScheduleTab({ trip, update }) {
                       <div style={{ fontSize:48 }}>📄</div>
                       <p style={{ fontSize:14,margin:0,textAlign:'center' }}>{preview.name}</p>
                       <button onClick={()=>{
+                        if(preview.url){window.open(preview.url,'_blank');return;}
                         try{
                           const arr=preview.data.split(','),mime=arr[0].match(/:(.*?);/)[1],bstr=atob(arr[1]),u8=new Uint8Array(bstr.length);
                           for(let i=0;i<bstr.length;i++)u8[i]=bstr.charCodeAt(i);
                           const url=URL.createObjectURL(new Blob([u8],{type:mime}));
                           window.open(url,'_blank');
                           setTimeout(()=>URL.revokeObjectURL(url),10000);
-                        }catch(e){window.open(preview.data,'_blank');}
+                        }catch(e){window.open(srcOf(preview),'_blank');}
                       }}
                         style={{ background:'#3D0C02',color:'#fff',padding:'10px 24px',borderRadius:8,border:'none',fontSize:13,fontWeight:600,cursor:'pointer' }}>
                         🔗 Open PDF
                       </button>
-                      <a href={preview.data} download={preview.name}
+                      <a href={srcOf(preview)} download={preview.name}
                         style={{ background:'rgba(61,12,2,0.12)',color:'#3D0C02',padding:'8px 20px',borderRadius:8,textDecoration:'none',fontSize:13 }}>
                         ⬇ Download
                       </a>
                     </div>
                   ) : (
-                    <object data={blobUrl || preview.data} type="application/pdf"
+                    <object data={blobUrl || srcOf(preview)} type="application/pdf"
                       style={{ width:'100%',height:'100%',border:'none' }}>
                       <div style={{ textAlign:'center',padding:'40px',fontFamily:"'Jost',sans-serif",color:'#6E1A10' }}>
                         <div style={{ fontSize:32,marginBottom:12 }}>📄</div>
                         <p style={{ fontSize:14,marginBottom:16 }}>Your browser cannot preview this PDF inline.</p>
-                        <a href={preview.data} download={preview.name}
+                        <a href={srcOf(preview)} download={preview.name}
                           style={{ background:'#3D0C02',color:'#fff',padding:'8px 20px',borderRadius:8,textDecoration:'none',fontSize:13 }}>
                           ⬇ Download to View
                         </a>
@@ -259,13 +274,13 @@ function ScheduleTab({ trip, update }) {
                   )}
                 </div>
               ) : isImage(preview) ? (
-                <img src={preview.data} alt={preview.name}
+                <img src={srcOf(preview)} alt={preview.name}
                   style={{ maxWidth:'85vw',maxHeight:'75vh',objectFit:'contain',display:'block' }} />
               ) : (
                 <div style={{ textAlign:'center',padding:'40px',fontFamily:"'Jost',sans-serif",color:'#6E1A10' }}>
                   <div style={{ fontSize:48,marginBottom:12 }}>📄</div>
                   <p style={{ fontSize:14,marginBottom:16 }}>Preview not available for this file type.</p>
-                  <a href={preview.data} download={preview.name}
+                  <a href={srcOf(preview)} download={preview.name}
                     style={{ background:'#3D0C02',color:'#fff',padding:'8px 20px',borderRadius:8,textDecoration:'none',fontSize:13,fontFamily:"'Jost',sans-serif" }}>
                     ⬇ Download File
                   </a>
@@ -577,27 +592,30 @@ function PackingTab({ trip, update }) {
 // ---- Locations Tab ----
 function PicturesTab({ trip, update }) {
   const [lightbox, setLightbox] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const pics = trip.pictures || [];
 
-  function addPics(e) {
+  async function addPics(e) {
     const files = Array.from(e.target.files);
-    let loaded = 0;
-    const newPics = [];
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = ev => {
-        newPics.push({ id: 'pic_' + Date.now() + '_' + Math.random().toString(36).slice(2), name: file.name, data: ev.target.result });
-        loaded++;
-        if (loaded === files.length) {
-          update(t => ({ ...t, pictures: [...(t.pictures || []), ...newPics] }));
-        }
-      };
-      reader.readAsDataURL(file);
-    });
     e.target.value = '';
+    if (!files.length) return;
+    setUploading(true);
+    const newPics = [];
+    for (const file of files) {
+      try {
+        const url = await uploadToStorage(file, 'pics');
+        newPics.push({ id: 'pic_' + uid(), name: file.name, url });
+      } catch (err) {
+        alert('Could not upload "' + file.name + '". ' + err.message);
+      }
+    }
+    if (newPics.length) update(t => ({ ...t, pictures: [...(t.pictures || []), ...newPics] }));
+    setUploading(false);
   }
 
   function delPic(id) {
+    const pic = pics.find(p => p.id === id);
+    if (pic && pic.url) deleteFromStorage(pic.url);
     update(t => ({ ...t, pictures: (t.pictures || []).filter(p => p.id !== id) }));
     if (lightbox && lightbox.id === id) setLightbox(null);
   }
@@ -606,9 +624,9 @@ function PicturesTab({ trip, update }) {
     <div style={{ padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h3 style={{ margin: 0, color: '#3D0C02', fontFamily: "'Jost','Futura PT','Century Gothic',sans-serif", fontSize: '18px', fontWeight: 600 }}>Trip Pictures</h3>
-        <label style={{ background: '#3D0C02', color: '#fff', padding: '8px 18px', borderRadius: '8px', cursor: 'pointer', fontFamily: "'Jost','Futura PT','Century Gothic',sans-serif", fontSize: '14px', fontWeight: 500 }}>
-          + Upload Photos
-          <input type="file" accept="image/*" multiple onChange={addPics} style={{ display: 'none' }} />
+        <label style={{ background: uploading ? '#7A5A50' : '#3D0C02', color: '#fff', padding: '8px 18px', borderRadius: '8px', cursor: uploading ? 'default' : 'pointer', fontFamily: "'Jost','Futura PT','Century Gothic',sans-serif", fontSize: '14px', fontWeight: 500 }}>
+          {uploading ? 'Uploading…' : '+ Upload Photos'}
+          <input type="file" accept="image/*" multiple disabled={uploading} onChange={addPics} style={{ display: 'none' }} />
         </label>
       </div>
 
@@ -622,7 +640,7 @@ function PicturesTab({ trip, update }) {
           {pics.map(pic => (
             <div key={pic.id} style={{ position: 'relative', borderRadius: '10px', overflow: 'hidden', aspectRatio: '1', background: '#E8E4D9', cursor: 'pointer', boxShadow: '0 2px 8px rgba(61,12,2,0.12)' }}
               onClick={() => setLightbox(pic)}>
-              <img src={pic.data} alt={pic.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              <img src={pic.url || pic.data} alt={pic.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
               <button onClick={e => { e.stopPropagation(); delPic(pic.id); }}
                 style={{ position: 'absolute', top: '6px', right: '6px', background: 'rgba(61,12,2,0.75)', border: 'none', borderRadius: '50%', width: '24px', height: '24px', color: '#fff', cursor: 'pointer', fontSize: '14px', lineHeight: '24px', textAlign: 'center', padding: 0 }}>×</button>
               <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent,rgba(61,12,2,0.6))', padding: '18px 6px 6px', fontSize: '11px', color: '#fff', fontFamily: "'Jost','Futura PT',sans-serif", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pic.name}</div>
@@ -635,7 +653,7 @@ function PicturesTab({ trip, update }) {
         <div onClick={() => setLightbox(null)}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div onClick={e => e.stopPropagation()} style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>
-            <img src={lightbox.data} alt={lightbox.name} style={{ display: 'block', maxWidth: '90vw', maxHeight: '85vh', objectFit: 'contain' }} />
+            <img src={lightbox.url || lightbox.data} alt={lightbox.name} style={{ display: 'block', maxWidth: '90vw', maxHeight: '85vh', objectFit: 'contain' }} />
             <div style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '10px 16px', fontFamily: "'Jost','Futura PT',sans-serif", fontSize: '13px' }}>{lightbox.name}</div>
             <button onClick={() => setLightbox(null)}
               style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.6)', border: '2px solid #fff', borderRadius: '50%', width: '32px', height: '32px', color: '#fff', cursor: 'pointer', fontSize: '18px', lineHeight: '28px', textAlign: 'center', padding: 0 }}>×</button>
@@ -665,6 +683,37 @@ async function saveToCloud(trips, headerNote) {
       method: 'POST',
       headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates' },
       body: JSON.stringify({ id: 'shared', trips, header_note: headerNote || '', updated_at: new Date().toISOString() })
+    });
+  } catch(e) {}
+}
+
+const SUPA_BUCKET = 'trip-media';
+
+// Upload a File/Blob to Supabase Storage; returns its public URL.
+async function uploadToStorage(file, folder) {
+  const ext = (file.name && file.name.includes('.'))
+    ? file.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g,'')
+    : 'bin';
+  const path = folder + '/' + uid() + '-' + Date.now() + '.' + ext;
+  const res = await fetch(SUPA_URL + '/storage/v1/object/' + SUPA_BUCKET + '/' + path, {
+    method: 'POST',
+    headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY, 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'true' },
+    body: file
+  });
+  if (!res.ok) throw new Error('Storage upload failed (' + res.status + ')');
+  return SUPA_URL + '/storage/v1/object/public/' + SUPA_BUCKET + '/' + path;
+}
+
+// Best-effort delete of a stored file given its public URL.
+async function deleteFromStorage(url) {
+  if (!url || typeof url !== 'string') return;
+  const marker = '/object/public/' + SUPA_BUCKET + '/';
+  const i = url.indexOf(marker);
+  if (i === -1) return;
+  const path = url.slice(i + marker.length);
+  try {
+    await fetch(SUPA_URL + '/storage/v1/object/' + SUPA_BUCKET + '/' + path, {
+      method: 'DELETE', headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY }
     });
   } catch(e) {}
 }
