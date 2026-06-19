@@ -763,10 +763,6 @@ export default function App() {
           {/* Actions */}
           <div style={{ display:"flex",gap:8,alignItems:"center" }}>
             <button
-              onClick={()=>setShowNewTrip(true)}
-              style={{ padding:"7px 14px",borderRadius:7,border:"1.5px solid rgba(245,236,215,0.35)",background:"rgba(245,236,215,0.1)",color:"#F5ECD7",fontSize:13,fontWeight:600,cursor:"pointer",letterSpacing:"0.02em" }}
-            >+ New Trip</button>
-            <button
               onClick={handleSave}
               style={{
                 padding:"7px 14px",
@@ -802,6 +798,28 @@ export default function App() {
               {t.name||"Unnamed"}
             </button>
           ))}
+          {/* New Trip tab */}
+          <button
+            onClick={()=>setShowNewTrip(true)}
+            title="New Trip"
+            aria-label="New Trip"
+            style={{
+              padding:"8px 16px",
+              borderRadius:"6px 6px 0 0",
+              border:"none",
+              borderTop:"2px solid transparent",
+              background:"rgba(0,0,0,0.18)",
+              fontWeight:700,
+              fontSize:13,
+              lineHeight:1,
+              cursor:"pointer",
+              color:"rgba(245,236,215,0.75)",
+              whiteSpace:"nowrap",
+              flexShrink:0,
+              transition:"all 0.15s"
+            }}>
+            + Trip
+          </button>
         </div>
       </div>
 
