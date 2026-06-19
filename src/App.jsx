@@ -739,8 +739,10 @@ export default function App() {
   };
 
   const updateTrip = (id, patch) => {
-    const updated = trips.map(t=>t.id===id?{...t,...patch}:t);
-    setTrips(updated);
+    // patch may be a plain object (most tabs) or an updater fn (Pictures tab)
+    setTrips(prev => prev.map(t =>
+      t.id===id ? { ...t, ...(typeof patch === "function" ? patch(t) : patch) } : t
+    ));
   };
 
   const trip = trips.find(t=>t.id===activeTrip);
