@@ -105,6 +105,8 @@ function StatusBadge({ status='todo' }) {
 // ---- Schedule Tab ----
 function ScheduleTab({ trip, update }) {
   const [showDay, setShowDay] = useState(false);
+  const [collapsedDays, setCollapsedDays] = useState({}); // { [dayId]: true } when collapsed
+  const toggleDayCollapse = (id) => setCollapsedDays(c => ({ ...c, [id]: !c[id] }));
   const [showEvent, setShowEvent] = useState(null); // dayId
   const [dayForm, setDayForm] = useState({ date:"", label:"" });
   const [evForm, setEvForm] = useState({ time:"", endTime:"", title:"", location:"", category:"Sightseeing", notes:"" });
@@ -425,9 +427,13 @@ function ScheduleTab({ trip, update }) {
       {(trip.days||[]).map(day => (
         <div key={day.id} style={{ marginBottom:16,border:"1px solid #D4BFB0",borderRadius:10,overflow:"hidden",background:"#EDE7D9" }}>
           <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"#DDD8CB" }}>
-            <div>
-              <strong style={{ fontSize:14 }}>{fmtDate(day.date)}</strong>
-              <span style={{ marginLeft:8 }}>{Editable({ kind:'day', ids:{ dayId:day.id }, value:day.label, placeholder:'+ add label', spanStyle:{ fontSize:13, color:'#8B2A14' }, inputWidth:160 })}</span>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span onClick={()=>toggleDayCollapse(day.id)} title={collapsedDays[day.id]?"Expand day":"Collapse day"}
+                style={{ cursor:"pointer", display:"inline-flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:11, color:"#8B2A14", display:"inline-block", transition:"transform .15s", transform: collapsedDays[day.id]?"rotate(-90deg)":"rotate(0deg)" }}>▼</span>
+                <strong style={{ fontSize:14 }}>{fmtDate(day.date)}</strong>
+              </span>
+              <span>{Editable({ kind:'day', ids:{ dayId:day.id }, value:day.label, placeholder:'+ add label', spanStyle:{ fontSize:13, color:'#8B2A14' }, inputWidth:160 })}</span>
             </div>
             <div style={{ display:"flex",gap:6 }}>
               <Btn onClick={()=>setShowEvent(day.id)} style={{ padding:"4px 10px",fontSize:12 }}>+ Event</Btn>
@@ -435,6 +441,7 @@ function ScheduleTab({ trip, update }) {
             </div>
           </div>
 
+          {!collapsedDays[day.id] && (<>
           {(!day.events||day.events.length===0) && (
             <p style={{ color:"#C05040",fontSize:13,padding:"10px 14px",margin:0 }}>No events</p>
           )}
@@ -534,6 +541,7 @@ function ScheduleTab({ trip, update }) {
               )}
             </div>
           ))}
+          </>)}
         </div>
       ))}
 
