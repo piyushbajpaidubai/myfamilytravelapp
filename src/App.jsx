@@ -863,6 +863,17 @@ export default function App() {
   const [showNewTrip, setShowNewTrip] = useState(false);
   const [headerNote, setHeaderNote] = useState('');
   const [savedStatus, setSavedStatus] = useState(''); // '', 'saving', 'saved'
+  const [past, setPast] = useState([]); // undo history: recent trips snapshots (max 3)
+
+  // Snapshot current trips before a mutation so it can be reverted (keep last 3)
+  const recordHistory = () => setPast(p => [trips, ...p].slice(0, 3));
+  const undo = () => {
+    if (past.length === 0) return;
+    const [snapshot, ...rest] = past;
+    setTrips(snapshot);
+    setPast(rest);
+    setActiveTrip(a => snapshot.some(t => t.id === a) ? a : (snapshot[0] ? snapshot[0].id : null));
+  };
 
   // Load from online store on mount
   useEffect(() => {
@@ -911,6 +922,7 @@ export default function App() {
 
   const createTrip = () => {
     if (!tripForm.name) return;
+    recordHistory();
     const t = { ...defaultTrip(), ...tripForm };
     const updated = [...trips, t];
     setTrips(updated);
@@ -920,12 +932,14 @@ export default function App() {
   };
 
   const deleteTrip = (id) => {
+    recordHistory();
     const updated = trips.filter(t=>t.id!==id);
     setTrips(updated);
     setActiveTrip(updated.length>0 ? updated[0].id : null);
   };
 
   const updateTrip = (id, patch) => {
+    recordHistory();
     // patch may be a plain object (most tabs) or an updater fn (Pictures tab)
     setTrips(prev => prev.map(t =>
       t.id===id ? { ...t, ...(typeof patch === "function" ? patch(t) : patch) } : t
@@ -951,6 +965,22 @@ export default function App() {
           </div>
           {/* Actions */}
           <div style={{ display:"flex",gap:8,alignItems:"center" }}>
+            <button
+              onClick={undo}
+              disabled={past.length===0}
+              title={past.length ? `Undo last change (${past.length} available)` : 'Nothing to undo'}
+              style={{
+                padding:"7px 14px",
+                borderRadius:7,
+                border:"1.5px solid rgba(245,236,215,0.35)",
+                background:"rgba(245,236,215,0.1)",
+                color:"#F5ECD7",
+                fontWeight:600,fontSize:13,
+                cursor: past.length ? "pointer" : "not-allowed",
+                opacity: past.length ? 1 : 0.45,
+                transition:"all 0.3s",letterSpacing:"0.02em"
+              }}
+            >↶ Undo{past.length ? ` (${past.length})` : ''}</button>
             <button
               onClick={handleSave}
               style={{
