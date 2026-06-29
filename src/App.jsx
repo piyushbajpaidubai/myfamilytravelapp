@@ -7,6 +7,16 @@ const PACK_CATS = ["Documents", "Clothing", "Toiletries", "Electronics", "Other"
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+// Format an ISO date string (YYYY-MM-DD) as "21 June 2026". Returns input unchanged if unparseable.
+const fmtDate = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  if (!m) return iso;
+  const mi = parseInt(m[2], 10) - 1;
+  if (mi < 0 || mi > 11) return iso;
+  return `${parseInt(m[3], 10)} ${MONTHS[mi]} ${m[1]}`;
+};
+
 const defaultTrip = () => ({
   id: uid(), name: "", destination: "", startDate: "", endDate: "",
   days: [], expenses: [], packItems: [], pictures: [],
@@ -311,7 +321,7 @@ function ScheduleTab({ trip, update }) {
         <div key={day.id} style={{ marginBottom:16,border:"1px solid #D4BFB0",borderRadius:10,overflow:"hidden",background:"#EDE7D9" }}>
           <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"#DDD8CB" }}>
             <div>
-              <strong style={{ fontSize:14 }}>{day.date}</strong>
+              <strong style={{ fontSize:14 }}>{fmtDate(day.date)}</strong>
               {day.label && <span style={{ marginLeft:8,fontSize:13,color:"#8B2A14" }}>{day.label}</span>}
             </div>
             <div style={{ display:"flex",gap:6 }}>
@@ -889,7 +899,7 @@ export default function App() {
               <h2 style={{ margin:"0 0 2px",fontSize:18,fontWeight:700 }}>{trip.name}</h2>
               <div style={{ fontSize:13,color:"#B54030" }}>
                 {trip.destination && <span>📍 {trip.destination}</span>}
-                {trip.startDate && <span style={{ marginLeft:8 }}>🗓 {trip.startDate}{trip.endDate?` → ${trip.endDate}`:""}</span>}
+                {trip.startDate && <span style={{ marginLeft:8 }}>🗓 {fmtDate(trip.startDate)}{trip.endDate?` → ${fmtDate(trip.endDate)}`:""}</span>}
               </div>
             </div>
             <Btn variant="danger" style={{ fontSize:12,padding:"4px 10px" }} onClick={()=>deleteTrip(trip.id)}>Delete Trip</Btn>
