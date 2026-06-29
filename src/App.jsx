@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const TABS = ["Schedule", "Budget", "Packing", "Pictures"];
+const TABS = ["Schedule", "Status", "Budget", "Packing", "Pictures"];
 const CATEGORIES = ["Transport", "Hotel", "Food", "Sightseeing", "Other"];
 const BUDGET_CATS = ["Transport", "Accommodation", "Food", "Activities", "Shopping", "Other"];
 const PACK_CATS = ["Documents", "Clothing", "Toiletries", "Electronics", "Other"];
@@ -803,6 +803,96 @@ function PicturesTab({ trip, update }) {
 }
 
 
+// ---- Status Tab ----  (read-only rollup of event/activity statuses per day)
+function StatusTab({ trip }) {
+  const days = trip.days || [];
+
+  // small read-only status indicator
+  const Dot = ({ status }) => {
+    const m = STATUS_META[status] || STATUS_META.todo;
+    return <span style={{ width:11, height:11, borderRadius:'50%', boxSizing:'border-box',
+      background: status==='todo' ? 'transparent' : m.ring, border:`2px solid ${m.ring}`,
+      flexShrink:0, display:'inline-block' }} />;
+  };
+
+  // collect every event + activity status for a list of events
+  const tally = (events) => {
+    const counts = { todo:0, active:0, done:0 };
+    events.forEach(ev => {
+      counts[stOf(ev)]++;
+      (ev.activities||[]).forEach(a => { counts[stOf(a)]++; });
+    });
+    return counts;
+  };
+
+  const allEvents = days.flatMap(d => d.events||[]);
+  const total = tally(allEvents);
+  const totalItems = total.todo + total.active + total.done;
+
+  const Summary = ({ c }) => (
+    <span style={{ display:'inline-flex', gap:8, flexWrap:'wrap' }}>
+      <span style={{ color: STATUS_META.done.color, fontWeight:600 }}>{c.done} done</span>
+      <span style={{ color: STATUS_META.active.color, fontWeight:600 }}>{c.active} active</span>
+      <span style={{ color: STATUS_META.todo.color, fontWeight:600 }}>{c.todo} to do</span>
+    </span>
+  );
+
+  const Row = ({ status, label, sub, indent }) => (
+    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', paddingLeft: indent?22:0 }}>
+      <Dot status={status} />
+      <span style={{ flex:1, fontSize:13, color:'#6E1A10',
+        textDecoration: status==='done'?'line-through':'none', opacity: status==='done'?0.6:1 }}>
+        {label}{sub && <span style={{ color:'#B07A4A', fontWeight:400 }}> · {sub}</span>}
+      </span>
+      <StatusBadge status={status} />
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Trip-wide summary */}
+      <div style={{ background:'#EDE7D9', border:'1px solid #D4BFB0', borderRadius:10, padding:'12px 16px', marginBottom:16,
+        display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
+        <span style={{ fontSize:13, fontWeight:700, color:'#6E1A10' }}>Overall</span>
+        {totalItems>0 ? <Summary c={total} /> : <span style={{ fontSize:13, color:'#C05040' }}>Nothing scheduled yet.</span>}
+      </div>
+
+      {days.length===0 && (
+        <p style={{ color:'#C05040', fontSize:13, textAlign:'center', padding:'24px 0' }}>No days added yet.</p>
+      )}
+
+      {days.map(day => {
+        const events = day.events || [];
+        const c = tally(events);
+        return (
+          <div key={day.id} style={{ marginBottom:16, border:'1px solid #D4BFB0', borderRadius:10, overflow:'hidden', background:'#EDE7D9' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8, padding:'10px 14px', background:'#DDD8CB' }}>
+              <div>
+                <strong style={{ fontSize:14 }}>{fmtDate(day.date)}</strong>
+                {day.label && <span style={{ marginLeft:8, fontSize:13, color:'#8B2A14' }}>{day.label}</span>}
+              </div>
+              <span style={{ fontSize:12 }}><Summary c={c} /></span>
+            </div>
+
+            <div style={{ padding:'6px 14px 10px' }}>
+              {events.length===0 && <p style={{ color:'#C05040', fontSize:13, margin:'6px 0' }}>No events</p>}
+              {events.map(ev => (
+                <div key={ev.id}>
+                  <Row status={stOf(ev)} label={ev.title || '(untitled)'}
+                    sub={ev.time ? `${ev.time}${ev.endTime?`–${ev.endTime}`:''}` : null} />
+                  {(ev.activities||[]).map(act => (
+                    <Row key={act.id} status={stOf(act)} label={act.text || '(empty)'} indent />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // Supabase cloud sync helpers
 const SUPA_URL = 'https://lafpiwlpjvongtdtzuam.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhZnBpd2xwanZvbmd0ZHR6dWFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyNjUyNDgsImV4cCI6MjA5Njg0MTI0OH0.cdDldzH4xrPYWZgdqeYOCBk7u34CtZWT6L2ldx3qYRk';
@@ -1079,6 +1169,7 @@ export default function App() {
           {activeTab==="Schedule" && <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
           {activeTab==="Budget" && <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
           {activeTab==="Packing" && <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
+          {activeTab==="Status" && <StatusTab trip={trip} />}
           {activeTab==="Pictures" && <PicturesTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
         </div>
       )}
