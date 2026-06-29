@@ -73,7 +73,7 @@ function ScheduleTab({ trip, update }) {
   const [showDay, setShowDay] = useState(false);
   const [showEvent, setShowEvent] = useState(null); // dayId
   const [dayForm, setDayForm] = useState({ date:"", label:"" });
-  const [evForm, setEvForm] = useState({ time:"", title:"", location:"", category:"Sightseeing", notes:"" });
+  const [evForm, setEvForm] = useState({ time:"", endTime:"", title:"", location:"", category:"Sightseeing", notes:"" });
   // Activity state: { [eventId]: inputText }
   const [activityInput, setActivityInput] = useState({});
   // Which event is showing the activity input box
@@ -96,6 +96,12 @@ function ScheduleTab({ trip, update }) {
     } else if (kind === 'event' && v) {
       update(t => ({ days:(t.days||[]).map(d => d.id===dayId
         ? { ...d, events:(d.events||[]).map(e => e.id===evId ? { ...e, title:v } : e) } : d) }));
+    } else if (kind === 'startTime' && v) {
+      update(t => ({ days:(t.days||[]).map(d => d.id===dayId
+        ? { ...d, events:(d.events||[]).map(e => e.id===evId ? { ...e, time:v } : e).sort((a,b)=>a.time>b.time?1:-1) } : d) }));
+    } else if (kind === 'endTime' && v) {
+      update(t => ({ days:(t.days||[]).map(d => d.id===dayId
+        ? { ...d, events:(d.events||[]).map(e => e.id===evId ? { ...e, endTime:v } : e) } : d) }));
     } else if (kind === 'activity' && v) {
       update(t => ({ days:(t.days||[]).map(d => d.id===dayId
         ? { ...d, events:(d.events||[]).map(e => e.id===evId
@@ -105,11 +111,12 @@ function ScheduleTab({ trip, update }) {
   };
 
   // Renders an editable text span; clicking turns it into an input (Enter/blur saves, Esc cancels)
-  const Editable = ({ kind, ids, value, placeholder, spanStyle, inputWidth }) => {
+  const Editable = ({ kind, ids, value, placeholder, spanStyle, inputWidth, inputType }) => {
     const active = editing && editKey(editing) === editKey({ kind, ...ids });
     if (active) {
       return (
         <input
+          type={inputType||'text'}
           autoFocus
           value={editVal}
           onChange={e=>setEditVal(e.target.value)}
@@ -139,13 +146,16 @@ function ScheduleTab({ trip, update }) {
   const delDay = (id) => update({ days: (trip.days||[]).filter(d=>d.id!==id) });
 
   const addEvent = (dayId) => {
-    if (!evForm.title) return;
+    if (!evForm.title || !evForm.time || !evForm.endTime) {
+      alert('Please fill in Title, Start Time and End Time.');
+      return;
+    }
     const newEvent = { id:uid(), ...evForm, activities:[], docs:[] };
     const days = (trip.days||[]).map(d => d.id===dayId
       ? { ...d, events:[...(d.events||[]), newEvent].sort((a,b)=>a.time>b.time?1:-1) }
       : d);
     update({ days });
-    setShowEvent(null); setEvForm({ time:"", title:"", location:"", category:"Sightseeing", notes:"" });
+    setShowEvent(null); setEvForm({ time:"", endTime:"", title:"", location:"", category:"Sightseeing", notes:"" });
   };
 
   const delEvent = (dayId, evId) => {
@@ -391,7 +401,11 @@ function ScheduleTab({ trip, update }) {
               <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
                 <div style={{ flex:1 }}>
                   <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
-                    {ev.time && <span style={{ fontSize:12,color:"#B54030",fontWeight:600 }}>{ev.time}</span>}
+                    <span style={{ fontSize:12,color:"#B54030",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4 }}>
+                      {Editable({ kind:'startTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.time, placeholder:'--:--', spanStyle:{ fontSize:12,color:'#B54030',fontWeight:600 }, inputType:'time', inputWidth:108 })}
+                      <span style={{ color:'#C8A090' }}>–</span>
+                      {Editable({ kind:'endTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.endTime, placeholder:'--:--', spanStyle:{ fontSize:12,color:'#B54030',fontWeight:600 }, inputType:'time', inputWidth:108 })}
+                    </span>
                     {Editable({ kind:'event', ids:{ dayId:day.id, evId:ev.id }, value:ev.title, placeholder:'(untitled)', spanStyle:{ fontSize:13, fontWeight:500 }, inputWidth:200 })}
                     <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#8B2A14" }}>{ev.category}</span>
                   </div>
@@ -479,7 +493,14 @@ function ScheduleTab({ trip, update }) {
 
       {showEvent && (
         <Modal title="Add Event" onClose={()=>setShowEvent(null)}>
-          <Input label="Time" type="time" value={evForm.time} onChange={e=>setEvForm({...evForm,time:e.target.value})} />
+          <div style={{ display:"flex", gap:10 }}>
+            <div style={{ flex:1 }}>
+              <Input label="Start Time *" type="time" value={evForm.time} onChange={e=>setEvForm({...evForm,time:e.target.value})} />
+            </div>
+            <div style={{ flex:1 }}>
+              <Input label="End Time *" type="time" value={evForm.endTime} onChange={e=>setEvForm({...evForm,endTime:e.target.value})} />
+            </div>
+          </div>
           <Input label="Title *" value={evForm.title} onChange={e=>setEvForm({...evForm,title:e.target.value})} placeholder="e.g. Visit Kedarnath" />
           <Input label="Location" value={evForm.location} onChange={e=>setEvForm({...evForm,location:e.target.value})} placeholder="e.g. Kedarnath Temple" />
           <Select label="Category" value={evForm.category} onChange={e=>setEvForm({...evForm,category:e.target.value})}
