@@ -443,25 +443,30 @@ function ScheduleTab({ trip, update }) {
               {/* ── Event Header ── */}
               <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
                 <StatusBox status={stOf(ev)} onClick={()=>cycleEventStatus(day.id,ev.id)} size={16} style={{ marginRight:8 }} />
-                <div style={{ flex:1, opacity: stOf(ev)==='done'?0.55:1, textDecoration: stOf(ev)==='done'?"line-through":"none" }}>
+                <div style={{ flex:1 }}>
                   <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
                     <span style={{ fontSize:12,color:"#B54030",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4 }}>
                       {Editable({ kind:'startTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.time, placeholder:'--:--', spanStyle:{ fontSize:12,color:'#B54030',fontWeight:600 }, inputType:'time', inputWidth:108 })}
                       <span style={{ color:'#C8A090' }}>–</span>
                       {Editable({ kind:'endTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.endTime, placeholder:'--:--', spanStyle:{ fontSize:12,color:'#B54030',fontWeight:600 }, inputType:'time', inputWidth:108 })}
                     </span>
-                    {Editable({ kind:'event', ids:{ dayId:day.id, evId:ev.id }, value:ev.title, placeholder:'(untitled)', spanStyle:{ fontSize:13, fontWeight:500 }, inputWidth:200 })}
+                    <span style={{ opacity: stOf(ev)==='done'?0.55:1, textDecoration: stOf(ev)==='done'?"line-through":"none" }}>
+                      {Editable({ kind:'event', ids:{ dayId:day.id, evId:ev.id }, value:ev.title, placeholder:'(untitled)', spanStyle:{ fontSize:13, fontWeight:500 }, inputWidth:200 })}
+                    </span>
                     <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#8B2A14" }}>{ev.category}</span>
-                    <StatusBadge status={stOf(ev)} />
                   </div>
                   {ev.location && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {ev.location}</div>}
                   {ev.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{ev.notes}</div>}
                 </div>
-                <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0,marginLeft:6 }}>
-                  <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
-                  <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,null,e.target.files[0]); e.target.value=''; }} />
-                </label>
-                <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12,flexShrink:0,marginLeft:8 }} onClick={()=>delEvent(day.id,ev.id)}>✕</Btn>
+                {/* right-aligned action columns: status · attach · delete */}
+                <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
+                  <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={stOf(ev)} /></span>
+                  <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
+                    <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
+                    <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,null,e.target.files[0]); e.target.value=''; }} />
+                  </label>
+                  <button title="Delete event" onClick={()=>delEvent(day.id,ev.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
+                </div>
               </div>
 
               {/* ── Documents for Event ── */}
@@ -477,14 +482,11 @@ function ScheduleTab({ trip, update }) {
                   {(ev.activities||[]).map(act => (
                     <div key={act.id} style={{ marginBottom:6 }}>
                       <div style={{ display:"flex",alignItems:"flex-start",gap:6 }}>
-                        <StatusBox status={stOf(act)} onClick={()=>cycleActivityStatus(day.id,ev.id,act.id)} size={14} />
+                        <StatusBox status={stOf(act)} onClick={()=>cycleActivityStatus(day.id,ev.id,act.id)} size={14} style={{ marginTop:2 }} />
                         <div style={{ flex:1 }}>
-                          <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
-                            <span style={{ opacity: stOf(act)==='done'?0.55:1, textDecoration: stOf(act)==='done'?"line-through":"none" }}>
-                              {Editable({ kind:'activity', ids:{ dayId:day.id, evId:ev.id, actId:act.id }, value:act.text, placeholder:'(empty)', spanStyle:{ fontSize:13, color:'#6E1A10' }, inputWidth:240 })}
-                            </span>
-                            <StatusBadge status={stOf(act)} />
-                          </div>
+                          <span style={{ display:"inline-block", opacity: stOf(act)==='done'?0.55:1, textDecoration: stOf(act)==='done'?"line-through":"none" }}>
+                            {Editable({ kind:'activity', ids:{ dayId:day.id, evId:ev.id, actId:act.id }, value:act.text, placeholder:'(empty)', spanStyle:{ fontSize:13, color:'#6E1A10' }, inputWidth:240 })}
+                          </span>
                           {/* Docs for this activity */}
                           <DocList
                             docs={act.docs||[]}
@@ -492,11 +494,15 @@ function ScheduleTab({ trip, update }) {
                             onDel={(docId)=>delDoc(day.id,ev.id,act.id,docId)}
                           />
                         </div>
-                        <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:22,height:22,borderRadius:5,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0,marginTop:2 }}>
-                        <span style={{ fontSize:12, lineHeight:1 }}>📎</span>
-                        <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,act.id,e.target.files[0]); e.target.value=''; }} />
-                      </label>
-                      <button onClick={()=>delActivity(day.id,ev.id,act.id)} style={{ background:'none',border:'none',cursor:'pointer',color:'#C04428',fontSize:12,padding:'0 2px',lineHeight:1,flexShrink:0,marginTop:2 }}>✕</button>
+                        {/* right-aligned action columns: status · attach · delete */}
+                        <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
+                          <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={stOf(act)} /></span>
+                          <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
+                            <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
+                            <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,act.id,e.target.files[0]); e.target.value=''; }} />
+                          </label>
+                          <button title="Delete activity" onClick={()=>delActivity(day.id,ev.id,act.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
+                        </div>
                       </div>
                     </div>
                   ))}
