@@ -68,6 +68,40 @@ function Btn({ children, variant="primary", ...props }) {
   return <button {...props} style={{ ...styles[variant],...props.style }}>{children}</button>;
 }
 
+// ── Three-state status: not started → active → done ──
+const STATUS_ORDER = ['todo','active','done'];
+// Read an item's status, tolerating legacy `done:true` data
+const stOf = (x) => (x && x.status) || (x && x.done ? 'done' : 'todo');
+const nextStatus = (s) => STATUS_ORDER[(STATUS_ORDER.indexOf(s) + 1) % 3];
+const STATUS_META = {
+  todo:   { label:'Not started', short:'TODO',   color:'#8A7A6D', bg:'#E5DFD2', ring:'#B0A091' },
+  active: { label:'Active',      short:'ACTIVE', color:'#1F6FB2', bg:'#D8E8F4', ring:'#2E86C8' },
+  done:   { label:'Done',        short:'DONE',   color:'#3C8A3C', bg:'#DCEEDC', ring:'#3C8A3C' },
+};
+
+// Clickable status indicator: empty circle → filled (active) → check (done)
+function StatusBox({ status='todo', onClick, size=16, style }) {
+  const s = STATUS_META[status] ? status : 'todo';
+  const base = { width:size, height:size, borderRadius:'50%', flexShrink:0, cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', boxSizing:'border-box', marginTop:3, transition:'all .15s' };
+  let box, inner = null;
+  if (s === 'todo') {
+    box = { ...base, border:`2px solid ${STATUS_META.todo.ring}`, background:'transparent' };
+  } else if (s === 'active') {
+    box = { ...base, border:`2px solid ${STATUS_META.active.ring}`, background:STATUS_META.active.ring };
+    inner = <span style={{ width:Math.round(size*0.36), height:Math.round(size*0.36), borderRadius:'50%', background:'#fff' }} />;
+  } else {
+    box = { ...base, border:`2px solid ${STATUS_META.done.ring}`, background:STATUS_META.done.ring };
+    inner = <span style={{ color:'#fff', fontSize:Math.round(size*0.72), lineHeight:1, fontWeight:700 }}>✓</span>;
+  }
+  return <span role="button" title={`${STATUS_META[s].label} — click to change`} onClick={onClick} style={{ ...box, ...style }}>{inner}</span>;
+}
+
+function StatusBadge({ status='todo' }) {
+  const s = STATUS_META[status] ? status : 'todo';
+  const m = STATUS_META[s];
+  return <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.05em', padding:'1px 6px', borderRadius:4, color:m.color, background:m.bg, whiteSpace:'nowrap' }}>{m.short}</span>;
+}
+
 // ---- Schedule Tab ----
 function ScheduleTab({ trip, update }) {
   const [showDay, setShowDay] = useState(false);
@@ -109,6 +143,15 @@ function ScheduleTab({ trip, update }) {
     }
     setEditing(null);
   };
+
+  // ── Cycle status: not started → active → done → not started ──
+  const cycleEventStatus = (dayId, evId) =>
+    update(t => ({ days:(t.days||[]).map(d => d.id===dayId
+      ? { ...d, events:(d.events||[]).map(e => e.id===evId ? { ...e, status: nextStatus(stOf(e)), done: undefined } : e) } : d) }));
+  const cycleActivityStatus = (dayId, evId, actId) =>
+    update(t => ({ days:(t.days||[]).map(d => d.id===dayId
+      ? { ...d, events:(d.events||[]).map(e => e.id===evId
+          ? { ...e, activities:(e.activities||[]).map(a => a.id===actId ? { ...a, status: nextStatus(stOf(a)), done: undefined } : a) } : e) } : d) }));
 
   // Renders an editable text span; clicking turns it into an input (Enter/blur saves, Esc cancels)
   const Editable = ({ kind, ids, value, placeholder, spanStyle, inputWidth, inputType }) => {
@@ -399,7 +442,8 @@ function ScheduleTab({ trip, update }) {
             <div key={ev.id} style={{ padding:"10px 14px",borderTop:"1px solid #D4BFB0" }}>
               {/* ── Event Header ── */}
               <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
-                <div style={{ flex:1 }}>
+                <StatusBox status={stOf(ev)} onClick={()=>cycleEventStatus(day.id,ev.id)} size={16} style={{ marginRight:8 }} />
+                <div style={{ flex:1, opacity: stOf(ev)==='done'?0.55:1, textDecoration: stOf(ev)==='done'?"line-through":"none" }}>
                   <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
                     <span style={{ fontSize:12,color:"#B54030",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4 }}>
                       {Editable({ kind:'startTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.time, placeholder:'--:--', spanStyle:{ fontSize:12,color:'#B54030',fontWeight:600 }, inputType:'time', inputWidth:108 })}
@@ -408,6 +452,7 @@ function ScheduleTab({ trip, update }) {
                     </span>
                     {Editable({ kind:'event', ids:{ dayId:day.id, evId:ev.id }, value:ev.title, placeholder:'(untitled)', spanStyle:{ fontSize:13, fontWeight:500 }, inputWidth:200 })}
                     <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#8B2A14" }}>{ev.category}</span>
+                    <StatusBadge status={stOf(ev)} />
                   </div>
                   {ev.location && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {ev.location}</div>}
                   {ev.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{ev.notes}</div>}
@@ -432,9 +477,14 @@ function ScheduleTab({ trip, update }) {
                   {(ev.activities||[]).map(act => (
                     <div key={act.id} style={{ marginBottom:6 }}>
                       <div style={{ display:"flex",alignItems:"flex-start",gap:6 }}>
-                        <span style={{ fontSize:12,color:"#8B2A14",marginTop:1 }}>▸</span>
+                        <StatusBox status={stOf(act)} onClick={()=>cycleActivityStatus(day.id,ev.id,act.id)} size={14} />
                         <div style={{ flex:1 }}>
-                          {Editable({ kind:'activity', ids:{ dayId:day.id, evId:ev.id, actId:act.id }, value:act.text, placeholder:'(empty)', spanStyle:{ fontSize:13, color:'#6E1A10' }, inputWidth:'100%' })}
+                          <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                            <span style={{ opacity: stOf(act)==='done'?0.55:1, textDecoration: stOf(act)==='done'?"line-through":"none" }}>
+                              {Editable({ kind:'activity', ids:{ dayId:day.id, evId:ev.id, actId:act.id }, value:act.text, placeholder:'(empty)', spanStyle:{ fontSize:13, color:'#6E1A10' }, inputWidth:240 })}
+                            </span>
+                            <StatusBadge status={stOf(act)} />
+                          </div>
                           {/* Docs for this activity */}
                           <DocList
                             docs={act.docs||[]}
