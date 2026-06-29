@@ -1061,7 +1061,7 @@ export default function App() {
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 20px 10px" }}>
           {/* Logo + Title */}
           <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" fill="#F5ECD7" style={{flexShrink:0}}><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
+            <img src="/logo-travelhub.png" alt="My Travel Hub" width="38" height="38" style={{ flexShrink:0, borderRadius:9, display:"block" }} />
             <div>
               <h1 style={{ margin:0,fontSize:22,fontWeight:800,color:"#F5ECD7",letterSpacing:"0.06em",lineHeight:1.1,textTransform:"uppercase" }}>My Travel Hub</h1>
               <p style={{ margin:0,fontSize:11,color:"rgba(245,236,215,0.6)",letterSpacing:"0.12em",textTransform:"uppercase",fontWeight:500,marginTop:2 }}>Your trips, all in one place</p>
