@@ -79,6 +79,57 @@ function ScheduleTab({ trip, update }) {
   // Which event is showing the activity input box
   const [addingActivityFor, setAddingActivityFor] = useState(null);
 
+  // ── Inline editing of day labels / event titles / activity text ──
+  // editing = { kind:'day'|'event'|'activity', dayId, evId?, actId? }
+  const [editing, setEditing] = useState(null);
+  const [editVal, setEditVal] = useState('');
+  const editKey = (e) => e ? [e.kind, e.dayId, e.evId||'', e.actId||''].join('|') : '';
+  const startEdit = (kind, ids, current) => { setEditing({ kind, ...ids }); setEditVal(current||''); };
+  const cancelEdit = () => setEditing(null);
+  const commitEdit = () => {
+    if (!editing) return;
+    const v = editVal.trim();
+    const { kind, dayId, evId, actId } = editing;
+    if (kind === 'day') {
+      // label is optional — allow clearing it
+      update(t => ({ days:(t.days||[]).map(d => d.id===dayId ? { ...d, label:v } : d) }));
+    } else if (kind === 'event' && v) {
+      update(t => ({ days:(t.days||[]).map(d => d.id===dayId
+        ? { ...d, events:(d.events||[]).map(e => e.id===evId ? { ...e, title:v } : e) } : d) }));
+    } else if (kind === 'activity' && v) {
+      update(t => ({ days:(t.days||[]).map(d => d.id===dayId
+        ? { ...d, events:(d.events||[]).map(e => e.id===evId
+            ? { ...e, activities:(e.activities||[]).map(a => a.id===actId ? { ...a, text:v } : a) } : e) } : d) }));
+    }
+    setEditing(null);
+  };
+
+  // Renders an editable text span; clicking turns it into an input (Enter/blur saves, Esc cancels)
+  const Editable = ({ kind, ids, value, placeholder, spanStyle, inputWidth }) => {
+    const active = editing && editKey(editing) === editKey({ kind, ...ids });
+    if (active) {
+      return (
+        <input
+          autoFocus
+          value={editVal}
+          onChange={e=>setEditVal(e.target.value)}
+          onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); commitEdit(); } if(e.key==='Escape'){ cancelEdit(); } }}
+          onBlur={commitEdit}
+          style={{ font:'inherit', fontSize:13, padding:'2px 6px', border:'1px solid #C8B09A', borderRadius:5, background:'#F0EBE0', color:'#6E1A10', outline:'none', width:inputWidth||160, boxSizing:'border-box' }}
+        />
+      );
+    }
+    return (
+      <span
+        onClick={()=>startEdit(kind, ids, value)}
+        title="Click to edit"
+        style={{ cursor:'text', borderBottom:'1px dashed transparent', ...spanStyle, ...(value? {} : { color:'#C0A090', fontStyle:'italic' }) }}
+        onMouseEnter={e=>{ e.currentTarget.style.borderBottom='1px dashed #C8A090'; }}
+        onMouseLeave={e=>{ e.currentTarget.style.borderBottom='1px dashed transparent'; }}
+      >{value || placeholder}</span>
+    );
+  };
+
   const addDay = () => {
     if (!dayForm.date) return;
     update({ days: [...(trip.days||[]), { id:uid(), date:dayForm.date, label:dayForm.label, events:[] }].sort((a,b)=>a.date>b.date?1:-1) });
@@ -322,7 +373,7 @@ function ScheduleTab({ trip, update }) {
           <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"#DDD8CB" }}>
             <div>
               <strong style={{ fontSize:14 }}>{fmtDate(day.date)}</strong>
-              {day.label && <span style={{ marginLeft:8,fontSize:13,color:"#8B2A14" }}>{day.label}</span>}
+              <span style={{ marginLeft:8 }}>{Editable({ kind:'day', ids:{ dayId:day.id }, value:day.label, placeholder:'+ add label', spanStyle:{ fontSize:13, color:'#8B2A14' }, inputWidth:160 })}</span>
             </div>
             <div style={{ display:"flex",gap:6 }}>
               <Btn onClick={()=>setShowEvent(day.id)} style={{ padding:"4px 10px",fontSize:12 }}>+ Event</Btn>
@@ -341,7 +392,7 @@ function ScheduleTab({ trip, update }) {
                 <div style={{ flex:1 }}>
                   <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
                     {ev.time && <span style={{ fontSize:12,color:"#B54030",fontWeight:600 }}>{ev.time}</span>}
-                    <span style={{ fontSize:13,fontWeight:500 }}>{ev.title}</span>
+                    {Editable({ kind:'event', ids:{ dayId:day.id, evId:ev.id }, value:ev.title, placeholder:'(untitled)', spanStyle:{ fontSize:13, fontWeight:500 }, inputWidth:200 })}
                     <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#8B2A14" }}>{ev.category}</span>
                   </div>
                   {ev.location && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {ev.location}</div>}
@@ -369,7 +420,7 @@ function ScheduleTab({ trip, update }) {
                       <div style={{ display:"flex",alignItems:"flex-start",gap:6 }}>
                         <span style={{ fontSize:12,color:"#8B2A14",marginTop:1 }}>▸</span>
                         <div style={{ flex:1 }}>
-                          <span style={{ fontSize:13,color:"#6E1A10" }}>{act.text}</span>
+                          {Editable({ kind:'activity', ids:{ dayId:day.id, evId:ev.id, actId:act.id }, value:act.text, placeholder:'(empty)', spanStyle:{ fontSize:13, color:'#6E1A10' }, inputWidth:'100%' })}
                           {/* Docs for this activity */}
                           <DocList
                             docs={act.docs||[]}
