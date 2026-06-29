@@ -838,16 +838,21 @@ function StatusTab({ trip }) {
     </span>
   );
 
-  const Row = ({ status, label, sub, indent }) => (
-    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', paddingLeft: indent?22:0 }}>
-      <Dot status={status} />
-      <span style={{ flex:1, fontSize:13, color:'#6E1A10',
-        textDecoration: status==='done'?'line-through':'none', opacity: status==='done'?0.6:1 }}>
-        {label}{sub && <span style={{ color:'#B07A4A', fontWeight:400 }}> · {sub}</span>}
-      </span>
-      <StatusBadge status={status} />
-    </div>
-  );
+  // status worded as a sentence fragment
+  const PHRASE = { todo:'is not started yet', active:'is currently ongoing', done:'is complete' };
+  const Row = ({ status, label, sub, indent }) => {
+    const m = STATUS_META[status] || STATUS_META.todo;
+    return (
+      <div style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', paddingLeft: indent?22:0 }}>
+        <Dot status={status} />
+        <span style={{ flex:1, fontSize:13, color:'#6E1A10', lineHeight:1.5 }}>
+          <strong style={{ fontWeight:600 }}>{label}</strong>{' '}
+          <span style={{ color:m.color, fontWeight:600 }}>{PHRASE[status] || PHRASE.todo}</span>
+          {sub && <span style={{ color:'#B07A4A' }}> · {sub}</span>}
+        </span>
+      </div>
+    );
+  };
 
   return (
     <div>
