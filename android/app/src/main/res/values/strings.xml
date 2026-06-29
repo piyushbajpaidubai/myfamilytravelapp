@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">My Travel Hub</string>
+    <string name="title_activity_main">My Travel Hub</string>
+    <string name="package_name">mytravelhub.app</string>
+    <string name="custom_url_scheme">mytravelhub.app</string>
+</resources>
