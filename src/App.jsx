@@ -148,10 +148,11 @@ function ScheduleTab({ trip, update }) {
   const cycleEventStatus = (dayId, evId) =>
     update(t => ({ days:(t.days||[]).map(d => d.id===dayId
       ? { ...d, events:(d.events||[]).map(e => e.id===evId ? { ...e, status: nextStatus(stOf(e)), done: undefined } : e) } : d) }));
+  // Activities are a simple two-state toggle: not started ⇄ done (no "active")
   const cycleActivityStatus = (dayId, evId, actId) =>
     update(t => ({ days:(t.days||[]).map(d => d.id===dayId
       ? { ...d, events:(d.events||[]).map(e => e.id===evId
-          ? { ...e, activities:(e.activities||[]).map(a => a.id===actId ? { ...a, status: nextStatus(stOf(a)), done: undefined } : a) } : e) } : d) }));
+          ? { ...e, activities:(e.activities||[]).map(a => a.id===actId ? { ...a, status: stOf(a)==='done' ? 'todo' : 'done', done: undefined } : a) } : e) } : d) }));
 
   // Renders an editable text span; clicking turns it into an input (Enter/blur saves, Esc cancels)
   const Editable = ({ kind, ids, value, placeholder, spanStyle, inputWidth, inputType }) => {
