@@ -1054,11 +1054,11 @@ export default function App() {
 
 
   return (
-    <div style={{ fontFamily:"'Jost','Futura PT','Century Gothic','Trebuchet MS',sans-serif",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0" }}>
+    <div style={{ fontFamily:"'Jost','Futura PT','Century Gothic','Trebuchet MS',sans-serif",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0",paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
       {/* Header */}
       <div style={{ background:"#5C1A1A",borderBottom:"none",boxShadow:"0 2px 12px rgba(0,0,0,0.18)" }}>
         {/* Top bar: logo + actions */}
-        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 20px 10px" }}>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"calc(env(safe-area-inset-top, 0px) + 18px) 20px 10px" }}>
           {/* Logo + Title */}
           <div style={{ display:"flex",alignItems:"center",gap:10 }}>
             <img src="/logo-travelhub.png" alt="My Travel Hub" width="38" height="38" style={{ flexShrink:0, borderRadius:9, display:"block" }} />
