@@ -1063,39 +1063,46 @@ export default function App() {
           <div style={{ display:"flex",alignItems:"center",gap:10 }}>
             <img src="/logo-travelhub.png" alt="My Travel Hub" width="38" height="38" style={{ flexShrink:0, borderRadius:9, display:"block" }} />
             <div>
-              <h1 style={{ margin:0,fontSize:22,fontWeight:800,color:"#F5ECD7",letterSpacing:"0.06em",lineHeight:1.1,textTransform:"uppercase" }}>My Travel Hub</h1>
-              <p style={{ margin:0,fontSize:11,color:"rgba(245,236,215,0.6)",letterSpacing:"0.12em",textTransform:"uppercase",fontWeight:500,marginTop:2 }}>Your trips, all in one place</p>
+              <h1 style={{ margin:0,fontSize:20,fontWeight:800,color:"#F5ECD7",letterSpacing:"0.03em",lineHeight:1.15,textTransform:"uppercase" }}>My Travel Hub</h1>
+              <p style={{ margin:0,fontSize:10.5,color:"rgba(245,236,215,0.6)",letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:500,marginTop:3 }}>Your trips, all in one place</p>
             </div>
           </div>
           {/* Actions */}
-          <div style={{ display:"flex",gap:8,alignItems:"center" }}>
+          <div style={{ display:"flex",gap:10,alignItems:"center" }}>
             <button
               onClick={undo}
               disabled={past.length===0}
               title={past.length ? `Undo last change (${past.length} available)` : 'Nothing to undo'}
+              aria-label="Undo"
               style={{
-                padding:"7px 14px",
-                borderRadius:7,
-                border:"1.5px solid rgba(245,236,215,0.35)",
-                background:"rgba(245,236,215,0.1)",
-                color:"#F5ECD7",
-                fontWeight:600,fontSize:13,
+                width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",
+                borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",
+                color:"#F5ECD7",padding:0,
                 cursor: past.length ? "pointer" : "not-allowed",
-                opacity: past.length ? 1 : 0.45,
-                transition:"all 0.3s",letterSpacing:"0.02em"
+                opacity: past.length ? 1 : 0.4,
+                transition:"all 0.3s"
               }}
-            >↶ Undo{past.length ? ` (${past.length})` : ''}</button>
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
+            </button>
             <button
               onClick={handleSave}
+              aria-label={savedStatus==='saved'?'Saved':'Save'}
+              title={savedStatus==='saved'?'Saved':'Save'}
               style={{
-                padding:"7px 14px",
-                borderRadius:7,
-                border: savedStatus==='saved'?'1.5px solid #7DB87A':'1.5px solid rgba(245,236,215,0.35)',
-                background: savedStatus==='saved'?'rgba(125,184,122,0.25)':savedStatus==='saving'?'rgba(245,236,215,0.12)':'rgba(245,236,215,0.1)',
-                color: savedStatus==='saved'?'#A8E6A0':'#F5ECD7',
-                fontWeight:600,fontSize:13,cursor:"pointer",transition:"all 0.3s",minWidth:72,letterSpacing:"0.02em"
+                width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",
+                borderRadius:10,padding:0,cursor:"pointer",transition:"all 0.3s",
+                border: savedStatus==='saved'?'1.5px solid #7DB87A':'1.5px solid rgba(245,236,215,0.28)',
+                background: savedStatus==='saved'?'rgba(125,184,122,0.22)':'rgba(245,236,215,0.08)',
+                color: savedStatus==='saved'?'#A8E6A0':'#F5ECD7'
               }}
-            >{savedStatus==='saved'?'✓ Saved':savedStatus==='saving'?'…':'Save'}</button>
+            >
+              {savedStatus==='saved'
+                ? <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                : savedStatus==='saving'
+                  ? <span style={{ fontSize:17,lineHeight:1 }}>…</span>
+                  : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>}
+            </button>
           </div>
         </div>
         {/* Header note */}
