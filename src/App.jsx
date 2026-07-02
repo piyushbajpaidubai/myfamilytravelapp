@@ -828,11 +828,6 @@ function StatusTab({ trip, shareUrl }) {
 
   const STATUS_WORD = { todo:'not started', active:'ongoing', done:'complete' };
   const LINE = '#3D0C02';
-  const dotStyle = (status) => {
-    if (status === 'done')   return { background:'#3D0C02', borderColor:'#3D0C02' };
-    if (status === 'active') return { background:'#2E86C8', borderColor:'#2E86C8' };
-    return { background:'#F0EBE0', borderColor:'#B7A08F' }; // not started = hollow
-  };
 
   // overall counts across the whole trip
   const total = { todo:0, active:0, done:0 };
@@ -880,7 +875,9 @@ function StatusTab({ trip, shareUrl }) {
       {days.map((day, di) => {
         const items = dayItems(day);
         return (
-          <div key={day.id} style={{ display:'flex', alignItems:'center', marginBottom:32 }}>
+          <div key={day.id}>
+            {di>0 && <div style={{ borderTop:'2px dotted #C8B09A', margin:'0 0 30px' }} />}
+            <div style={{ display:'flex', alignItems:'center', marginBottom:30 }}>
             {/* Left: day label */}
             <div style={{ width:100, flexShrink:0, textAlign:'right', paddingRight:16 }}>
               <div style={{ fontSize:21, fontWeight:400, letterSpacing:'0.14em', color:'#2E2320', lineHeight:1.05 }}>DAY {di+1}</div>
@@ -896,9 +893,11 @@ function StatusTab({ trip, shareUrl }) {
                 return (
                   <div key={it.key} style={{ display:'flex', gap:12, alignItems:'stretch' }}>
                     <div style={{ position:'relative', width:16, flexShrink:0 }}>
-                      {!first && <div style={{ position:'absolute', left:7, top:0, height:11, width:2, background:LINE }} />}
-                      {!last && <div style={{ position:'absolute', left:7, top:11, bottom:0, width:2, background:LINE }} />}
-                      <div style={{ position:'absolute', left:0, top:3, width:16, height:16, borderRadius:'50%', boxSizing:'border-box', borderStyle:'solid', borderWidth:2, ...dotStyle(it.status) }} />
+                      {!first && <div style={{ position:'absolute', left:7, top:0, height:10, width:2, background:LINE }} />}
+                      {!last && <div style={{ position:'absolute', left:7, top:10, bottom:0, width:2, background:LINE }} />}
+                      <div style={{ position:'absolute', left:2, top:4, width:12, height:12, borderRadius:'50%', boxSizing:'border-box', border:`2px solid ${LINE}`, background: it.status==='done' ? LINE : '#F0EBE0', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {it.status==='active' && <span style={{ width:4, height:4, borderRadius:'50%', background:LINE }} />}
+                      </div>
                     </div>
                     <div style={{ width:80, flexShrink:0, paddingBottom: last?0:28, fontSize:12, letterSpacing:'0.03em', color:'#4A3B34', textTransform:'uppercase', lineHeight:1.35 }}>{it.time}</div>
                     <div style={{ flex:1, minWidth:0, paddingBottom: last?0:28, fontSize:13.5, color:'#2E2320', lineHeight:1.4 }}>
@@ -908,6 +907,7 @@ function StatusTab({ trip, shareUrl }) {
                 );
               })}
             </div>
+          </div>
           </div>
         );
       })}
