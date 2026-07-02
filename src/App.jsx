@@ -813,8 +813,18 @@ function PicturesTab({ trip, update }) {
 
 
 // ---- Status Tab ----  (read-only rollup of event/activity statuses per day)
-function StatusTab({ trip }) {
+function StatusTab({ trip, shareUrl }) {
   const days = trip.days || [];
+  const [copied, setCopied] = useState(false);
+  const copyShare = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      window.prompt('Copy this read-only status link:', shareUrl);
+    }
+  };
 
   // small read-only status indicator
   const Dot = ({ status }) => {
@@ -864,6 +874,12 @@ function StatusTab({ trip }) {
 
   return (
     <div>
+      {shareUrl && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', marginBottom:16, background:'#F5EFE2', border:'1px dashed #D4BFB0', borderRadius:10, padding:'10px 14px' }}>
+          <span style={{ fontSize:12.5, color:'#8B5A3C', flex:1, minWidth:150, lineHeight:1.4 }}>Share a live, read-only link so anyone can follow this trip's status.</span>
+          <button onClick={copyShare} style={{ padding:'7px 14px', borderRadius:8, border:'none', background:'#6E1A10', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>{copied ? '✓ Link copied' : 'Share status'}</button>
+        </div>
+      )}
       {/* Trip-wide summary */}
       <div style={{ background:'#EDE7D9', border:'1px solid #D4BFB0', borderRadius:10, padding:'12px 16px', marginBottom:16,
         display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
@@ -960,7 +976,7 @@ async function deleteFromStorage(url) {
   } catch(e) {}
 }
 
-export default function App() {
+function MainApp() {
   const [trips, setTrips] = useState([]);
   const [activeTrip, setActiveTrip] = useState(null);
   const [activeTab, setActiveTab] = useState("Schedule");
@@ -1190,7 +1206,7 @@ export default function App() {
           {activeTab==="Schedule" && <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
           {activeTab==="Budget" && <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
           {activeTab==="Packing" && <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
-          {activeTab==="Status" && <StatusTab trip={trip} />}
+          {activeTab==="Status" && <StatusTab trip={trip} shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}`} />}
           {activeTab==="Pictures" && <PicturesTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
         </div>
       )}
@@ -1210,4 +1226,91 @@ export default function App() {
       )}
     </div>
   );
+}
+
+// ---- Read-only Viewer (shared status link: ?view=<tripId>) ----
+const fmtDateTime = (iso) => {
+  try { return new Date(iso).toLocaleString(undefined, { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }); }
+  catch(e){ return ''; }
+};
+
+function ViewerApp({ tripId }) {
+  const [trip, setTrip] = useState(null);
+  const [phase, setPhase] = useState('loading'); // loading | ok | notfound | error
+  const [updatedAt, setUpdatedAt] = useState(null);
+  const [reload, setReload] = useState(0);
+  const refresh = () => setReload(r => r + 1);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchTrip = async () => {
+      try {
+        const r = await fetch(SUPA_URL + '/rest/v1/travel_data?id=eq.shared&select=trips,updated_at', { headers: supaHeaders });
+        if (!r.ok) throw new Error('bad response');
+        const rows = await r.json();
+        if (cancelled) return;
+        const row = rows && rows[0];
+        const t = row ? (row.trips||[]).find(x => x.id === tripId) : null;
+        if (t) { setTrip(t); setUpdatedAt(row.updated_at || null); setPhase('ok'); }
+        else { setPhase(prev => prev === 'ok' ? 'ok' : 'notfound'); }
+      } catch (e) {
+        if (!cancelled) setPhase(prev => prev === 'ok' ? 'ok' : 'error');
+      }
+    };
+    fetchTrip();
+    const iv = setInterval(fetchTrip, 20000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [tripId, reload]);
+
+  const shell = (children) => (
+    <div style={{ fontFamily:"'Jost','Futura PT','Century Gothic','Trebuchet MS',sans-serif", maxWidth:680, margin:"0 auto", minHeight:"100vh", background:"#F0EBE0", paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
+      <div style={{ background:"#5C1A1A", boxShadow:"0 2px 12px rgba(0,0,0,0.18)" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top, 0px) + 16px) 20px 14px" }}>
+          <img src="/logo-travelhub.png" alt="My Travel Hub" width="34" height="34" style={{ borderRadius:8, flexShrink:0, display:"block" }} />
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:16, fontWeight:800, color:"#F5ECD7", letterSpacing:"0.03em", textTransform:"uppercase", lineHeight:1.1 }}>My Travel Hub</div>
+            <div style={{ fontSize:10.5, color:"rgba(245,236,215,0.6)", letterSpacing:"0.1em", textTransform:"uppercase", marginTop:2 }}>Live trip status</div>
+          </div>
+          <span style={{ display:"inline-flex", alignItems:"center", gap:6, fontSize:11, fontWeight:700, color:"#A8E6A0", background:"rgba(125,184,122,0.18)", border:"1px solid rgba(125,184,122,0.5)", borderRadius:20, padding:"3px 10px" }}>
+            <span style={{ width:7, height:7, borderRadius:"50%", background:"#7DB87A", display:"inline-block" }} /> LIVE
+          </span>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+
+  const centered = (txt, extra) => (
+    <div style={{ textAlign:"center", color:"#B54030", padding:"70px 24px" }}>
+      <div style={{ fontSize:40, marginBottom:12 }}>🧭</div>
+      <p style={{ fontSize:15, margin:0 }}>{txt}</p>
+      {extra}
+    </div>
+  );
+
+  if (phase === 'loading') return shell(centered('Loading trip status…'));
+  if (phase === 'notfound') return shell(centered('This status link is invalid, or the trip no longer exists.'));
+  if (phase === 'error') return shell(centered('Could not load the status. Check your connection.',
+    <button onClick={refresh} style={{ marginTop:14, padding:"8px 18px", borderRadius:8, border:"none", background:"#6E1A10", color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer" }}>Try again</button>));
+
+  return shell(
+    <div style={{ padding:20 }}>
+      <h2 style={{ margin:"0 0 2px", fontSize:19, fontWeight:700, color:"#6E1A10" }}>{trip.name || 'Trip'}</h2>
+      <div style={{ fontSize:13, color:"#B54030" }}>
+        {trip.destination && <span>📍 {trip.destination}</span>}
+        {trip.startDate && <span style={{ marginLeft: trip.destination?8:0 }}>🗓 {fmtDate(trip.startDate)}{trip.endDate?` → ${fmtDate(trip.endDate)}`:''}</span>}
+      </div>
+      <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", fontSize:11.5, color:"#9A8478", margin:"8px 0 18px" }}>
+        <span>{updatedAt ? `Last updated ${fmtDateTime(updatedAt)}` : 'Live view'} · refreshes automatically</span>
+        <button onClick={refresh} style={{ padding:"3px 10px", borderRadius:6, border:"1px solid #C8B09A", background:"transparent", color:"#8B2A14", fontSize:11.5, cursor:"pointer" }}>Refresh now</button>
+      </div>
+      <StatusTab trip={trip} />
+      <div style={{ textAlign:"center", fontSize:11, color:"#B0A091", padding:"18px 0 8px" }}>Read-only view · shared by the traveler</div>
+    </div>
+  );
+}
+
+export default function Root() {
+  const viewId = new URLSearchParams(window.location.search).get('view');
+  return viewId ? <ViewerApp tripId={viewId} /> : <MainApp />;
 }
