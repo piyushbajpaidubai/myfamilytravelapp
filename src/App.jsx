@@ -826,50 +826,34 @@ function StatusTab({ trip, shareUrl }) {
     }
   };
 
-  // small read-only status indicator
-  const Dot = ({ status }) => {
-    const m = STATUS_META[status] || STATUS_META.todo;
-    return <span style={{ width:11, height:11, borderRadius:'50%', boxSizing:'border-box',
-      background: status==='todo' ? 'transparent' : m.ring, border:`2px solid ${m.ring}`,
-      flexShrink:0, display:'inline-block' }} />;
+  const STATUS_WORD = { todo:'not started', active:'ongoing', done:'complete' };
+  const LINE = '#3D0C02';
+  const dotStyle = (status) => {
+    if (status === 'done')   return { background:'#3D0C02', borderColor:'#3D0C02' };
+    if (status === 'active') return { background:'#2E86C8', borderColor:'#2E86C8' };
+    return { background:'#F0EBE0', borderColor:'#B7A08F' }; // not started = hollow
   };
 
-  // collect every event + activity status for a list of events
-  const tally = (events) => {
-    const counts = { todo:0, active:0, done:0 };
-    events.forEach(ev => {
-      counts[stOf(ev)]++;
-      (ev.activities||[]).forEach(a => { counts[stOf(a)]++; });
-    });
-    return counts;
-  };
-
-  const allEvents = days.flatMap(d => d.events||[]);
-  const total = tally(allEvents);
+  // overall counts across the whole trip
+  const total = { todo:0, active:0, done:0 };
+  days.forEach(d => (d.events||[]).forEach(ev => {
+    total[stOf(ev)]++;
+    (ev.activities||[]).forEach(a => { total[stOf(a)]++; });
+  }));
   const totalItems = total.todo + total.active + total.done;
 
-  const Summary = ({ c }) => (
-    <span style={{ display:'inline-flex', gap:8, flexWrap:'wrap' }}>
-      <span style={{ color: STATUS_META.done.color, fontWeight:600 }}>{c.done} done</span>
-      <span style={{ color: STATUS_META.active.color, fontWeight:600 }}>{c.active} active</span>
-      <span style={{ color: STATUS_META.todo.color, fontWeight:600 }}>{c.todo} to do</span>
-    </span>
-  );
-
-  // status worded as a sentence fragment
-  const PHRASE = { todo:'is not started yet', active:'is currently ongoing', done:'is complete' };
-  const Row = ({ status, label, sub, indent }) => {
-    const m = STATUS_META[status] || STATUS_META.todo;
-    return (
-      <div style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', paddingLeft: indent?22:0 }}>
-        <Dot status={status} />
-        <span style={{ flex:1, fontSize:13, color:'#6E1A10', lineHeight:1.5 }}>
-          <strong style={{ fontWeight:600 }}>{label}</strong>{' '}
-          <span style={{ color:m.color, fontWeight:600 }}>{PHRASE[status] || PHRASE.todo}</span>
-          {sub && <span style={{ color:'#B07A4A' }}> · {sub}</span>}
-        </span>
-      </div>
-    );
+  // flatten a day into timeline items (each event, then its activities)
+  const dayItems = (day) => {
+    const out = [];
+    (day.events||[]).forEach(ev => {
+      out.push({ key:ev.id, status:stOf(ev),
+        time: ev.time ? `${ev.time}${ev.endTime ? ` to ${ev.endTime}` : ''}` : 'event',
+        name: ev.title || '(untitled)' });
+      (ev.activities||[]).forEach(a => {
+        out.push({ key:a.id, status:stOf(a), time:'activity', name:a.text || '(activity)' });
+      });
+    });
+    return out;
   };
 
   return (
@@ -880,41 +864,49 @@ function StatusTab({ trip, shareUrl }) {
           <button onClick={copyShare} style={{ padding:'7px 14px', borderRadius:8, border:'none', background:'#6E1A10', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>{copied ? '✓ Link copied' : 'Share status'}</button>
         </div>
       )}
-      {/* Trip-wide summary */}
-      <div style={{ background:'#EDE7D9', border:'1px solid #D4BFB0', borderRadius:10, padding:'12px 16px', marginBottom:16,
-        display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
-        <span style={{ fontSize:13, fontWeight:700, color:'#6E1A10' }}>Overall</span>
-        {totalItems>0 ? <Summary c={total} /> : <span style={{ fontSize:13, color:'#C05040' }}>Nothing scheduled yet.</span>}
-      </div>
+      {/* Overall counts */}
+      {totalItems>0 && (
+        <div style={{ fontSize:12.5, display:'flex', gap:12, flexWrap:'wrap', marginBottom:26 }}>
+          <span style={{ color: STATUS_META.done.color, fontWeight:600 }}>{total.done} complete</span>
+          <span style={{ color: STATUS_META.active.color, fontWeight:600 }}>{total.active} ongoing</span>
+          <span style={{ color: STATUS_META.todo.color, fontWeight:600 }}>{total.todo} not started</span>
+        </div>
+      )}
 
       {days.length===0 && (
         <p style={{ color:'#C05040', fontSize:13, textAlign:'center', padding:'24px 0' }}>No days added yet.</p>
       )}
 
-      {days.map(day => {
-        const events = day.events || [];
-        const c = tally(events);
+      {days.map((day, di) => {
+        const items = dayItems(day);
         return (
-          <div key={day.id} style={{ marginBottom:16, border:'1px solid #D4BFB0', borderRadius:10, overflow:'hidden', background:'#EDE7D9' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8, padding:'10px 14px', background:'#DDD8CB' }}>
-              <div>
-                <strong style={{ fontSize:14 }}>{fmtDate(day.date)}</strong>
-                {day.label && <span style={{ marginLeft:8, fontSize:13, color:'#8B2A14' }}>{day.label}</span>}
-              </div>
-              <span style={{ fontSize:12 }}><Summary c={c} /></span>
+          <div key={day.id} style={{ display:'flex', alignItems:'center', marginBottom:32 }}>
+            {/* Left: day label */}
+            <div style={{ width:100, flexShrink:0, textAlign:'right', paddingRight:16 }}>
+              <div style={{ fontSize:21, fontWeight:400, letterSpacing:'0.14em', color:'#2E2320', lineHeight:1.05 }}>DAY {di+1}</div>
+              <div style={{ fontSize:10.5, fontWeight:500, letterSpacing:'0.12em', color:'#7A685F', marginTop:4 }}>{fmtDate(day.date).toUpperCase()}</div>
+              {day.label && <div style={{ fontSize:11, color:'#8B2A14', marginTop:4, fontStyle:'italic' }}>{day.label}</div>}
             </div>
 
-            <div style={{ padding:'6px 14px 10px' }}>
-              {events.length===0 && <p style={{ color:'#C05040', fontSize:13, margin:'6px 0' }}>No events</p>}
-              {events.map(ev => (
-                <div key={ev.id}>
-                  <Row status={stOf(ev)} label={ev.title || '(untitled)'}
-                    sub={ev.time ? `${ev.time}${ev.endTime?`–${ev.endTime}`:''}` : null} />
-                  {(ev.activities||[]).map(act => (
-                    <Row key={act.id} status={stOf(act)} label={act.text || '(empty)'} indent />
-                  ))}
-                </div>
-              ))}
+            {/* Right: timeline */}
+            <div style={{ flex:1, minWidth:0 }}>
+              {items.length===0 && <div style={{ fontSize:13, color:'#C05040', padding:'2px 0' }}>No events</div>}
+              {items.map((it, idx) => {
+                const first = idx===0, last = idx===items.length-1;
+                return (
+                  <div key={it.key} style={{ display:'flex', gap:12, alignItems:'stretch' }}>
+                    <div style={{ position:'relative', width:16, flexShrink:0 }}>
+                      {!first && <div style={{ position:'absolute', left:7, top:0, height:11, width:2, background:LINE }} />}
+                      {!last && <div style={{ position:'absolute', left:7, top:11, bottom:0, width:2, background:LINE }} />}
+                      <div style={{ position:'absolute', left:0, top:3, width:16, height:16, borderRadius:'50%', boxSizing:'border-box', borderStyle:'solid', borderWidth:2, ...dotStyle(it.status) }} />
+                    </div>
+                    <div style={{ width:80, flexShrink:0, paddingBottom: last?0:28, fontSize:12, letterSpacing:'0.03em', color:'#4A3B34', textTransform:'uppercase', lineHeight:1.35 }}>{it.time}</div>
+                    <div style={{ flex:1, minWidth:0, paddingBottom: last?0:28, fontSize:13.5, color:'#2E2320', lineHeight:1.4 }}>
+                      {it.name} <span style={{ color: STATUS_META[it.status].color, fontWeight:600 }}>{STATUS_WORD[it.status]}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
