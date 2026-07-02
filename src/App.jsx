@@ -851,6 +851,10 @@ function StatusTab({ trip, shareUrl }) {
     return out;
   };
 
+  // DAY number = calendar days since the trip's earliest day + 1 (21 Jun = DAY 1, 04 Jul = DAY 14)
+  const parseDay = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s||''); return m ? Date.UTC(+m[1], +m[2]-1, +m[3]) : null; };
+  const baseMs = days.reduce((min, d) => { const t = parseDay(d.date); return (t != null && (min == null || t < min)) ? t : min; }, null);
+
   return (
     <div>
       {shareUrl && (
@@ -874,13 +878,15 @@ function StatusTab({ trip, shareUrl }) {
 
       {days.map((day, di) => {
         const items = dayItems(day);
+        const t = parseDay(day.date);
+        const dayNum = (baseMs != null && t != null) ? Math.round((t - baseMs) / 86400000) + 1 : (di + 1);
         return (
           <div key={day.id}>
             {di>0 && <div style={{ borderTop:'2px dotted #C8B09A', margin:'0 0 30px' }} />}
             <div style={{ display:'flex', alignItems:'center', marginBottom:30 }}>
             {/* Left: day label */}
             <div style={{ width:100, flexShrink:0, textAlign:'right', paddingRight:16 }}>
-              <div style={{ fontSize:21, fontWeight:400, letterSpacing:'0.14em', color:'#2E2320', lineHeight:1.05 }}>DAY {di+1}</div>
+              <div style={{ fontSize:21, fontWeight:400, letterSpacing:'0.14em', color:'#2E2320', lineHeight:1.05 }}>DAY {dayNum}</div>
               <div style={{ fontSize:10.5, fontWeight:500, letterSpacing:'0.12em', color:'#7A685F', marginTop:4 }}>{fmtDate(day.date).toUpperCase()}</div>
               {day.label && <div style={{ fontSize:11, color:'#8B2A14', marginTop:4, fontStyle:'italic' }}>{day.label}</div>}
             </div>
