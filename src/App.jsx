@@ -340,10 +340,10 @@ function ScheduleTab({ trip, update }) {
             style={{ background:'#fff',borderRadius:12,overflow:'hidden',boxShadow:'0 8px 40px rgba(0,0,0,0.5)',display:'flex',flexDirection:'column',maxWidth:'90vw',maxHeight:'90vh',minWidth:'320px' }}>
             {/* Header */}
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',background:'#3D0C02',color:'#fff' }}>
-              <span style={{ fontFamily:"'Jost','Futura PT',sans-serif",fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'60vw' }}>{preview.name}</span>
+              <span style={{ fontFamily:"var(--font-body)",fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'60vw' }}>{preview.name}</span>
               <div style={{ display:'flex',gap:8,flexShrink:0 }}>
                 <a href={srcOf(preview)} download={preview.name}
-                  style={{ fontSize:12,padding:'4px 12px',borderRadius:6,background:'rgba(255,255,255,0.15)',color:'#fff',textDecoration:'none',fontFamily:"'Jost',sans-serif",cursor:'pointer' }}>
+                  style={{ fontSize:12,padding:'4px 12px',borderRadius:6,background:'rgba(255,255,255,0.15)',color:'#fff',textDecoration:'none',fontFamily:"var(--font-body)",cursor:'pointer' }}>
                   ⬇ Download
                 </a>
                 <button onClick={closePreview}
@@ -355,7 +355,7 @@ function ScheduleTab({ trip, update }) {
               {isPdf(preview) ? (
                 <div style={{ width:'80vw',height:'75vh',maxWidth:'900px',display:'flex',flexDirection:'column',overflow:'hidden' }}>
                   {isMobile ? (
-                    <div style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px',fontFamily:"'Jost',sans-serif",color:'#6E1A10',gap:16 }}>
+                    <div style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px',fontFamily:"var(--font-body)",color:'#6E1A10',gap:16 }}>
                       <div style={{ fontSize:48 }}>📄</div>
                       <p style={{ fontSize:14,margin:0,textAlign:'center' }}>{preview.name}</p>
                       <button onClick={()=>{
@@ -379,7 +379,7 @@ function ScheduleTab({ trip, update }) {
                   ) : (
                     <object data={blobUrl || srcOf(preview)} type="application/pdf"
                       style={{ width:'100%',height:'100%',border:'none' }}>
-                      <div style={{ textAlign:'center',padding:'40px',fontFamily:"'Jost',sans-serif",color:'#6E1A10' }}>
+                      <div style={{ textAlign:'center',padding:'40px',fontFamily:"var(--font-body)",color:'#6E1A10' }}>
                         <div style={{ fontSize:32,marginBottom:12 }}>📄</div>
                         <p style={{ fontSize:14,marginBottom:16 }}>Your browser cannot preview this PDF inline.</p>
                         <a href={srcOf(preview)} download={preview.name}
@@ -394,11 +394,11 @@ function ScheduleTab({ trip, update }) {
                 <img src={srcOf(preview)} alt={preview.name}
                   style={{ maxWidth:'85vw',maxHeight:'75vh',objectFit:'contain',display:'block' }} />
               ) : (
-                <div style={{ textAlign:'center',padding:'40px',fontFamily:"'Jost',sans-serif",color:'#6E1A10' }}>
+                <div style={{ textAlign:'center',padding:'40px',fontFamily:"var(--font-body)",color:'#6E1A10' }}>
                   <div style={{ fontSize:48,marginBottom:12 }}>📄</div>
                   <p style={{ fontSize:14,marginBottom:16 }}>Preview not available for this file type.</p>
                   <a href={srcOf(preview)} download={preview.name}
-                    style={{ background:'#3D0C02',color:'#fff',padding:'8px 20px',borderRadius:8,textDecoration:'none',fontSize:13,fontFamily:"'Jost',sans-serif" }}>
+                    style={{ background:'#3D0C02',color:'#fff',padding:'8px 20px',borderRadius:8,textDecoration:'none',fontSize:13,fontFamily:"var(--font-body)" }}>
                     ⬇ Download File
                   </a>
                 </div>
@@ -770,8 +770,8 @@ function PicturesTab({ trip, update }) {
   return (
     <div style={{ padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h3 style={{ margin: 0, color: '#3D0C02', fontFamily: "'Jost','Futura PT','Century Gothic',sans-serif", fontSize: '18px', fontWeight: 600 }}>Trip Pictures</h3>
-        <label style={{ background: uploading ? '#7A5A50' : '#3D0C02', color: '#fff', padding: '8px 18px', borderRadius: '8px', cursor: uploading ? 'default' : 'pointer', fontFamily: "'Jost','Futura PT','Century Gothic',sans-serif", fontSize: '14px', fontWeight: 500 }}>
+        <h3 style={{ margin: 0, color: '#3D0C02', fontFamily: "var(--font-body)", fontSize: '18px', fontWeight: 600 }}>Trip Pictures</h3>
+        <label style={{ background: uploading ? '#7A5A50' : '#3D0C02', color: '#fff', padding: '8px 18px', borderRadius: '8px', cursor: uploading ? 'default' : 'pointer', fontFamily: "var(--font-body)", fontSize: '14px', fontWeight: 500 }}>
           {uploading ? 'Uploading…' : '+ Upload Photos'}
           <input type="file" accept="image/*" multiple disabled={uploading} onChange={addPics} style={{ display: 'none' }} />
         </label>
@@ -780,7 +780,7 @@ function PicturesTab({ trip, update }) {
       {pics.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: '#8B4A3A' }}>
           <div style={{ fontSize: '48px', marginBottom: '12px' }}>📷</div>
-          <p style={{ fontFamily: "'Jost','Futura PT','Century Gothic',sans-serif", fontSize: '15px' }}>No pictures yet. Upload some to get started!</p>
+          <p style={{ fontFamily: "var(--font-body)", fontSize: '15px' }}>No pictures yet. Upload some to get started!</p>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
@@ -790,7 +790,7 @@ function PicturesTab({ trip, update }) {
               <img src={pic.url || pic.data} alt={pic.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
               <button onClick={e => { e.stopPropagation(); delPic(pic.id); }}
                 style={{ position: 'absolute', top: '6px', right: '6px', background: 'rgba(61,12,2,0.75)', border: 'none', borderRadius: '50%', width: '24px', height: '24px', color: '#fff', cursor: 'pointer', fontSize: '14px', lineHeight: '24px', textAlign: 'center', padding: 0 }}>×</button>
-              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent,rgba(61,12,2,0.6))', padding: '18px 6px 6px', fontSize: '11px', color: '#fff', fontFamily: "'Jost','Futura PT',sans-serif", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pic.name}</div>
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent,rgba(61,12,2,0.6))', padding: '18px 6px 6px', fontSize: '11px', color: '#fff', fontFamily: "var(--font-body)", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pic.name}</div>
             </div>
           ))}
         </div>
@@ -801,7 +801,7 @@ function PicturesTab({ trip, update }) {
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div onClick={e => e.stopPropagation()} style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>
             <img src={lightbox.url || lightbox.data} alt={lightbox.name} style={{ display: 'block', maxWidth: '90vw', maxHeight: '85vh', objectFit: 'contain' }} />
-            <div style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '10px 16px', fontFamily: "'Jost','Futura PT',sans-serif", fontSize: '13px' }}>{lightbox.name}</div>
+            <div style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '10px 16px', fontFamily: "var(--font-body)", fontSize: '13px' }}>{lightbox.name}</div>
             <button onClick={() => setLightbox(null)}
               style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.6)', border: '2px solid #fff', borderRadius: '50%', width: '32px', height: '32px', color: '#fff', cursor: 'pointer', fontSize: '18px', lineHeight: '28px', textAlign: 'center', padding: 0 }}>×</button>
           </div>
@@ -1068,7 +1068,7 @@ function MainApp() {
 
 
   return (
-    <div style={{ fontFamily:"'Jost','Futura PT','Century Gothic','Trebuchet MS',sans-serif",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0",paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
+    <div style={{ fontFamily:"var(--font-body)",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0",paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
       {/* Header */}
       <div style={{ background:"#5C1A1A",borderBottom:"none",boxShadow:"0 2px 12px rgba(0,0,0,0.18)" }}>
         {/* Top bar: logo + actions */}
@@ -1261,7 +1261,7 @@ function ViewerApp({ tripId }) {
   }, [tripId, reload]);
 
   const shell = (children) => (
-    <div style={{ fontFamily:"'Jost','Futura PT','Century Gothic','Trebuchet MS',sans-serif", maxWidth:680, margin:"0 auto", minHeight:"100vh", background:"#F0EBE0", paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
+    <div style={{ fontFamily:"var(--font-body)", maxWidth:680, margin:"0 auto", minHeight:"100vh", background:"#F0EBE0", paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
       <div style={{ background:"#5C1A1A", boxShadow:"0 2px 12px rgba(0,0,0,0.18)" }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top, 0px) + 16px) 20px 14px" }}>
           <img src="/logo-travelhub.png" alt="My Travel Hub" width="34" height="34" style={{ borderRadius:8, flexShrink:0, display:"block" }} />
