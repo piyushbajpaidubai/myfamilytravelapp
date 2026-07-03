@@ -988,6 +988,7 @@ function MainApp() {
   const [activeTrip, setActiveTrip] = useState(null);
   const [activeTab, setActiveTab] = useState("Schedule");
   const [showNewTrip, setShowNewTrip] = useState(false);
+  const [showToday, setShowToday] = useState(false);
   const [headerNote, setHeaderNote] = useState('');
   const [savedStatus, setSavedStatus] = useState(''); // '', 'saving', 'saved'
   const [past, setPast] = useState([]); // undo history: recent trips snapshots (max 3)
@@ -1075,6 +1076,9 @@ function MainApp() {
 
   const trip = trips.find(t=>t.id===activeTrip);
 
+  // Local calendar date as YYYY-MM-DD, for the Today's Plan view
+  const todayISO = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; })();
+
 
   return (
     <div style={{ fontFamily:"var(--font-body)",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0",paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
@@ -1092,6 +1096,18 @@ function MainApp() {
           </div>
           {/* Actions */}
           <div style={{ display:"flex",gap:10,alignItems:"center" }}>
+            <button
+              onClick={()=>setShowToday(true)}
+              aria-label="Today's plan"
+              title="Today's plan"
+              style={{
+                width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",
+                borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",
+                color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s"
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H4V8h16v11zm-2-8h-6v6h6v-6z"/></svg>
+            </button>
             <button
               onClick={undo}
               disabled={past.length===0}
@@ -1233,6 +1249,107 @@ function MainApp() {
           </div>
         </Modal>
       )}
+
+      {showToday && (
+        <TodayView trips={trips} todayISO={todayISO} updateTrip={updateTrip} onClose={()=>setShowToday(false)} />
+      )}
+    </div>
+  );
+}
+
+// ---- Today's Plan (focused view of the current date across all trips) ----
+function TodayView({ trips, todayISO, updateTrip, onClose }) {
+  const matches = [];
+  (trips || []).forEach(trip => (trip.days || []).forEach(day => {
+    if ((day.date || '').slice(0, 10) === todayISO) matches.push({ trip, day });
+  }));
+
+  // nearest upcoming day, for the empty state
+  let upcoming = null;
+  (trips || []).forEach(trip => (trip.days || []).forEach(day => {
+    const d = (day.date || '').slice(0, 10);
+    if (d > todayISO && (!upcoming || d < upcoming.date)) upcoming = { date: d, name: trip.name };
+  }));
+
+  const cycleEvent = (tripId, dayId, evId) => updateTrip(tripId, t => ({ days:(t.days||[]).map(d => d.id===dayId
+    ? { ...d, events:(d.events||[]).map(e => e.id===evId ? { ...e, status: nextStatus(stOf(e)), done: undefined } : e) } : d) }));
+  const toggleAct = (tripId, dayId, evId, actId) => updateTrip(tripId, t => ({ days:(t.days||[]).map(d => d.id===dayId
+    ? { ...d, events:(d.events||[]).map(e => e.id===evId
+        ? { ...e, activities:(e.activities||[]).map(a => a.id===actId ? { ...a, status: stOf(a)==='done'?'todo':'done', done: undefined } : a) } : e) } : d) }));
+
+  const docLinks = (docs) => (docs && docs.length > 0) ? (
+    <div style={{ marginTop:6, display:'flex', flexDirection:'column', gap:4 }}>
+      {docs.map(doc => (
+        <a key={doc.id} href={doc.url || doc.data} target="_blank" rel="noopener noreferrer"
+          style={{ fontSize:12.5, color:'#8B2A14', textDecoration:'underline', display:'inline-flex', alignItems:'center', gap:6, wordBreak:'break-word' }}>
+          <span style={{ fontSize:14 }}>📎</span>{doc.name}
+        </a>
+      ))}
+    </div>
+  ) : null;
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:200, background:'#F0EBE0', overflowY:'auto', fontFamily:'var(--font-body)', color:'#6E1A10', paddingBottom:'env(safe-area-inset-bottom, 0px)' }}>
+      <div style={{ background:'#5C1A1A', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', position:'sticky', top:0, zIndex:5 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12, padding:'calc(env(safe-area-inset-top, 0px) + 14px) 18px 14px' }}>
+          <button onClick={onClose} aria-label="Back" style={{ width:38, height:38, borderRadius:9, border:'1.5px solid rgba(245,236,215,0.28)', background:'rgba(245,236,215,0.08)', color:'#F5ECD7', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, padding:0 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+          </button>
+          <div>
+            <div style={{ fontSize:17, fontWeight:800, color:'#F5ECD7', letterSpacing:'0.02em' }}>Today's Plan</div>
+            <div style={{ fontSize:12, color:'rgba(245,236,215,0.65)', marginTop:2 }}>{fmtDate(todayISO)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth:680, margin:'0 auto', padding:'18px 20px' }}>
+        {matches.length === 0 ? (
+          <div style={{ textAlign:'center', padding:'60px 10px', color:'#B54030' }}>
+            <div style={{ fontSize:44, marginBottom:12 }}>🗓️</div>
+            <p style={{ fontSize:15, margin:0 }}>Nothing scheduled for today.</p>
+            {upcoming && <p style={{ fontSize:13, color:'#8A7A6D', marginTop:10 }}>Next up: <strong>{fmtDate(upcoming.date)}</strong> · {upcoming.name}</p>}
+          </div>
+        ) : matches.map(({ trip, day }) => (
+          <div key={trip.id + '_' + day.id} style={{ marginBottom:24 }}>
+            <div style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:12, flexWrap:'wrap' }}>
+              <span style={{ fontSize:12, textTransform:'uppercase', letterSpacing:'0.08em', color:'#B07A4A' }}>{trip.name}</span>
+              {day.label && <span style={{ fontSize:14, fontWeight:600, color:'#6E1A10' }}>{day.label}</span>}
+            </div>
+
+            {(day.events||[]).length === 0 && <p style={{ color:'#C05040', fontSize:13 }}>No events for today.</p>}
+
+            {(day.events||[]).map(ev => (
+              <div key={ev.id} style={{ display:'flex', gap:12, padding:'12px 0', borderTop:'1px solid #E2D8C8' }}>
+                <StatusBox status={stOf(ev)} onClick={()=>cycleEvent(trip.id, day.id, ev.id)} size={18} style={{ marginTop:2 }} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                    {(ev.time || ev.endTime) && <span style={{ fontSize:12.5, fontWeight:600, color:'#B54030' }}>{ev.time}{ev.endTime?` – ${ev.endTime}`:''}</span>}
+                    <span style={{ fontSize:14, fontWeight:600, color:'#2E2320', textDecoration: stOf(ev)==='done'?'line-through':'none', opacity: stOf(ev)==='done'?0.55:1 }}>{ev.title || '(untitled)'}</span>
+                    {ev.category && <span style={{ fontSize:11, background:'#E4DED0', borderRadius:4, padding:'1px 6px', color:'#8B2A14' }}>{ev.category}</span>}
+                    <StatusBadge status={stOf(ev)} />
+                  </div>
+                  {ev.location && <div style={{ fontSize:12.5, color:'#A83020', marginTop:3 }}>📍 {ev.location}</div>}
+                  {ev.notes && <div style={{ fontSize:12.5, color:'#7A685F', marginTop:3 }}>{ev.notes}</div>}
+                  {docLinks(ev.docs)}
+                  {(ev.activities||[]).length > 0 && (
+                    <div style={{ marginTop:10, borderLeft:'2px solid #E2D8C8' }}>
+                      {(ev.activities||[]).map(act => (
+                        <div key={act.id} style={{ display:'flex', gap:10, alignItems:'flex-start', paddingLeft:8, marginBottom:8 }}>
+                          <StatusBox status={stOf(act)} onClick={()=>toggleAct(trip.id, day.id, ev.id, act.id)} size={14} style={{ marginTop:2 }} />
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <span style={{ fontSize:13.5, color:'#2E2320', textDecoration: stOf(act)==='done'?'line-through':'none', opacity: stOf(act)==='done'?0.55:1 }}>{act.text || '(activity)'}</span>
+                            {docLinks(act.docs)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
