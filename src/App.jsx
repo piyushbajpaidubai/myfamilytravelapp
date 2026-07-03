@@ -991,6 +991,8 @@ function MainApp() {
   const [showToday, setShowToday] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [profile, setProfile] = useState(() => { try { const p = localStorage.getItem('travelerProfile'); return p ? JSON.parse(p) : null; } catch(e){ return null; } });
+  const [editingDest, setEditingDest] = useState(false);
+  const [destDraft, setDestDraft] = useState('');
   const [headerNote, setHeaderNote] = useState('');
   const [savedStatus, setSavedStatus] = useState(''); // '', 'saving', 'saved'
   const [past, setPast] = useState([]); // undo history: recent trips snapshots (max 3)
@@ -1224,7 +1226,21 @@ function MainApp() {
             <div>
               <h2 style={{ margin:"0 0 2px",fontSize:18,fontWeight:700 }}>{trip.name}</h2>
               <div style={{ fontSize:13,color:"#B54030" }}>
-                {trip.destination && <span>📍 {trip.destination}</span>}
+                {editingDest ? (
+                  <input
+                    autoFocus
+                    value={destDraft}
+                    onChange={e=>setDestDraft(e.target.value)}
+                    onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); updateTrip(trip.id,{destination:destDraft.trim()}); setEditingDest(false); } if(e.key==='Escape'){ setEditingDest(false); } }}
+                    onBlur={()=>{ updateTrip(trip.id,{destination:destDraft.trim()}); setEditingDest(false); }}
+                    placeholder="e.g. Dubai - Delhi - Uttarakhand"
+                    style={{ font:'inherit', fontSize:13, padding:'2px 6px', border:'1px solid #C8B09A', borderRadius:5, background:'#F5EFE2', color:'#6E1A10', outline:'none', minWidth:220, maxWidth:'100%' }}
+                  />
+                ) : (
+                  <span onClick={()=>{ setDestDraft(trip.destination||''); setEditingDest(true); }} title="Click to edit destination" style={{ cursor:'text' }}>
+                    📍 {trip.destination || <span style={{ color:'#C0A090', fontStyle:'italic' }}>add destination</span>}
+                  </span>
+                )}
                 {trip.startDate && <span style={{ marginLeft:8 }}>🗓 {fmtDate(trip.startDate)}{trip.endDate?` → ${fmtDate(trip.endDate)}`:""}</span>}
               </div>
             </div>
