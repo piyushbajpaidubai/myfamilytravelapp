@@ -989,6 +989,8 @@ function MainApp() {
   const [activeTab, setActiveTab] = useState("Schedule");
   const [showNewTrip, setShowNewTrip] = useState(false);
   const [showToday, setShowToday] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [profile, setProfile] = useState(() => { try { const p = localStorage.getItem('travelerProfile'); return p ? JSON.parse(p) : null; } catch(e){ return null; } });
   const [headerNote, setHeaderNote] = useState('');
   const [savedStatus, setSavedStatus] = useState(''); // '', 'saving', 'saved'
   const [past, setPast] = useState([]); // undo history: recent trips snapshots (max 3)
@@ -1074,6 +1076,12 @@ function MainApp() {
     ));
   };
 
+  const saveProfile = (p) => {
+    setProfile(p);
+    try { localStorage.setItem('travelerProfile', JSON.stringify(p)); } catch(e){}
+    setShowProfile(false);
+  };
+
   const trip = trips.find(t=>t.id===activeTrip);
 
   // Local calendar date as YYYY-MM-DD, for the Today's Plan view
@@ -1141,6 +1149,16 @@ function MainApp() {
                 : savedStatus==='saving'
                   ? <span style={{ fontSize:17,lineHeight:1 }}>…</span>
                   : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>}
+            </button>
+            <button
+              onClick={()=>setShowProfile(true)}
+              aria-label="Settings and profile"
+              title="Traveler profile"
+              style={{ width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s",overflow:"hidden" }}
+            >
+              {profile && profile.pic
+                ? <img src={profile.pic} alt="" style={{ width:"100%",height:"100%",objectFit:"cover" }} />
+                : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>}
             </button>
           </div>
         </div>
@@ -1253,7 +1271,61 @@ function MainApp() {
       {showToday && (
         <TodayView trips={trips} todayISO={todayISO} updateTrip={updateTrip} onClose={()=>setShowToday(false)} />
       )}
+
+      {showProfile && (
+        <ProfileModal initial={profile} onSave={saveProfile} onClose={()=>setShowProfile(false)} />
+      )}
     </div>
+  );
+}
+
+// ---- Traveler Profile (device-local: pic, name, age, gender, city) ----
+function ProfileModal({ initial, onSave, onClose }) {
+  const [form, setForm] = useState(initial || { pic:'', name:'', age:'', gender:'', city:'' });
+  const [uploading, setUploading] = useState(false);
+
+  const pickPic = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    try {
+      const url = await uploadToStorage(file, 'profile');
+      setForm(f => ({ ...f, pic: url }));
+    } catch (err) {
+      alert('Could not upload photo. ' + err.message);
+    }
+    setUploading(false);
+  };
+
+  return (
+    <Modal title="Traveler Profile" onClose={onClose}>
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom:16 }}>
+        <label style={{ cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center' }}>
+          <div style={{ width:88, height:88, borderRadius:'50%', overflow:'hidden', background:'#E8E2D4', display:'flex', alignItems:'center', justifyContent:'center', border:'2px solid #D4BFB0' }}>
+            {form.pic
+              ? <img src={form.pic} alt="Profile" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+              : <span style={{ fontSize:34, fontWeight:600, color:'#B7A08F' }}>{(form.name||'?').trim().charAt(0).toUpperCase() || '?'}</span>}
+          </div>
+          <input type="file" accept="image/*" onChange={pickPic} style={{ display:'none' }} />
+          <span style={{ fontSize:12, color:'#8B2A14', marginTop:8 }}>{uploading ? 'Uploading…' : (form.pic ? 'Change photo' : 'Add photo')}</span>
+        </label>
+      </div>
+      <Input label="Name" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} placeholder="e.g. Piyush" />
+      <div style={{ display:'flex', gap:10 }}>
+        <div style={{ flex:1 }}>
+          <Input label="Age" type="number" value={form.age} onChange={e=>setForm({...form, age:e.target.value})} placeholder="e.g. 34" />
+        </div>
+        <div style={{ flex:1 }}>
+          <Select label="Gender" value={form.gender} onChange={e=>setForm({...form, gender:e.target.value})} options={["","Male","Female","Other","Prefer not to say"]} />
+        </div>
+      </div>
+      <Input label="City" value={form.city} onChange={e=>setForm({...form, city:e.target.value})} placeholder="e.g. Dubai" />
+      <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>
+        <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={()=>onSave(form)}>Save</Btn>
+      </div>
+    </Modal>
   );
 }
 
