@@ -415,7 +415,7 @@ function ScheduleTab({ trip, update }) {
 
   return (
     <div>
-      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
+      <div style={{ position:"sticky", top:"calc(env(safe-area-inset-top, 0px) + 51px)", zIndex:15, background:"#F0EBE0", margin:"0 -20px 16px", padding:"6px 20px 10px", display:"flex",justifyContent:"space-between",alignItems:"center" }}>
         <h2 style={{ margin:0,fontSize:16,fontWeight:700 }}>Days</h2>
         <Btn onClick={()=>setShowDay(true)}>+ Add Day</Btn>
       </div>
