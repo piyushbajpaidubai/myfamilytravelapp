@@ -22,6 +22,14 @@ const compactDate = (iso) => {
   if (!m) return { d: iso || "", mon: "" };
   return { d: parseInt(m[3], 10), mon: (MONTHS[parseInt(m[2], 10) - 1] || "").toUpperCase() };
 };
+// Trip date span derived from the itinerary (earliest → latest day); falls back to manual dates if no days yet
+const tripDateRange = (trip) => {
+  const ds = ((trip && trip.days) || []).map(d => (d.date || "").slice(0, 10)).filter(Boolean).sort();
+  return {
+    start: ds[0] || (trip && trip.startDate) || "",
+    end: ds.length ? ds[ds.length - 1] : ((trip && trip.endDate) || ""),
+  };
+};
 
 const defaultTrip = () => ({
   id: uid(), name: "", destination: "", startDate: "", endDate: "",
@@ -1088,6 +1096,7 @@ function MainApp() {
 
   // Local calendar date as YYYY-MM-DD, for the Today's Plan view
   const todayISO = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; })();
+  const dateRange = trip ? tripDateRange(trip) : { start:"", end:"" };
 
 
   return (
@@ -1241,7 +1250,7 @@ function MainApp() {
                     📍 {trip.destination || <span style={{ color:'#C0A090', fontStyle:'italic' }}>add destination</span>}
                   </span>
                 )}
-                {trip.startDate && <span style={{ marginLeft:8 }}>🗓 {fmtDate(trip.startDate)}{trip.endDate?` → ${fmtDate(trip.endDate)}`:""}</span>}
+                {dateRange.start && <span style={{ marginLeft:8 }}>🗓 {fmtDate(dateRange.start)}{dateRange.end && dateRange.end!==dateRange.start ? ` → ${fmtDate(dateRange.end)}` : ""}</span>}
               </div>
             </div>
             <Btn variant="danger" style={{ fontSize:12,padding:"4px 10px" }} onClick={()=>deleteTrip(trip.id)}>Delete Trip</Btn>
@@ -1512,7 +1521,7 @@ function ViewerApp({ tripId }) {
       <h2 style={{ margin:"0 0 2px", fontSize:19, fontWeight:700, color:"#6E1A10" }}>{trip.name || 'Trip'}</h2>
       <div style={{ fontSize:13, color:"#B54030" }}>
         {trip.destination && <span>📍 {trip.destination}</span>}
-        {trip.startDate && <span style={{ marginLeft: trip.destination?8:0 }}>🗓 {fmtDate(trip.startDate)}{trip.endDate?` → ${fmtDate(trip.endDate)}`:''}</span>}
+        {(() => { const r = tripDateRange(trip); return r.start ? <span style={{ marginLeft: trip.destination?8:0 }}>🗓 {fmtDate(r.start)}{r.end && r.end!==r.start ? ` → ${fmtDate(r.end)}` : ''}</span> : null; })()}
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", fontSize:11.5, color:"#9A8478", margin:"8px 0 18px" }}>
         <span>{updatedAt ? `Last updated ${fmtDateTime(updatedAt)}` : 'Live view'} · refreshes automatically</span>
