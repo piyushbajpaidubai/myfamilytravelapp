@@ -1103,8 +1103,8 @@ function MainApp() {
     <div style={{ fontFamily:"var(--font-body)",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0",paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
       {/* Header */}
       <div style={{ background:"#5C1A1A",borderBottom:"none",boxShadow:"0 2px 12px rgba(0,0,0,0.18)" }}>
-        {/* Top bar: logo + actions */}
-        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"calc(env(safe-area-inset-top, 0px) + 18px) 20px 10px" }}>
+        {/* Row 1: logo + title */}
+        <div style={{ display:"flex",alignItems:"center",padding:"calc(env(safe-area-inset-top, 0px) + 16px) 20px 0" }}>
           {/* Logo + Title */}
           <div style={{ display:"flex",alignItems:"center",gap:10 }}>
             <img src="/logo-travelhub.png" alt="My Travel Hub" width="38" height="38" style={{ flexShrink:0, borderRadius:9, display:"block" }} />
@@ -1113,8 +1113,9 @@ function MainApp() {
               <p style={{ margin:0,fontSize:10.5,color:"rgba(245,236,215,0.6)",letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:500,marginTop:3 }}>Your trips, all in one place</p>
             </div>
           </div>
-          {/* Actions */}
-          <div style={{ display:"flex",gap:10,alignItems:"center" }}>
+        </div>
+        {/* Row 2: action toolbar */}
+        <div style={{ display:"flex",justifyContent:"flex-end",gap:10,alignItems:"center",padding:"12px 20px 6px" }}>
             <button
               onClick={()=>setShowToday(true)}
               aria-label="Today's plan"
@@ -1172,7 +1173,6 @@ function MainApp() {
                 : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>}
             </button>
           </div>
-        </div>
         {/* Header note */}
         <div style={{ padding:"0 20px 10px" }}>
           <textarea value={headerNote} onChange={e=>setHeaderNote(e.target.value)} placeholder="Add a trip note or travel tagline…" rows={1} style={{ width:"100%",boxSizing:"border-box",resize:"none",padding:"7px 12px",border:"1px solid rgba(245,236,215,0.2)",borderRadius:7,background:"rgba(0,0,0,0.15)",color:"rgba(245,236,215,0.85)",fontSize:12,fontFamily:"inherit",outline:"none",lineHeight:1.5,letterSpacing:"0.01em" }} />
