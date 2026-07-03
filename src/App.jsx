@@ -1188,17 +1188,19 @@ function MainApp() {
             <Btn variant="danger" style={{ fontSize:12,padding:"4px 10px" }} onClick={()=>deleteTrip(trip.id)}>Delete Trip</Btn>
           </div>
 
-          {/* Inner tabs */}
-          <div style={{ display:"flex",gap:2,marginBottom:20,background:"#E8E2D4",borderRadius:8,padding:3 }}>
-            {TABS.map(tab=>(
-              <button key={tab} onClick={()=>setActiveTab(tab)}
-                style={{ flex:1,padding:"6px 0",border:"none",borderRadius:6,fontSize:13,cursor:"pointer",fontWeight:500,
-                  background: activeTab===tab?"#F0EBE0":"transparent",
-                  color: activeTab===tab?"#6E1A10":"#B54030",
-                  boxShadow: activeTab===tab?"0 1px 3px rgba(0,0,0,.08)":"none" }}>
-                {tab}
-              </button>
-            ))}
+          {/* Inner tabs — sticky so you can switch tabs while scrolled down */}
+          <div style={{ position:"sticky", top:"env(safe-area-inset-top, 0px)", zIndex:20, background:"#F0EBE0", margin:"0 -20px 20px", padding:"8px 20px", boxShadow:"0 5px 8px -5px rgba(61,12,2,0.18)" }}>
+            <div style={{ display:"flex",gap:2,background:"#E8E2D4",borderRadius:8,padding:3 }}>
+              {TABS.map(tab=>(
+                <button key={tab} onClick={()=>setActiveTab(tab)}
+                  style={{ flex:1,padding:"6px 0",border:"none",borderRadius:6,fontSize:13,cursor:"pointer",fontWeight:500,
+                    background: activeTab===tab?"#F0EBE0":"transparent",
+                    color: activeTab===tab?"#6E1A10":"#B54030",
+                    boxShadow: activeTab===tab?"0 1px 3px rgba(0,0,0,.08)":"none" }}>
+                  {tab}
+                </button>
+              ))}
+            </div>
           </div>
 
           {activeTab==="Schedule" && <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
