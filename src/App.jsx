@@ -1119,7 +1119,7 @@ function MainApp() {
           </div>
         </div>
         {/* Row 2: action toolbar */}
-        <div style={{ display:"flex",justifyContent:"flex-end",gap:8,flexWrap:"wrap",alignItems:"center",padding:"12px 20px 6px" }}>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 20px 6px" }}>
             <button onClick={()=>setShowSearch(true)} aria-label="Search" title="Search" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
               <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
             </button>
