@@ -16,6 +16,12 @@ const fmtDate = (iso) => {
   if (mi < 0 || mi > 11) return iso;
   return `${parseInt(m[3], 10)} ${MONTHS[mi]} ${m[1]}`;
 };
+// Compact day header: big day number + short month, no year → { d: 21, mon: "JUNE" }
+const compactDate = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  if (!m) return { d: iso || "", mon: "" };
+  return { d: parseInt(m[3], 10), mon: (MONTHS[parseInt(m[2], 10) - 1] || "").toUpperCase() };
+};
 
 const defaultTrip = () => ({
   id: uid(), name: "", destination: "", startDate: "", endDate: "",
@@ -431,7 +437,10 @@ function ScheduleTab({ trip, update }) {
               <span onClick={()=>toggleDayCollapse(day.id)} title={collapsedDays[day.id]?"Expand day":"Collapse day"}
                 style={{ cursor:"pointer", display:"inline-flex", alignItems:"center", gap:8 }}>
                 <span style={{ fontSize:11, color:"#8B2A14", display:"inline-block", transition:"transform .15s", transform: collapsedDays[day.id]?"rotate(-90deg)":"rotate(0deg)" }}>▼</span>
-                <strong style={{ fontSize:14 }}>{fmtDate(day.date)}</strong>
+                <span style={{ display:"inline-flex", flexDirection:"column", alignItems:"center", lineHeight:1 }}>
+                  <strong style={{ fontSize:22, fontWeight:800, color:"#8B2A14", lineHeight:1 }}>{compactDate(day.date).d}</strong>
+                  <span style={{ fontSize:10, fontWeight:700, color:"#8B2A14", letterSpacing:"0.08em", marginTop:2 }}>{compactDate(day.date).mon}</span>
+                </span>
               </span>
               <span>{Editable({ kind:'day', ids:{ dayId:day.id }, value:day.label, placeholder:'+ add label', spanStyle:{ fontSize:13, color:'#8B2A14' }, inputWidth:160 })}</span>
             </div>
