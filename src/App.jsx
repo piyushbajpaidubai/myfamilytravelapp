@@ -997,6 +997,8 @@ function MainApp() {
   const [activeTab, setActiveTab] = useState("Schedule");
   const [showNewTrip, setShowNewTrip] = useState(false);
   const [showToday, setShowToday] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showDocs, setShowDocs] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [profile, setProfile] = useState(() => { try { const p = localStorage.getItem('travelerProfile'); return p ? JSON.parse(p) : null; } catch(e){ return null; } });
   const [editingDest, setEditingDest] = useState(false);
@@ -1092,6 +1094,8 @@ function MainApp() {
     setShowProfile(false);
   };
 
+  const goToTrip = (id) => { setActiveTrip(id); setActiveTab('Schedule'); setShowSearch(false); };
+
   const trip = trips.find(t=>t.id===activeTrip);
 
   // Local calendar date as YYYY-MM-DD, for the Today's Plan view
@@ -1115,13 +1119,22 @@ function MainApp() {
           </div>
         </div>
         {/* Row 2: action toolbar */}
-        <div style={{ display:"flex",justifyContent:"flex-end",gap:10,alignItems:"center",padding:"12px 20px 6px" }}>
+        <div style={{ display:"flex",justifyContent:"flex-end",gap:8,flexWrap:"wrap",alignItems:"center",padding:"12px 20px 6px" }}>
+            <button onClick={()=>setShowSearch(true)} aria-label="Search" title="Search" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            </button>
+            <button onClick={()=>setShowDocs(true)} aria-label="Documents" title="Documents" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            </button>
+            <button onClick={()=>{ if(trip) exportTripHtml(trip); }} aria-label="Export itinerary" title="Export itinerary" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            </button>
             <button
               onClick={()=>setShowToday(true)}
               aria-label="Today's plan"
               title="Today's plan"
               style={{
-                width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",
+                width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",
                 borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",
                 color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s"
               }}
@@ -1134,7 +1147,7 @@ function MainApp() {
               title={past.length ? `Undo last change (${past.length} available)` : 'Nothing to undo'}
               aria-label="Undo"
               style={{
-                width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",
+                width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",
                 borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",
                 color:"#F5ECD7",padding:0,
                 cursor: past.length ? "pointer" : "not-allowed",
@@ -1149,7 +1162,7 @@ function MainApp() {
               aria-label={savedStatus==='saved'?'Saved':'Save'}
               title={savedStatus==='saved'?'Saved':'Save'}
               style={{
-                width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",
+                width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",
                 borderRadius:10,padding:0,cursor:"pointer",transition:"all 0.3s",
                 border: savedStatus==='saved'?'1.5px solid #7DB87A':'1.5px solid rgba(245,236,215,0.28)',
                 background: savedStatus==='saved'?'rgba(125,184,122,0.22)':'rgba(245,236,215,0.08)',
@@ -1166,7 +1179,7 @@ function MainApp() {
               onClick={()=>setShowProfile(true)}
               aria-label="Settings and profile"
               title="Traveler profile"
-              style={{ width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s",overflow:"hidden" }}
+              style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s",overflow:"hidden" }}
             >
               {profile && profile.pic
                 ? <img src={profile.pic} alt="" style={{ width:"100%",height:"100%",objectFit:"cover" }} />
@@ -1299,6 +1312,14 @@ function MainApp() {
 
       {showProfile && (
         <ProfileModal initial={profile} onSave={saveProfile} onClose={()=>setShowProfile(false)} />
+      )}
+
+      {showSearch && (
+        <SearchModal trips={trips} onGoToTrip={goToTrip} onClose={()=>setShowSearch(false)} />
+      )}
+
+      {showDocs && trip && (
+        <DocsView trip={trip} onClose={()=>setShowDocs(false)} />
       )}
     </div>
   );
@@ -1449,6 +1470,122 @@ function TodayView({ trips, todayISO, updateTrip, onClose }) {
       </div>
     </div>
   );
+}
+
+// ---- Global search across all trips ----
+function SearchModal({ trips, onGoToTrip, onClose }) {
+  const [q, setQ] = useState('');
+  const query = q.trim().toLowerCase();
+  const results = [];
+  if (query) {
+    (trips || []).forEach(trip => {
+      const add = (label, sub) => results.push({ tripId: trip.id, label, sub });
+      if ((trip.name || '').toLowerCase().includes(query)) add(trip.name, 'Trip');
+      if ((trip.destination || '').toLowerCase().includes(query)) add(trip.destination, `${trip.name} · destination`);
+      (trip.days || []).forEach(day => {
+        if ((day.label || '').toLowerCase().includes(query)) add(day.label, `${trip.name} · ${fmtDate(day.date)}`);
+        (day.events || []).forEach(ev => {
+          if ([ev.title, ev.location, ev.notes, ev.category].filter(Boolean).join(' ').toLowerCase().includes(query)) add(ev.title || '(untitled)', `${trip.name} · ${fmtDate(day.date)}`);
+          (ev.docs || []).forEach(d => { if ((d.name || '').toLowerCase().includes(query)) add(d.name, `${trip.name} · ${fmtDate(day.date)} · attachment`); });
+          (ev.activities || []).forEach(a => {
+            if ((a.text || '').toLowerCase().includes(query)) add(a.text, `${trip.name} · ${fmtDate(day.date)} · activity`);
+            (a.docs || []).forEach(d => { if ((d.name || '').toLowerCase().includes(query)) add(d.name, `${trip.name} · attachment`); });
+          });
+        });
+      });
+    });
+  }
+  return (
+    <Modal title="Search" onClose={onClose}>
+      <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search trips, events, activities, docs…"
+        style={{ width:'100%', padding:'9px 12px', border:'1px solid #C8B09A', borderRadius:8, fontSize:14, boxSizing:'border-box', marginBottom:12, background:'#F5EFE2', color:'#6E1A10', outline:'none' }} />
+      <div style={{ maxHeight:'50vh', overflowY:'auto' }}>
+        {query && results.length === 0 && <p style={{ color:'#C05040', fontSize:13, textAlign:'center', padding:'14px' }}>No matches found.</p>}
+        {results.slice(0, 60).map((r, i) => (
+          <div key={i} onClick={() => onGoToTrip(r.tripId)}
+            style={{ padding:'8px 6px', borderBottom:'1px solid #EEE7DA', cursor:'pointer' }}>
+            <div style={{ fontSize:13.5, color:'#3D0C02' }}>{r.label}</div>
+            <div style={{ fontSize:11.5, color:'#9A8478' }}>{r.sub}</div>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+// ---- Documents repository: every attachment across a trip ----
+function DocsView({ trip, onClose }) {
+  const items = [];
+  (trip.days || []).forEach(day => (day.events || []).forEach(ev => {
+    (ev.docs || []).forEach(d => items.push({ doc: d, ctx: `${fmtDate(day.date)} · ${ev.title || 'event'}` }));
+    (ev.activities || []).forEach(a => (a.docs || []).forEach(d => items.push({ doc: d, ctx: `${fmtDate(day.date)} · ${ev.title || 'event'} · ${a.text || 'activity'}` })));
+  }));
+  const fmtSize = b => (b == null ? '' : b < 1024 ? b + 'B' : b < 1048576 ? (b / 1024).toFixed(1) + 'KB' : (b / 1048576).toFixed(1) + 'MB');
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:200, background:'#F0EBE0', overflowY:'auto', fontFamily:'var(--font-body)', color:'#6E1A10', paddingBottom:'env(safe-area-inset-bottom, 0px)' }}>
+      <div style={{ background:'#5C1A1A', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', position:'sticky', top:0, zIndex:5 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12, padding:'calc(env(safe-area-inset-top, 0px) + 14px) 18px 14px' }}>
+          <button onClick={onClose} aria-label="Back" style={{ width:38, height:38, borderRadius:9, border:'1.5px solid rgba(245,236,215,0.28)', background:'rgba(245,236,215,0.08)', color:'#F5ECD7', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, padding:0 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+          </button>
+          <div>
+            <div style={{ fontSize:17, fontWeight:800, color:'#F5ECD7', letterSpacing:'0.02em' }}>Documents</div>
+            <div style={{ fontSize:12, color:'rgba(245,236,215,0.65)', marginTop:2 }}>{trip.name} · {items.length} file{items.length===1?'':'s'}</div>
+          </div>
+        </div>
+      </div>
+      <div style={{ maxWidth:680, margin:'0 auto', padding:'16px 20px' }}>
+        {items.length === 0 ? (
+          <div style={{ textAlign:'center', padding:'60px 10px', color:'#B54030' }}>
+            <div style={{ fontSize:44, marginBottom:12 }}>📎</div>
+            <p style={{ fontSize:15, margin:0 }}>No documents attached yet.</p>
+            <p style={{ fontSize:13, color:'#8A7A6D', marginTop:8 }}>Attach files to events or activities in the Schedule tab.</p>
+          </div>
+        ) : items.map((it, i) => (
+          <a key={i} href={it.doc.url || it.doc.data} target="_blank" rel="noopener noreferrer"
+            style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 4px', borderBottom:'1px solid #E2D8C8', textDecoration:'none', color:'inherit' }}>
+            <span style={{ fontSize:20 }}>📎</span>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:13.5, color:'#8B2A14', textDecoration:'underline', wordBreak:'break-word' }}>{it.doc.name}</div>
+              <div style={{ fontSize:11.5, color:'#9A8478' }}>{it.ctx}</div>
+            </div>
+            {it.doc.size != null && <span style={{ fontSize:11.5, color:'#B07A4A', flexShrink:0 }}>{fmtSize(it.doc.size)}</span>}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---- Export a trip's itinerary as a downloadable HTML file ----
+function exportTripHtml(trip) {
+  const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));
+  let body = '';
+  (trip.days || []).forEach(day => {
+    body += `<h2>${esc(fmtDate(day.date))}${day.label ? ` — ${esc(day.label)}` : ''}</h2>`;
+    (day.events || []).forEach(ev => {
+      const tm = ev.time ? `${esc(ev.time)}${ev.endTime ? '–' + esc(ev.endTime) : ''} ` : '';
+      body += `<div class="ev"><strong>${tm}${esc(ev.title || '')}</strong> <span class="cat">${esc(ev.category || '')}</span> <span class="st">[${esc(stOf(ev))}]</span>`;
+      if (ev.location) body += `<div class="loc">📍 ${esc(ev.location)}</div>`;
+      if (ev.notes) body += `<div class="note">${esc(ev.notes)}</div>`;
+      (ev.activities || []).forEach(a => { body += `<div class="act">• ${esc(a.text || '')} <span class="st">[${esc(stOf(a))}]</span></div>`; });
+      body += `</div>`;
+    });
+  });
+  const r = tripDateRange(trip);
+  const dateLine = r.start ? ` &nbsp;•&nbsp; ${esc(fmtDate(r.start))}${r.end && r.end !== r.start ? ' → ' + esc(fmtDate(r.end)) : ''}` : '';
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(trip.name)} — itinerary</title>` +
+    `<style>body{font-family:Arial,Helvetica,sans-serif;color:#3D0C02;max-width:720px;margin:24px auto;padding:0 18px;line-height:1.5;}h1{color:#6E1A10;margin-bottom:4px;}h2{color:#8B2A14;border-bottom:1px solid #D4BFB0;padding-bottom:4px;margin-top:26px;font-size:18px;}.ev{margin:10px 0 14px;padding-left:10px;border-left:3px solid #D4BFB0;}.cat{color:#8B2A14;font-size:12px;}.st{color:#999;font-size:11px;text-transform:uppercase;}.loc{color:#A83020;font-size:13px;}.note{color:#6b5a52;font-size:13px;}.act{margin-left:14px;color:#555;font-size:13px;}.sub{color:#8B5A3C;}</style>` +
+    `</head><body><h1>${esc(trip.name || 'Trip')}</h1><p class="sub">${esc(trip.destination || '')}${dateLine}</p>${body || '<p>No days scheduled.</p>'}</body></html>`;
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(trip.name || 'trip').replace(/[^a-z0-9]+/gi, '_')}-itinerary.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 // ---- Read-only Viewer (shared status link: ?view=<tripId>) ----
