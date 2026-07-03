@@ -415,7 +415,7 @@ function ScheduleTab({ trip, update }) {
 
   return (
     <div>
-      <div style={{ position:"sticky", top:"calc(env(safe-area-inset-top, 0px) + 51px)", zIndex:15, background:"#F0EBE0", margin:"0 -20px 16px", padding:"6px 20px 10px", display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+      <div style={{ position:"sticky", top:"calc(env(safe-area-inset-top, 0px) + 51px)", zIndex:15, background:"#F0EBE0", margin:"0 -20px 16px", padding:"6px 20px 10px", borderBottom:"2px solid #C4A882", display:"flex",justifyContent:"space-between",alignItems:"center" }}>
         <h2 style={{ margin:0,fontSize:16,fontWeight:700 }}>Days</h2>
         <Btn onClick={()=>setShowDay(true)}>+ Add Day</Btn>
       </div>
@@ -1189,7 +1189,7 @@ function MainApp() {
           </div>
 
           {/* Inner tabs — sticky so you can switch tabs while scrolled down */}
-          <div style={{ position:"sticky", top:"env(safe-area-inset-top, 0px)", zIndex:20, background:"#F0EBE0", margin:"0 -20px 20px", padding:"8px 20px", boxShadow:"0 5px 8px -5px rgba(61,12,2,0.18)" }}>
+          <div style={{ position:"sticky", top:"env(safe-area-inset-top, 0px)", zIndex:20, background:"#F0EBE0", margin:"0 -20px 20px", padding:"8px 20px", borderBottom: activeTab==="Schedule" ? "none" : "2px solid #C4A882" }}>
             <div style={{ display:"flex",gap:2,background:"#E8E2D4",borderRadius:8,padding:3 }}>
               {TABS.map(tab=>(
                 <button key={tab} onClick={()=>setActiveTab(tab)}
