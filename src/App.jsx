@@ -1157,6 +1157,75 @@ async function deleteFromStorage(url) {
   } catch(e) {}
 }
 
+// ── Traveler accounts (Supabase Auth / GoTrue REST) ──
+// Travelers sign up with a unique User ID + password. We map the User ID to a
+// synthetic internal email so no real email is needed yet; a real email / Gmail
+// sign-in can be linked to the same account later without breaking logins.
+// Opaque internal domain for User-ID logins. Must pass GoTrue's email validation;
+// 'users.mytravelhub.com' verified to validate. No mail is ever sent to it
+// (email confirmation is off), so we don't need to own the domain.
+const AUTH_DOMAIN = 'users.mytravelhub.com';
+const AUTH_KEY = 'travelerAuth';
+const normUserId = (s) => (s || '').trim().toLowerCase();
+const userIdToEmail = (userId) => normUserId(userId) + '@' + AUTH_DOMAIN;
+const loadAuth = () => { try { const a = localStorage.getItem(AUTH_KEY); return a ? JSON.parse(a) : null; } catch(e){ return null; } };
+const saveAuth = (a) => { try { if (a) localStorage.setItem(AUTH_KEY, JSON.stringify(a)); else localStorage.removeItem(AUTH_KEY); } catch(e){} };
+
+// Shape a GoTrue token/session response into the small object we persist
+const sessionFromResponse = (j, fallbackUserId, fallbackName) => {
+  const u = j.user || {};
+  const meta = u.user_metadata || {};
+  return {
+    uid: u.id || j.id || '',
+    userId: meta.user_id || normUserId(fallbackUserId),
+    name: meta.traveler_name || fallbackName || normUserId(fallbackUserId),
+    accessToken: j.access_token || '',
+    refreshToken: j.refresh_token || '',
+  };
+};
+
+async function authSignIn(userId, password, fallbackName) {
+  const res = await fetch(SUPA_URL + '/auth/v1/token?grant_type=password', {
+    method: 'POST', headers: { apikey: SUPA_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: userIdToEmail(userId), password })
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || !j.access_token) {
+    const m = j.msg || j.error_description || j.error || 'Login failed';
+    if (/not confirmed/i.test(m)) throw new Error('One-time setup needed: in Supabase → Authentication → Providers → Email, turn OFF "Confirm email", then try again.');
+    if (/invalid/i.test(m)) throw new Error('Incorrect User ID or password.');
+    throw new Error(m);
+  }
+  return sessionFromResponse(j, userId, fallbackName);
+}
+
+async function authSignUp(userId, password, name) {
+  const res = await fetch(SUPA_URL + '/auth/v1/signup', {
+    method: 'POST', headers: { apikey: SUPA_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: userIdToEmail(userId), password, data: { user_id: normUserId(userId), traveler_name: name } })
+  });
+  const j = await res.json().catch(() => ({}));
+  const code = j.error_code || '';
+  if (!res.ok) {
+    const m = j.msg || j.error_description || j.error || 'Sign up failed';
+    if (/registered|already|exists/i.test(m) || code === 'user_already_exists') throw new Error('That User ID is already taken — please choose another.');
+    if (code === 'over_email_send_rate_limit' || /confirm/i.test(m)) throw new Error('One-time setup needed: in Supabase → Authentication → Providers → Email, turn OFF "Confirm email", then try again.');
+    throw new Error(m);
+  }
+  // With email confirmation off, signup returns a session directly; otherwise log in to fetch one
+  if (j.access_token) return sessionFromResponse(j, userId, name);
+  // No session → confirmation is still on
+  throw new Error('One-time setup needed: in Supabase → Authentication → Providers → Email, turn OFF "Confirm email", then try again.');
+}
+
+async function authSignOut(session) {
+  try {
+    if (session && session.accessToken) await fetch(SUPA_URL + '/auth/v1/logout', {
+      method: 'POST', headers: { apikey: SUPA_KEY, 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.accessToken }
+    });
+  } catch(e) {}
+}
+
 function MainApp() {
   const [trips, setTrips] = useState([]);
   const [activeTrip, setActiveTrip] = useState(null);
@@ -1166,6 +1235,8 @@ function MainApp() {
   const [showSearch, setShowSearch] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
+  const [session, setSession] = useState(loadAuth);
   const [profile, setProfile] = useState(() => { try { const p = localStorage.getItem('travelerProfile'); return p ? JSON.parse(p) : null; } catch(e){ return null; } });
   const [editingDest, setEditingDest] = useState(false);
   const [destDraft, setDestDraft] = useState('');
@@ -1260,6 +1331,9 @@ function MainApp() {
     setShowProfile(false);
   };
 
+  const onAuth = (s) => { setSession(s); saveAuth(s); };
+  const onLogout = () => { authSignOut(session); setSession(null); saveAuth(null); setShowAccount(false); };
+
   const goToTrip = (id) => { setActiveTrip(id); setActiveTab('Schedule'); setShowSearch(false); };
 
   const trip = trips.find(t=>t.id===activeTrip);
@@ -1342,14 +1416,16 @@ function MainApp() {
                   : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>}
             </button>
             <button
-              onClick={()=>setShowProfile(true)}
-              aria-label="Settings and profile"
-              title="Traveler profile"
+              onClick={()=>setShowAccount(true)}
+              aria-label="Traveler account"
+              title={session ? `Signed in as ${session.name}` : "Traveler account"}
               style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s",overflow:"hidden" }}
             >
               {profile && profile.pic
                 ? <img src={profile.pic} alt="" style={{ width:"100%",height:"100%",objectFit:"cover" }} />
-                : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>}
+                : session
+                  ? <span style={{ fontSize:15, fontWeight:800, letterSpacing:0 }}>{((session.name||session.userId||'?').trim().charAt(0)||'?').toUpperCase()}</span>
+                  : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>}
             </button>
           </div>
         {/* Header note */}
@@ -1476,6 +1552,17 @@ function MainApp() {
         <TodayView trips={trips} todayISO={todayISO} updateTrip={updateTrip} onClose={()=>setShowToday(false)} />
       )}
 
+      {showAccount && (
+        <AccountModal
+          session={session}
+          profile={profile}
+          onAuth={onAuth}
+          onLogout={onLogout}
+          onOpenDetails={()=>{ setShowAccount(false); setShowProfile(true); }}
+          onClose={()=>setShowAccount(false)}
+        />
+      )}
+
       {showProfile && (
         <ProfileModal initial={profile} onSave={saveProfile} onClose={()=>setShowProfile(false)} />
       )}
@@ -1537,6 +1624,92 @@ function ProfileModal({ initial, onSave, onClose }) {
         <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
         <Btn onClick={()=>onSave(form)}>Save</Btn>
       </div>
+    </Modal>
+  );
+}
+
+// ---- Traveler account: sign up / log in, and the logged-in card ----
+function AccountModal({ session, profile, onAuth, onLogout, onOpenDetails, onClose }) {
+  const [mode, setMode] = useState('login'); // 'login' | 'signup'
+  const [userId, setUserId] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  // ── Logged-in view ──
+  if (session) {
+    const initial = ((session.name || session.userId || '?').trim().charAt(0) || '?').toUpperCase();
+    return (
+      <Modal title="Traveler Account" onClose={onClose}>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom:18 }}>
+          <div style={{ width:80, height:80, borderRadius:'50%', overflow:'hidden', background:'#E8E2D4', display:'flex', alignItems:'center', justifyContent:'center', border:'2px solid #D4BFB0', marginBottom:10 }}>
+            {profile && profile.pic
+              ? <img src={profile.pic} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+              : <span style={{ fontSize:32, fontWeight:700, color:'#B7A08F' }}>{initial}</span>}
+          </div>
+          <div style={{ fontSize:18, fontWeight:700, color:'#6E1A10' }}>{session.name}</div>
+          <div style={{ fontSize:13, color:'#9A8478', marginTop:2 }}>@{session.userId}</div>
+        </div>
+        <Btn variant="soft" style={{ width:'100%', marginBottom:8 }} onClick={onOpenDetails}>Edit profile details</Btn>
+        <Btn variant="ghost" style={{ width:'100%' }} onClick={onLogout}>Log out</Btn>
+        <p style={{ fontSize:11.5, color:'#9A8478', textAlign:'center', marginTop:14, lineHeight:1.5 }}>
+          Coming soon: add travelers to a trip and follow everyone's live status. Gmail sign-in &amp; more profile details arrive in a later update.
+        </p>
+      </Modal>
+    );
+  }
+
+  // ── Signed-out view: log in / sign up ──
+  const submit = async () => {
+    setErr('');
+    const uidv = userId.trim();
+    if (!/^[a-zA-Z0-9._-]{3,20}$/.test(uidv)) { setErr('User ID must be 3–20 characters — letters, numbers, and . _ - only.'); return; }
+    if (password.length < 6) { setErr('Password must be at least 6 characters.'); return; }
+    if (mode === 'signup' && !name.trim()) { setErr('Please enter the traveler name.'); return; }
+    setBusy(true);
+    try {
+      const s = mode === 'signup' ? await authSignUp(uidv, password, name.trim()) : await authSignIn(uidv, password);
+      onAuth(s);
+    } catch(e) { setErr(e.message || 'Something went wrong.'); }
+    setBusy(false);
+  };
+
+  const tabBtn = (m, label) => (
+    <button onClick={()=>{ setMode(m); setErr(''); }}
+      style={{ flex:1, padding:'8px 0', border:'none', cursor:'pointer', fontSize:13, fontWeight:700,
+        background: mode===m ? '#6E1A10' : 'transparent', color: mode===m ? '#fff' : '#8B2A14',
+        borderRadius:7, transition:'all .15s' }}>{label}</button>
+  );
+
+  return (
+    <Modal title={mode==='signup' ? 'Create Traveler Account' : 'Traveler Log In'} onClose={onClose}>
+      <div style={{ display:'flex', gap:4, background:'#E8E2D4', borderRadius:9, padding:4, marginBottom:16 }}>
+        {tabBtn('login', 'Log In')}
+        {tabBtn('signup', 'Sign Up')}
+      </div>
+
+      {mode === 'signup' && (
+        <Input label="Traveler Name *" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Piyush Bajpai" />
+      )}
+      <Input label="User ID *" value={userId}
+        autoCapitalize="none" autoCorrect="off" spellCheck={false}
+        onChange={e=>setUserId(e.target.value)}
+        onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
+        placeholder="unique handle, e.g. piyush_b" />
+      <Input label="Password *" type="password" value={password}
+        onChange={e=>setPassword(e.target.value)}
+        onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
+        placeholder={mode==='signup' ? 'at least 6 characters' : '••••••'} />
+
+      {err && <div style={{ fontSize:12.5, color:'#B3261E', background:'#FBEAE7', border:'1px solid #F1C6C0', borderRadius:7, padding:'8px 10px', marginBottom:12 }}>{err}</div>}
+
+      <Btn onClick={submit} disabled={busy} style={{ width:'100%', opacity: busy?0.6:1 }}>
+        {busy ? 'Please wait…' : (mode==='signup' ? 'Create Account' : 'Log In')}
+      </Btn>
+      <p style={{ fontSize:11.5, color:'#9A8478', textAlign:'center', marginTop:12, lineHeight:1.5 }}>
+        {mode==='signup' ? 'Just a User ID &amp; password for now — no email needed.' : 'New here? Tap “Sign Up”.'}
+      </p>
     </Modal>
   );
 }
