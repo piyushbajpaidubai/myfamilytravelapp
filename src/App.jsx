@@ -160,8 +160,7 @@ function ScheduleTab({ trip, update }) {
   const [showDay, setShowDay] = useState(false);
   const [collapsedDays, setCollapsedDays] = useState({}); // { [dayId]: true } when collapsed
   const toggleDayCollapse = (id) => setCollapsedDays(c => ({ ...c, [id]: !c[id] }));
-  const [showEvent, setShowEvent] = useState(null); // dayId (or '__edit__' when editing a span)
-  const [editSpanId, setEditSpanId] = useState(null); // span being edited, if any
+  const [showEvent, setShowEvent] = useState(null); // dayId when the add modal is open
   const [dayForm, setDayForm] = useState({ date:"", label:"" });
   // evForm covers both single-day activities (time/endTime/category) and multi-day spans (startDate/endDate/…)
   // duration = 'single' | 'multi' decides which; type only matters for multi-day spans
@@ -251,16 +250,9 @@ function ScheduleTab({ trip, update }) {
   const delDay = (id) => update({ days: (trip.days||[]).filter(d=>d.id!==id) });
 
   const blankForm = { duration:"single", type:"Accommodation", time:"", endTime:"", title:"", location:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" };
-  const closeModal = () => { setShowEvent(null); setEditSpanId(null); setEvForm(blankForm); };
+  const closeModal = () => { setShowEvent(null); setEvForm(blankForm); };
   // Open "add" modal from a day; prefill span dates to that day
-  const openAddEvent = (day) => { setEditSpanId(null); setEvForm({ ...blankForm, startDate:day.date, endDate:day.date }); setShowEvent(day.id); };
-  // Open "edit" modal for an existing span
-  const openEditSpan = (s) => {
-    // normalise any legacy type (Flight/Train/Car) onto the current option set
-    const t = SPAN_TYPE_OPTIONS.includes(s.type) ? s.type : ((SPAN_TYPES[s.type]||{}).kind === 'travel' ? 'Travel' : 'Other');
-    setEvForm({ duration:"multi", type:t, time:"", endTime:"", title:s.title||"", location:s.location||"", category:"Sightseeing", notes:s.notes||"", startDate:s.startDate||"", startTime:s.startTime||"", endDate:s.endDate||"", spanEndTime:s.endTime||"" });
-    setEditSpanId(s.id); setShowEvent('__edit__');
-  };
+  const openAddEvent = (day) => { setEvForm({ ...blankForm, startDate:day.date, endDate:day.date }); setShowEvent(day.id); };
 
   const addEvent = (dayId) => {
     if (evForm.duration === 'multi') { submitSpan(); return; }
@@ -282,11 +274,7 @@ function ScheduleTab({ trip, update }) {
     if (!f.title || !f.startDate || !f.endDate) { alert('Please fill in Title, start date and end date.'); return; }
     if (f.endDate < f.startDate) { alert('The end date must be on or after the start date.'); return; }
     const fields = { type:f.type, title:f.title, location:f.location, notes:f.notes, startDate:f.startDate, startTime:f.startTime, endDate:f.endDate, endTime:f.spanEndTime };
-    if (editSpanId) {
-      update({ spans:(trip.spans||[]).map(s => s.id===editSpanId ? { ...s, ...fields } : s) });
-    } else {
-      update({ spans:[...(trip.spans||[]), { id:uid(), ...fields, status:'todo', docs:[] }] });
-    }
+    update({ spans:[...(trip.spans||[]), { id:uid(), ...fields, dayStatus:{}, docs:[] }] });
     closeModal();
   };
   const delSpan = (id) => {
@@ -584,7 +572,6 @@ function ScheduleTab({ trip, update }) {
                     <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
                     <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachSpanDoc(s.id,e.target.files[0]); e.target.value=''; }} />
                   </label>
-                  <button title="Edit" onClick={()=>openEditSpan(s)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',fontSize:13,lineHeight:1,flexShrink:0 }}>✎</button>
                   <button title="Delete" onClick={()=>delSpan(s.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
                 </div>
               </div>
@@ -702,7 +689,7 @@ function ScheduleTab({ trip, update }) {
       )}
 
       {showEvent && (
-        <Modal title={editSpanId ? `Edit ${evForm.type}` : 'Add to Itinerary'} onClose={closeModal}>
+        <Modal title="Add to Itinerary" onClose={closeModal}>
           <Select label="Duration" value={evForm.duration}
             onChange={e=>setEvForm({...evForm, duration:e.target.value})}
             options={["single","multi"]}
@@ -732,7 +719,7 @@ function ScheduleTab({ trip, update }) {
                 </>
               ); })()}
               <div style={{ display:"flex",gap:8,marginTop:8 }}>
-                <Btn onClick={submitSpan}>{editSpanId ? 'Save Changes' : 'Add'}</Btn>
+                <Btn onClick={submitSpan}>Add</Btn>
                 <Btn variant="ghost" onClick={closeModal}>Cancel</Btn>
               </div>
             </>
