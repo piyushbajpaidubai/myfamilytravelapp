@@ -60,12 +60,12 @@ function Input({ label, ...props }) {
   );
 }
 
-function Select({ label, options, ...props }) {
+function Select({ label, options, renderOption, ...props }) {
   return (
     <div style={{ marginBottom:12 }}>
       {label && <label style={{ display:"block",fontSize:12,color:"#A83020",marginBottom:4 }}>{label}</label>}
       <select {...props} style={{ width:"100%",padding:"8px 10px",border:"1px solid #C8B09A",borderRadius:7,fontSize:14,boxSizing:"border-box" }}>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
+        {options.map(o => <option key={o} value={o}>{renderOption ? renderOption(o) : o}</option>)}
       </select>
     </div>
   );
@@ -97,11 +97,14 @@ const STATUS_META = {
 // Stored at trip level in trip.spans[] and overlaid onto every day they touch.
 const SPAN_TYPES = {
   Accommodation: { icon:'🏨', kind:'stay',   startLabel:'Check-in', endLabel:'Check-out' },
+  Travel:        { icon:'✈️', kind:'travel', startLabel:'Depart',   endLabel:'Arrive' },
+  Other:         { icon:'📌', kind:'other',  startLabel:'Start',    endLabel:'End' },
+  // legacy aliases (pre-2026-07-07 data) — rendered but not offered in the picker
   Flight:        { icon:'✈️', kind:'travel', startLabel:'Depart',   endLabel:'Arrive' },
   Train:         { icon:'🚆', kind:'travel', startLabel:'Depart',   endLabel:'Arrive' },
   Car:           { icon:'🚗', kind:'travel', startLabel:'Depart',   endLabel:'Arrive' },
 };
-const isSpanType = (t) => !!SPAN_TYPES[t];
+const SPAN_TYPE_OPTIONS = ["Accommodation", "Travel", "Other"];
 // whole calendar days between two ISO dates (UTC, DST-safe)
 const dayDiff = (a, b) => Math.round((Date.parse(a) - Date.parse(b)) / 86400000);
 // trip-level spans that overlap a given ISO day (string compare works for YYYY-MM-DD)
@@ -117,7 +120,11 @@ const spanSegLabel = (s, dayISO) => {
   const withTime = (label, tm) => tm ? `${label} · ${tm}` : label;
   if (role === 'start') return withTime(meta.startLabel, s.startTime);
   if (role === 'end')   return withTime(meta.endLabel, s.endTime);
-  if (role === 'mid')   return meta.kind === 'stay' ? `Night ${dayDiff(dayISO, s.startDate) + 1}` : 'In transit';
+  if (role === 'mid') {
+    if (meta.kind === 'stay')   return `Night ${dayDiff(dayISO, s.startDate) + 1}`;
+    if (meta.kind === 'travel') return 'In transit';
+    return `Day ${dayDiff(dayISO, s.startDate) + 1}`; // 'other'
+  }
   // single calendar day
   const tm = [s.startTime, s.endTime].filter(Boolean).join('–');
   return meta.kind === 'stay' ? withTime(`${meta.startLabel} & ${meta.endLabel}`, tm) : (tm || meta.startLabel);
@@ -155,7 +162,8 @@ function ScheduleTab({ trip, update }) {
   const [editSpanId, setEditSpanId] = useState(null); // span being edited, if any
   const [dayForm, setDayForm] = useState({ date:"", label:"" });
   // evForm covers both single-day activities (time/endTime/category) and multi-day spans (startDate/endDate/…)
-  const [evForm, setEvForm] = useState({ type:"Activity", time:"", endTime:"", title:"", location:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" });
+  // duration = 'single' | 'multi' decides which; type only matters for multi-day spans
+  const [evForm, setEvForm] = useState({ duration:"single", type:"Accommodation", time:"", endTime:"", title:"", location:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" });
   // Activity state: { [eventId]: inputText }
   const [activityInput, setActivityInput] = useState({});
   // Which event is showing the activity input box
@@ -240,18 +248,20 @@ function ScheduleTab({ trip, update }) {
 
   const delDay = (id) => update({ days: (trip.days||[]).filter(d=>d.id!==id) });
 
-  const blankForm = { type:"Activity", time:"", endTime:"", title:"", location:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" };
+  const blankForm = { duration:"single", type:"Accommodation", time:"", endTime:"", title:"", location:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" };
   const closeModal = () => { setShowEvent(null); setEditSpanId(null); setEvForm(blankForm); };
   // Open "add" modal from a day; prefill span dates to that day
   const openAddEvent = (day) => { setEditSpanId(null); setEvForm({ ...blankForm, startDate:day.date, endDate:day.date }); setShowEvent(day.id); };
   // Open "edit" modal for an existing span
   const openEditSpan = (s) => {
-    setEvForm({ type:s.type, time:"", endTime:"", title:s.title||"", location:s.location||"", category:"Sightseeing", notes:s.notes||"", startDate:s.startDate||"", startTime:s.startTime||"", endDate:s.endDate||"", spanEndTime:s.endTime||"" });
+    // normalise any legacy type (Flight/Train/Car) onto the current option set
+    const t = SPAN_TYPE_OPTIONS.includes(s.type) ? s.type : ((SPAN_TYPES[s.type]||{}).kind === 'travel' ? 'Travel' : 'Other');
+    setEvForm({ duration:"multi", type:t, time:"", endTime:"", title:s.title||"", location:s.location||"", category:"Sightseeing", notes:s.notes||"", startDate:s.startDate||"", startTime:s.startTime||"", endDate:s.endDate||"", spanEndTime:s.endTime||"" });
     setEditSpanId(s.id); setShowEvent('__edit__');
   };
 
   const addEvent = (dayId) => {
-    if (isSpanType(evForm.type)) { submitSpan(); return; }
+    if (evForm.duration === 'multi') { submitSpan(); return; }
     if (!evForm.title || !evForm.time || !evForm.endTime) {
       alert('Please fill in Title, Start Time and End Time.');
       return;
@@ -688,17 +698,21 @@ function ScheduleTab({ trip, update }) {
 
       {showEvent && (
         <Modal title={editSpanId ? `Edit ${evForm.type}` : 'Add to Itinerary'} onClose={closeModal}>
-          <Select label="Type" value={evForm.type}
-            onChange={e=>setEvForm({...evForm, type:e.target.value})}
-            options={["Activity","Accommodation","Flight","Train","Car"]} />
+          <Select label="Duration" value={evForm.duration}
+            onChange={e=>setEvForm({...evForm, duration:e.target.value})}
+            options={["single","multi"]}
+            renderOption={o => o==='single' ? 'Single day' : 'Multi-day'} />
 
-          {isSpanType(evForm.type) ? (
-            // ── Multi-day span: accommodation (check-in/out) or travel (depart/arrive) ──
+          {evForm.duration === 'multi' ? (
+            // ── Multi-day span: accommodation (check-in/out) / travel (depart/arrive) / other ──
             <>
-              {(() => { const m = SPAN_TYPES[evForm.type]; return (
+              <Select label="Type" value={evForm.type}
+                onChange={e=>setEvForm({...evForm, type:e.target.value})}
+                options={SPAN_TYPE_OPTIONS} />
+              {(() => { const m = SPAN_TYPES[evForm.type] || SPAN_TYPES.Other; return (
                 <>
                   <Input label="Title *" value={evForm.title} onChange={e=>setEvForm({...evForm,title:e.target.value})}
-                    placeholder={evForm.type==='Accommodation' ? 'e.g. Taj Hotel, Rishikesh' : 'e.g. AI 865  Delhi → Dehradun'} />
+                    placeholder={evForm.type==='Accommodation' ? 'e.g. Taj Hotel, Rishikesh' : evForm.type==='Travel' ? 'e.g. AI 865  Delhi → Dehradun' : 'e.g. Yoga retreat'} />
                   <div style={{ display:"flex", gap:10 }}>
                     <div style={{ flex:1.4 }}><Input label={`${m.startLabel} date *`} type="date" value={evForm.startDate} onChange={e=>setEvForm({...evForm,startDate:e.target.value})} /></div>
                     <div style={{ flex:1 }}><Input label={`${m.startLabel} time`} type="time" value={evForm.startTime} onChange={e=>setEvForm({...evForm,startTime:e.target.value})} /></div>
@@ -708,7 +722,7 @@ function ScheduleTab({ trip, update }) {
                     <div style={{ flex:1 }}><Input label={`${m.endLabel} time`} type="time" value={evForm.spanEndTime} onChange={e=>setEvForm({...evForm,spanEndTime:e.target.value})} /></div>
                   </div>
                   <Input label="Location" value={evForm.location} onChange={e=>setEvForm({...evForm,location:e.target.value})}
-                    placeholder={evForm.type==='Accommodation' ? 'e.g. Laxman Jhula Rd' : 'e.g. Terminal 3'} />
+                    placeholder={evForm.type==='Accommodation' ? 'e.g. Laxman Jhula Rd' : evForm.type==='Travel' ? 'e.g. Terminal 3' : 'Optional'} />
                   <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Booking ref, PNR, room type…" />
                 </>
               ); })()}
