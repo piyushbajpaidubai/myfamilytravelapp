@@ -113,6 +113,8 @@ const spansOnDay = (trip, dayISO) => (trip.spans || []).filter(s =>
 // which end of the span this day represents
 const spanRole = (s, dayISO) => s.startDate === s.endDate ? 'single'
   : dayISO === s.startDate ? 'start' : dayISO === s.endDate ? 'end' : 'mid';
+// spans carry a per-day status map (dayStatus[iso]); each day the span touches is tracked independently
+const spanStOf = (s, dayISO) => (s && s.dayStatus && s.dayStatus[dayISO]) || 'todo';
 // short contextual label for a span on a given day, e.g. "Check-in · 14:00", "Night 2", "Arrive · 09:30"
 const spanSegLabel = (s, dayISO) => {
   const meta = SPAN_TYPES[s.type] || SPAN_TYPES.Accommodation;
@@ -292,8 +294,11 @@ function ScheduleTab({ trip, update }) {
     if (s && s.docs) s.docs.forEach(d => d.url && deleteFromStorage(d.url));
     update({ spans:(trip.spans||[]).filter(x=>x.id!==id) });
   };
-  const cycleSpanStatus = (id) =>
-    update(t => ({ spans:(t.spans||[]).map(s => s.id===id ? { ...s, status:nextStatus(stOf(s)), done:undefined } : s) }));
+  const cycleSpanStatus = (id, dayISO) =>
+    update(t => ({ spans:(t.spans||[]).map(s => {
+      if (s.id !== id) return s;
+      return { ...s, dayStatus: { ...(s.dayStatus||{}), [dayISO]: nextStatus(spanStOf(s, dayISO)) } };
+    }) }));
   const attachSpanDoc = async (id, file) => {
     let doc;
     try { const url = await uploadToStorage(file, 'docs'); doc = { id:uid(), name:file.name, size:file.size, type:file.type, url }; }
@@ -556,11 +561,11 @@ function ScheduleTab({ trip, update }) {
           {spansOnDay(trip, day.date).map(s => (
             <div key={s.id} style={{ padding:"9px 14px",borderTop:"1px solid #D4BFB0",background:"#F3ECDA" }}>
               <div style={{ display:"flex",alignItems:"flex-start",gap:8 }}>
-                <StatusBox status={stOf(s)} onClick={()=>cycleSpanStatus(s.id)} size={16} style={{ marginRight:0 }} />
+                <StatusBox status={spanStOf(s, day.date)} onClick={()=>cycleSpanStatus(s.id, day.date)} size={16} style={{ marginRight:0 }} />
                 <span style={{ fontSize:17,lineHeight:1.2,flexShrink:0 }}>{(SPAN_TYPES[s.type]||{}).icon}</span>
                 <div style={{ flex:1,minWidth:0 }}>
                   <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
-                    <span style={{ opacity: stOf(s)==='done'?0.55:1, textDecoration: stOf(s)==='done'?"line-through":"none" }}>
+                    <span style={{ opacity: spanStOf(s, day.date)==='done'?0.55:1, textDecoration: spanStOf(s, day.date)==='done'?"line-through":"none" }}>
                       {Editable({ kind:'span', ids:{ dayId:day.id, evId:s.id }, value:s.title, placeholder:'(untitled)', spanStyle:{ fontSize:13,fontWeight:700,color:'#6E1A10' }, inputWidth:200 })}
                     </span>
                     <span style={{ fontSize:11,background:"#E4D3B4",borderRadius:4,padding:"1px 6px",color:"#7A4A1A",fontWeight:600 }}>{s.type}</span>
@@ -574,7 +579,7 @@ function ScheduleTab({ trip, update }) {
                   <DocList docs={s.docs||[]} onAdd={(file)=>attachSpanDoc(s.id,file)} onDel={(docId)=>delSpanDoc(s.id,docId)} />
                 </div>
                 <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
-                  <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={stOf(s)} /></span>
+                  <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={spanStOf(s, day.date)} /></span>
                   <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
                     <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
                     <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachSpanDoc(s.id,e.target.files[0]); e.target.value=''; }} />
@@ -1009,11 +1014,13 @@ function StatusTab({ trip, shareUrl }) {
 
   // overall counts across the whole trip
   const total = { todo:0, active:0, done:0 };
-  days.forEach(d => (d.events||[]).forEach(ev => {
-    total[stOf(ev)]++;
-    (ev.activities||[]).forEach(a => { total[stOf(a)]++; });
-  }));
-  (trip.spans||[]).forEach(s => { total[stOf(s)]++; }); // each span counts once
+  days.forEach(d => {
+    spansOnDay(trip, d.date).forEach(s => { total[spanStOf(s, d.date)]++; }); // each span-day counts once
+    (d.events||[]).forEach(ev => {
+      total[stOf(ev)]++;
+      (ev.activities||[]).forEach(a => { total[stOf(a)]++; });
+    });
+  });
   const totalItems = total.todo + total.active + total.done;
 
   // flatten a day into timeline items (spans that touch it, then each event + activities)
@@ -1021,7 +1028,7 @@ function StatusTab({ trip, shareUrl }) {
     const out = [];
     spansOnDay(trip, day.date).forEach(s => {
       const meta = SPAN_TYPES[s.type] || {};
-      out.push({ key:s.id+'_'+day.id, status:stOf(s), time:spanSegLabel(s, day.date), name:`${meta.icon||''} ${s.title || '(untitled)'}`.trim() });
+      out.push({ key:s.id+'_'+day.id, status:spanStOf(s, day.date), time:spanSegLabel(s, day.date), name:`${meta.icon||''} ${s.title || '(untitled)'}`.trim() });
     });
     (day.events||[]).forEach(ev => {
       out.push({ key:ev.id, status:stOf(ev),
@@ -1733,7 +1740,8 @@ function TodayView({ trips, todayISO, updateTrip, onClose }) {
   const toggleAct = (tripId, dayId, evId, actId) => updateTrip(tripId, t => ({ days:(t.days||[]).map(d => d.id===dayId
     ? { ...d, events:(d.events||[]).map(e => e.id===evId
         ? { ...e, activities:(e.activities||[]).map(a => a.id===actId ? { ...a, status: stOf(a)==='done'?'todo':'done', done: undefined } : a) } : e) } : d) }));
-  const toggleSpan = (tripId, spanId) => updateTrip(tripId, t => ({ spans:(t.spans||[]).map(s => s.id===spanId ? { ...s, status:nextStatus(stOf(s)), done:undefined } : s) }));
+  const toggleSpan = (tripId, spanId, dayISO) => updateTrip(tripId, t => ({ spans:(t.spans||[]).map(s =>
+    s.id===spanId ? { ...s, dayStatus:{ ...(s.dayStatus||{}), [dayISO]: nextStatus(spanStOf(s, dayISO)) } } : s) }));
 
   const docLinks = (docs) => (docs && docs.length > 0) ? (
     <div style={{ marginTop:6, display:'flex', flexDirection:'column', gap:4 }}>
@@ -1779,13 +1787,13 @@ function TodayView({ trips, todayISO, updateTrip, onClose }) {
             {/* ── Multi-day spans (hotel / travel) active today ── */}
             {spansOnDay(trip, todayISO).map(s => (
               <div key={s.id} style={{ display:'flex', gap:12, padding:'12px 0', borderTop:'1px solid #E2D8C8', background:'#F5EEDC' }}>
-                <StatusBox status={stOf(s)} onClick={()=>toggleSpan(trip.id, s.id)} size={18} style={{ marginTop:2 }} />
+                <StatusBox status={spanStOf(s, todayISO)} onClick={()=>toggleSpan(trip.id, s.id, todayISO)} size={18} style={{ marginTop:2 }} />
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                     <span style={{ fontSize:16 }}>{(SPAN_TYPES[s.type]||{}).icon}</span>
-                    <span style={{ fontSize:14, fontWeight:700, color:'#2E2320', textDecoration: stOf(s)==='done'?'line-through':'none', opacity: stOf(s)==='done'?0.55:1 }}>{s.title || '(untitled)'}</span>
+                    <span style={{ fontSize:14, fontWeight:700, color:'#2E2320', textDecoration: spanStOf(s, todayISO)==='done'?'line-through':'none', opacity: spanStOf(s, todayISO)==='done'?0.55:1 }}>{s.title || '(untitled)'}</span>
                     <span style={{ fontSize:11, background:'#E4D3B4', borderRadius:4, padding:'1px 6px', color:'#7A4A1A', fontWeight:700 }}>{spanSegLabel(s, todayISO)}</span>
-                    <StatusBadge status={stOf(s)} />
+                    <StatusBadge status={spanStOf(s, todayISO)} />
                   </div>
                   {s.location && <div style={{ fontSize:12.5, color:'#A83020', marginTop:3 }}>📍 {s.location}</div>}
                   {s.notes && <div style={{ fontSize:12.5, color:'#7A685F', marginTop:3 }}>{s.notes}</div>}
