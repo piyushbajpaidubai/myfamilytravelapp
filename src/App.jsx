@@ -115,6 +115,12 @@ const spanRole = (s, dayISO) => s.startDate === s.endDate ? 'single'
   : dayISO === s.startDate ? 'start' : dayISO === s.endDate ? 'end' : 'mid';
 // spans carry a per-day status map (dayStatus[iso]); each day the span touches is tracked independently
 const spanStOf = (s, dayISO) => (s && s.dayStatus && s.dayStatus[dayISO]) || 'todo';
+// location text for a span: travel shows "From → To"; stay/other shows the single location
+const spanLocationText = (s) => {
+  const isTravel = (SPAN_TYPES[s.type] || {}).kind === 'travel';
+  if (isTravel && (s.from || s.to)) return `${s.from || '?'} → ${s.to || '?'}`;
+  return s.location || '';
+};
 // short contextual label for a span on a given day, e.g. "Check-in · 14:00", "Night 2", "Arrive · 09:30"
 const spanSegLabel = (s, dayISO) => {
   const meta = SPAN_TYPES[s.type] || SPAN_TYPES.Accommodation;
@@ -249,7 +255,7 @@ function ScheduleTab({ trip, update }) {
 
   const delDay = (id) => update({ days: (trip.days||[]).filter(d=>d.id!==id) });
 
-  const blankForm = { duration:"single", type:"Accommodation", time:"", endTime:"", title:"", location:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" };
+  const blankForm = { duration:"single", type:"Accommodation", time:"", endTime:"", title:"", location:"", from:"", to:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" };
   const closeModal = () => { setShowEvent(null); setEvForm(blankForm); };
   // Open "add" modal from a day; prefill span dates to that day
   const openAddEvent = (day) => { setEvForm({ ...blankForm, startDate:day.date, endDate:day.date }); setShowEvent(day.id); };
@@ -273,7 +279,8 @@ function ScheduleTab({ trip, update }) {
     const f = evForm;
     if (!f.title || !f.startDate || !f.endDate) { alert('Please fill in Title, start date and end date.'); return; }
     if (f.endDate < f.startDate) { alert('The end date must be on or after the start date.'); return; }
-    const fields = { type:f.type, title:f.title, location:f.location, notes:f.notes, startDate:f.startDate, startTime:f.startTime, endDate:f.endDate, endTime:f.spanEndTime };
+    if (f.type === 'Travel' && (!f.from || !f.to)) { alert('Please fill in the From and To locations.'); return; }
+    const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, notes:f.notes, startDate:f.startDate, startTime:f.startTime, endDate:f.endDate, endTime:f.spanEndTime };
     update({ spans:[...(trip.spans||[]), { id:uid(), ...fields, dayStatus:{}, docs:[] }] });
     closeModal();
   };
@@ -559,7 +566,7 @@ function ScheduleTab({ trip, update }) {
                     <span style={{ fontSize:11,background:"#E4D3B4",borderRadius:4,padding:"1px 6px",color:"#7A4A1A",fontWeight:600 }}>{s.type}</span>
                   </div>
                   <div style={{ fontSize:11.5,color:'#9A6A2A',fontWeight:700,marginTop:3,textTransform:'uppercase',letterSpacing:'0.04em' }}>{spanSegLabel(s, day.date)}</div>
-                  {s.location && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {s.location}</div>}
+                  {spanLocationText(s) && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {spanLocationText(s)}</div>}
                   {s.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{s.notes}</div>}
                   <div style={{ fontSize:10.5,color:'#B0967A',marginTop:3 }}>
                     {fmtDate(s.startDate)}{s.startTime?` · ${s.startTime}`:''} → {fmtDate(s.endDate)}{s.endTime?` · ${s.endTime}`:''}
@@ -713,8 +720,15 @@ function ScheduleTab({ trip, update }) {
                     <div style={{ flex:1.4 }}><Input label={`${m.endLabel} date *`} type="date" value={evForm.endDate} onChange={e=>setEvForm({...evForm,endDate:e.target.value})} /></div>
                     <div style={{ flex:1 }}><Input label={`${m.endLabel} time`} type="time" value={evForm.spanEndTime} onChange={e=>setEvForm({...evForm,spanEndTime:e.target.value})} /></div>
                   </div>
-                  <Input label="Location" value={evForm.location} onChange={e=>setEvForm({...evForm,location:e.target.value})}
-                    placeholder={evForm.type==='Accommodation' ? 'e.g. Laxman Jhula Rd' : evForm.type==='Travel' ? 'e.g. Terminal 3' : 'Optional'} />
+                  {evForm.type === 'Travel' ? (
+                    <div style={{ display:"flex", gap:10 }}>
+                      <div style={{ flex:1 }}><Input label="From *" value={evForm.from} onChange={e=>setEvForm({...evForm,from:e.target.value})} placeholder="e.g. Delhi (DEL)" /></div>
+                      <div style={{ flex:1 }}><Input label="To *" value={evForm.to} onChange={e=>setEvForm({...evForm,to:e.target.value})} placeholder="e.g. Dehradun (DED)" /></div>
+                    </div>
+                  ) : (
+                    <Input label="Location" value={evForm.location} onChange={e=>setEvForm({...evForm,location:e.target.value})}
+                      placeholder={evForm.type==='Accommodation' ? 'e.g. Laxman Jhula Rd' : 'Optional'} />
+                  )}
                   <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Booking ref, PNR, room type…" />
                 </>
               ); })()}
@@ -1782,7 +1796,7 @@ function TodayView({ trips, todayISO, updateTrip, onClose }) {
                     <span style={{ fontSize:11, background:'#E4D3B4', borderRadius:4, padding:'1px 6px', color:'#7A4A1A', fontWeight:700 }}>{spanSegLabel(s, todayISO)}</span>
                     <StatusBadge status={spanStOf(s, todayISO)} />
                   </div>
-                  {s.location && <div style={{ fontSize:12.5, color:'#A83020', marginTop:3 }}>📍 {s.location}</div>}
+                  {spanLocationText(s) && <div style={{ fontSize:12.5, color:'#A83020', marginTop:3 }}>📍 {spanLocationText(s)}</div>}
                   {s.notes && <div style={{ fontSize:12.5, color:'#7A685F', marginTop:3 }}>{s.notes}</div>}
                   {docLinks(s.docs)}
                 </div>
@@ -1847,7 +1861,7 @@ function SearchModal({ trips, onGoToTrip, onClose }) {
         });
       });
       (trip.spans || []).forEach(s => {
-        if ([s.title, s.location, s.notes, s.type].filter(Boolean).join(' ').toLowerCase().includes(query)) add(s.title || s.type, `${trip.name} · ${s.type} · ${fmtDate(s.startDate)}`);
+        if ([s.title, s.location, s.from, s.to, s.notes, s.type].filter(Boolean).join(' ').toLowerCase().includes(query)) add(s.title || s.type, `${trip.name} · ${s.type} · ${fmtDate(s.startDate)}`);
         (s.docs || []).forEach(d => { if ((d.name || '').toLowerCase().includes(query)) add(d.name, `${trip.name} · ${s.type} · attachment`); });
       });
     });
