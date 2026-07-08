@@ -34,7 +34,7 @@ const tripDateRange = (trip) => {
 const defaultTrip = () => ({
   id: uid(), name: "", destination: "", startDate: "", endDate: "",
   days: [], expenses: [], packItems: [], pictures: [],
-  budget: ""
+  budget: "", ownerId: "", members: []
 });
 
 function Modal({ title, onClose, children }) {
@@ -1204,7 +1204,9 @@ async function authSignIn(userId, password, fallbackName) {
     if (/invalid/i.test(m)) throw new Error('Incorrect User ID or password.');
     throw new Error(m);
   }
-  return sessionFromResponse(j, userId, fallbackName);
+  const s = sessionFromResponse(j, userId, fallbackName);
+  directoryUpsert(s.userId, s.name); // keep the traveler directory fresh
+  return s;
 }
 
 async function authSignUp(userId, password, name) {
@@ -1221,7 +1223,7 @@ async function authSignUp(userId, password, name) {
     throw new Error(m);
   }
   // With email confirmation off, signup returns a session directly; otherwise log in to fetch one
-  if (j.access_token) return sessionFromResponse(j, userId, name);
+  if (j.access_token) { const s = sessionFromResponse(j, userId, name); directoryUpsert(s.userId, s.name); return s; }
   // No session → confirmation is still on
   throw new Error('One-time setup needed: in Supabase → Authentication → Providers → Email, turn OFF "Confirm email", then try again.');
 }
@@ -1234,6 +1236,29 @@ async function authSignOut(session) {
   } catch(e) {}
 }
 
+// ── Traveler directory (public `profiles` table) ──
+// A lightweight lookup of User ID -> name so travelers can be found + shown when
+// added to a trip. Populated on signup/login (best-effort, never blocks auth).
+async function directoryUpsert(userId, name) {
+  try {
+    await fetch(SUPA_URL + '/rest/v1/profiles', {
+      method: 'POST',
+      headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify({ user_id: normUserId(userId), name: name || normUserId(userId) })
+    });
+  } catch(e) {}
+}
+// Look up a traveler by exact User ID; returns { userId, name } or null
+async function directoryLookup(userId) {
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/profiles?user_id=eq.' + encodeURIComponent(normUserId(userId)) + '&select=user_id,name', { headers: supaHeaders });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (rows && rows[0]) return { userId: rows[0].user_id, name: rows[0].name || rows[0].user_id };
+    return null;
+  } catch(e) { return null; }
+}
+
 function MainApp() {
   const [trips, setTrips] = useState([]);
   const [activeTrip, setActiveTrip] = useState(null);
@@ -1244,6 +1269,7 @@ function MainApp() {
   const [showDocs, setShowDocs] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
+  const [showTravelers, setShowTravelers] = useState(false);
   const [session, setSession] = useState(loadAuth);
   const [profile, setProfile] = useState(() => { try { const p = localStorage.getItem('travelerProfile'); return p ? JSON.parse(p) : null; } catch(e){ return null; } });
   const [editingDest, setEditingDest] = useState(false);
@@ -1311,6 +1337,7 @@ function MainApp() {
     if (!tripForm.name) return;
     recordHistory();
     const t = { ...defaultTrip(), ...tripForm };
+    if (session) { t.ownerId = session.userId; t.members = [{ userId: session.userId, name: session.name }]; }
     const updated = [...trips, t];
     setTrips(updated);
     setActiveTrip(t.id);
@@ -1342,9 +1369,34 @@ function MainApp() {
   const onAuth = (s) => { setSession(s); saveAuth(s); };
   const onLogout = () => { authSignOut(session); setSession(null); saveAuth(null); setShowAccount(false); };
 
+  // ── Trip travelers (members) ──
+  // Add a traveler; also stamps ownership/self onto legacy (unowned) trips on first add
+  const addMember = (tripId, member) => updateTrip(tripId, t => {
+    const owner = t.ownerId || (session ? session.userId : "");
+    let members = Array.isArray(t.members) ? [...t.members] : [];
+    if (session && owner === session.userId && !members.some(m => m.userId === session.userId)) members.push({ userId: session.userId, name: session.name });
+    if (!members.some(m => m.userId === member.userId)) members.push(member);
+    return { ownerId: owner, members };
+  });
+  const removeMember = (tripId, userId) => updateTrip(tripId, t => ({ members: (t.members || []).filter(m => m.userId !== userId) }));
+
   const goToTrip = (id) => { setActiveTrip(id); setActiveTab('Schedule'); setShowSearch(false); };
 
-  const trip = trips.find(t=>t.id===activeTrip);
+  // Trips visible to the signed-in traveler: unowned/legacy, owned by me, or shared with me.
+  // Logged out shows everything (unchanged behaviour).
+  const myId = session ? session.userId : null;
+  const visibleTrips = myId
+    ? trips.filter(t => !t.ownerId || t.ownerId === myId || (t.members || []).some(m => m.userId === myId))
+    : trips;
+
+  // Keep the active trip valid when login state changes (or the trip set changes)
+  useEffect(() => {
+    if (activeTrip && !visibleTrips.some(t => t.id === activeTrip)) {
+      setActiveTrip(visibleTrips.length ? visibleTrips[0].id : null);
+    }
+  }, [session, trips, activeTrip]); // visibleTrips derives from these
+
+  const trip = visibleTrips.find(t=>t.id===activeTrip);
 
   // Local calendar date as YYYY-MM-DD, for the Today's Plan view
   const todayISO = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; })();
@@ -1442,7 +1494,7 @@ function MainApp() {
         </div>
         {/* Trip tabs */}
         <div style={{ display:"flex",gap:2,overflowX:"auto",padding:"0 20px",paddingBottom:0 }}>
-          {trips.map(t=>(
+          {visibleTrips.map(t=>(
             <button key={t.id} onClick={()=>setActiveTrip(t.id)}
               style={{
                 padding:"8px 16px",
@@ -1515,6 +1567,14 @@ function MainApp() {
                 )}
                 {dateRange.start && <span style={{ marginLeft:8 }}>🗓 {fmtDate(dateRange.start)}{dateRange.end && dateRange.end!==dateRange.start ? ` → ${fmtDate(dateRange.end)}` : ""}</span>}
               </div>
+              {/* Travelers on this trip */}
+              <button onClick={()=>setShowTravelers(true)} title="Travelers on this trip"
+                style={{ marginTop:8, display:"inline-flex", alignItems:"center", gap:6, background:"#EDE7D9", border:"1px solid #D4BFB0", borderRadius:20, padding:"4px 12px", fontSize:12.5, color:"#6E1A10", cursor:"pointer" }}>
+                <span style={{ fontSize:14 }}>👥</span>
+                {(() => { const n = (trip.members || []).length; return n > 0
+                  ? <span><strong>{n}</strong> traveler{n===1?'':'s'}</span>
+                  : <span>Add travelers</span>; })()}
+              </button>
             </div>
             <Btn variant="danger" style={{ fontSize:12,padding:"4px 10px" }} onClick={()=>deleteTrip(trip.id)}>Delete Trip</Btn>
           </div>
@@ -1568,6 +1628,17 @@ function MainApp() {
           onLogout={onLogout}
           onOpenDetails={()=>{ setShowAccount(false); setShowProfile(true); }}
           onClose={()=>setShowAccount(false)}
+        />
+      )}
+
+      {showTravelers && trip && (
+        <TravelersModal
+          trip={trip}
+          session={session}
+          onAdd={(m)=>addMember(trip.id, m)}
+          onRemove={(uid)=>removeMember(trip.id, uid)}
+          onNeedLogin={()=>{ setShowTravelers(false); setShowAccount(true); }}
+          onClose={()=>setShowTravelers(false)}
         />
       )}
 
@@ -1718,6 +1789,79 @@ function AccountModal({ session, profile, onAuth, onLogout, onOpenDetails, onClo
       <p style={{ fontSize:11.5, color:'#9A8478', textAlign:'center', marginTop:12, lineHeight:1.5 }}>
         {mode==='signup' ? 'Just a User ID &amp; password for now — no email needed.' : 'New here? Tap “Sign Up”.'}
       </p>
+    </Modal>
+  );
+}
+
+// ---- Trip travelers: view the roster, add/remove by User ID ----
+function TravelersModal({ trip, session, onAdd, onRemove, onNeedLogin, onClose }) {
+  const [userId, setUserId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const owner = trip.ownerId || '';
+  const members = trip.members || [];
+  const myId = session ? session.userId : null;
+  const isOwner = !!session && (owner === myId || !owner); // logged-in user manages legacy (unowned) trips too
+  const initial = (s) => ((s || '?').trim().charAt(0) || '?').toUpperCase();
+
+  const add = async () => {
+    setErr('');
+    const uidv = normUserId(userId);
+    if (!uidv) return;
+    if (uidv === owner || members.some(m => m.userId === uidv)) { setErr('That traveler is already on this trip.'); return; }
+    setBusy(true);
+    const found = await directoryLookup(uidv);
+    setBusy(false);
+    if (!found) { setErr('No traveler found with User ID “' + uidv + '”. Check the spelling — they need to have created an account first.'); return; }
+    onAdd(found);
+    setUserId('');
+  };
+
+  return (
+    <Modal title="Trip Travelers" onClose={onClose}>
+      {!session && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, background:'#F5EFE2', border:'1px dashed #D4BFB0', borderRadius:9, padding:'10px 12px', marginBottom:14 }}>
+          <span style={{ fontSize:12.5, color:'#8B5A3C', flex:1, lineHeight:1.4 }}>Log in to add travelers and share this trip.</span>
+          <Btn onClick={onNeedLogin} style={{ padding:'6px 12px', fontSize:12 }}>Log in</Btn>
+        </div>
+      )}
+
+      <div style={{ marginBottom: isOwner ? 16 : 0 }}>
+        {members.length === 0 && <p style={{ fontSize:13, color:'#9A8478', margin:'4px 0 0' }}>No travelers added yet.</p>}
+        {members.map(m => (
+          <div key={m.userId} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid #E8E2D4' }}>
+            <div style={{ width:38, height:38, borderRadius:'50%', background:'#E8E2D4', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:16, fontWeight:700, color:'#B7A08F' }}>{initial(m.name || m.userId)}</div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:14, fontWeight:600, color:'#6E1A10', display:'flex', alignItems:'center', gap:6 }}>
+                {m.name || m.userId}
+                {m.userId === owner && <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.04em', color:'#8B5A3C', background:'#EFE3CC', borderRadius:4, padding:'1px 6px' }}>OWNER</span>}
+                {m.userId === myId && <span style={{ fontSize:10, fontWeight:700, color:'#3C8A3C', background:'#DCEEDC', borderRadius:4, padding:'1px 6px' }}>YOU</span>}
+              </div>
+              <div style={{ fontSize:12, color:'#9A8478' }}>@{m.userId}</div>
+            </div>
+            {isOwner && m.userId !== owner && m.userId !== myId && (
+              <button onClick={()=>onRemove(m.userId)} title="Remove traveler"
+                style={{ background:'#F5E0D8', border:'none', borderRadius:6, color:'#8B2A14', cursor:'pointer', fontSize:12, padding:'4px 10px' }}>Remove</button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {isOwner && (
+        <div style={{ borderTop: members.length ? '1px solid #E2D8C8' : 'none', paddingTop: members.length ? 14 : 0 }}>
+          <Input label="Add traveler by User ID" value={userId}
+            autoCapitalize="none" autoCorrect="off" spellCheck={false}
+            onChange={e=>setUserId(e.target.value)}
+            onKeyDown={e=>{ if(e.key==='Enter') add(); }}
+            placeholder="their unique User ID" />
+          {err && <div style={{ fontSize:12.5, color:'#B3261E', background:'#FBEAE7', border:'1px solid #F1C6C0', borderRadius:7, padding:'8px 10px', marginBottom:12 }}>{err}</div>}
+          <Btn onClick={add} disabled={busy} style={{ opacity: busy?0.6:1 }}>{busy ? 'Checking…' : 'Add traveler'}</Btn>
+        </div>
+      )}
+      {session && !isOwner && (
+        <p style={{ fontSize:12, color:'#9A8478', marginTop:4 }}>Only the trip owner can add or remove travelers.</p>
+      )}
     </Modal>
   );
 }
