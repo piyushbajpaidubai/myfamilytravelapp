@@ -82,6 +82,14 @@ function Btn({ children, variant="primary", ...props }) {
   return <button {...props} style={{ ...styles[variant],...props.style }}>{children}</button>;
 }
 
+// ── Per-traveler status (group trips) ──
+// Events/activities carry memberStatus[userId]; spans carry memberDayStatus[userId][iso].
+// Each traveler's progress is independent; missing entry means 'todo'.
+const memStOf = (item, userId) => (item && item.memberStatus && item.memberStatus[userId]) || 'todo';
+const spanMemStOf = (s, userId, iso) => (s && s.memberDayStatus && s.memberDayStatus[userId] && s.memberDayStatus[userId][iso]) || 'todo';
+// Roll several travelers' statuses into one (for the timeline node + counts): all done → done; any progress → active; else todo
+const aggStatus = (arr) => (arr.length && arr.every(x => x === 'done')) ? 'done' : (arr.some(x => x === 'active' || x === 'done')) ? 'active' : 'todo';
+
 // ── Three-state status: not started → active → done ──
 const STATUS_ORDER = ['todo','active','done'];
 // Read an item's status, tolerating legacy `done:true` data
@@ -162,7 +170,11 @@ function StatusBadge({ status='todo' }) {
 }
 
 // ---- Schedule Tab ----
-function ScheduleTab({ trip, update }) {
+function ScheduleTab({ trip, update, session }) {
+  const myId = session ? session.userId : null;
+  // The status the current user sees/toggles on an item (per-traveler when logged in, else legacy shared)
+  const evStatus = (item) => myId ? memStOf(item, myId) : stOf(item);
+  const spStatus = (s, iso) => myId ? spanMemStOf(s, myId, iso) : spanStOf(s, iso);
   const [showDay, setShowDay] = useState(false);
   const [collapsedDays, setCollapsedDays] = useState({}); // { [dayId]: true } when collapsed
   const toggleDayCollapse = (id) => setCollapsedDays(c => ({ ...c, [id]: !c[id] }));
@@ -210,15 +222,23 @@ function ScheduleTab({ trip, update }) {
     setEditing(null);
   };
 
-  // ── Cycle status: not started → active → done → not started ──
+  // ── Cycle status: not started → active → done → not started (per-traveler when logged in) ──
   const cycleEventStatus = (dayId, evId) =>
     update(t => ({ days:(t.days||[]).map(d => d.id===dayId
-      ? { ...d, events:(d.events||[]).map(e => e.id===evId ? { ...e, status: nextStatus(stOf(e)), done: undefined } : e) } : d) }));
+      ? { ...d, events:(d.events||[]).map(e => {
+          if (e.id!==evId) return e;
+          if (myId) return { ...e, memberStatus:{ ...(e.memberStatus||{}), [myId]: nextStatus(memStOf(e, myId)) } };
+          return { ...e, status: nextStatus(stOf(e)), done: undefined };
+        }) } : d) }));
   // Activities are a simple two-state toggle: not started ⇄ done (no "active")
   const cycleActivityStatus = (dayId, evId, actId) =>
     update(t => ({ days:(t.days||[]).map(d => d.id===dayId
       ? { ...d, events:(d.events||[]).map(e => e.id===evId
-          ? { ...e, activities:(e.activities||[]).map(a => a.id===actId ? { ...a, status: stOf(a)==='done' ? 'todo' : 'done', done: undefined } : a) } : e) } : d) }));
+          ? { ...e, activities:(e.activities||[]).map(a => {
+              if (a.id!==actId) return a;
+              if (myId) { const cur=memStOf(a, myId); return { ...a, memberStatus:{ ...(a.memberStatus||{}), [myId]: cur==='done'?'todo':'done' } }; }
+              return { ...a, status: stOf(a)==='done' ? 'todo' : 'done', done: undefined };
+            }) } : e) } : d) }));
 
   // Renders an editable text span; clicking turns it into an input (Enter/blur saves, Esc cancels)
   const Editable = ({ kind, ids, value, placeholder, spanStyle, inputWidth, inputType }) => {
@@ -292,6 +312,7 @@ function ScheduleTab({ trip, update }) {
   const cycleSpanStatus = (id, dayISO) =>
     update(t => ({ spans:(t.spans||[]).map(s => {
       if (s.id !== id) return s;
+      if (myId) { const mds = { ...(s.memberDayStatus||{}) }; mds[myId] = { ...(mds[myId]||{}), [dayISO]: nextStatus(spanMemStOf(s, myId, dayISO)) }; return { ...s, memberDayStatus: mds }; }
       return { ...s, dayStatus: { ...(s.dayStatus||{}), [dayISO]: nextStatus(spanStOf(s, dayISO)) } };
     }) }));
   const attachSpanDoc = async (id, file) => {
@@ -556,11 +577,11 @@ function ScheduleTab({ trip, update }) {
           {spansOnDay(trip, day.date).map(s => (
             <div key={s.id} style={{ padding:"9px 14px",borderTop:"1px solid #D4BFB0",background:"#F3ECDA" }}>
               <div style={{ display:"flex",alignItems:"flex-start",gap:8 }}>
-                <StatusBox status={spanStOf(s, day.date)} onClick={()=>cycleSpanStatus(s.id, day.date)} size={16} style={{ marginRight:0 }} />
+                <StatusBox status={spStatus(s, day.date)} onClick={()=>cycleSpanStatus(s.id, day.date)} size={16} style={{ marginRight:0 }} />
                 <span style={{ fontSize:17,lineHeight:1.2,flexShrink:0 }}>{(SPAN_TYPES[s.type]||{}).icon}</span>
                 <div style={{ flex:1,minWidth:0 }}>
                   <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
-                    <span style={{ opacity: spanStOf(s, day.date)==='done'?0.55:1, textDecoration: spanStOf(s, day.date)==='done'?"line-through":"none" }}>
+                    <span style={{ opacity: spStatus(s, day.date)==='done'?0.55:1, textDecoration: spStatus(s, day.date)==='done'?"line-through":"none" }}>
                       {Editable({ kind:'span', ids:{ dayId:day.id, evId:s.id }, value:s.title, placeholder:'(untitled)', spanStyle:{ fontSize:13,fontWeight:700,color:'#6E1A10' }, inputWidth:200 })}
                     </span>
                     <span style={{ fontSize:11,background:"#E4D3B4",borderRadius:4,padding:"1px 6px",color:"#7A4A1A",fontWeight:600 }}>{s.type}</span>
@@ -574,7 +595,7 @@ function ScheduleTab({ trip, update }) {
                   <DocList docs={s.docs||[]} onAdd={(file)=>attachSpanDoc(s.id,file)} onDel={(docId)=>delSpanDoc(s.id,docId)} />
                 </div>
                 <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
-                  <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={spanStOf(s, day.date)} /></span>
+                  <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={spStatus(s, day.date)} /></span>
                   <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
                     <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
                     <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachSpanDoc(s.id,e.target.files[0]); e.target.value=''; }} />
@@ -589,7 +610,7 @@ function ScheduleTab({ trip, update }) {
             <div key={ev.id} style={{ padding:"10px 14px",borderTop:"1px solid #D4BFB0" }}>
               {/* ── Event Header ── */}
               <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
-                <StatusBox status={stOf(ev)} onClick={()=>cycleEventStatus(day.id,ev.id)} size={16} style={{ marginRight:8 }} />
+                <StatusBox status={evStatus(ev)} onClick={()=>cycleEventStatus(day.id,ev.id)} size={16} style={{ marginRight:8 }} />
                 <div style={{ flex:1 }}>
                   <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
                     <span style={{ fontSize:12,color:"#B54030",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4 }}>
@@ -597,7 +618,7 @@ function ScheduleTab({ trip, update }) {
                       <span style={{ color:'#C8A090' }}>–</span>
                       {Editable({ kind:'endTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.endTime, placeholder:'--:--', spanStyle:{ fontSize:12,color:'#B54030',fontWeight:600 }, inputType:'time', inputWidth:108 })}
                     </span>
-                    <span style={{ opacity: stOf(ev)==='done'?0.55:1, textDecoration: stOf(ev)==='done'?"line-through":"none" }}>
+                    <span style={{ opacity: evStatus(ev)==='done'?0.55:1, textDecoration: evStatus(ev)==='done'?"line-through":"none" }}>
                       {Editable({ kind:'event', ids:{ dayId:day.id, evId:ev.id }, value:ev.title, placeholder:'(untitled)', spanStyle:{ fontSize:13, fontWeight:500 }, inputWidth:200 })}
                     </span>
                     <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#8B2A14" }}>{ev.category}</span>
@@ -607,7 +628,7 @@ function ScheduleTab({ trip, update }) {
                 </div>
                 {/* right-aligned action columns: status · attach · delete */}
                 <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
-                  <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={stOf(ev)} /></span>
+                  <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={evStatus(ev)} /></span>
                   <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
                     <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
                     <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,null,e.target.files[0]); e.target.value=''; }} />
@@ -629,9 +650,9 @@ function ScheduleTab({ trip, update }) {
                   {(ev.activities||[]).map(act => (
                     <div key={act.id} style={{ marginBottom:6 }}>
                       <div style={{ display:"flex",alignItems:"flex-start",gap:6 }}>
-                        <StatusBox status={stOf(act)} onClick={()=>cycleActivityStatus(day.id,ev.id,act.id)} size={14} style={{ marginTop:2 }} />
+                        <StatusBox status={evStatus(act)} onClick={()=>cycleActivityStatus(day.id,ev.id,act.id)} size={14} style={{ marginTop:2 }} />
                         <div style={{ flex:1 }}>
-                          <span style={{ display:"inline-block", opacity: stOf(act)==='done'?0.55:1, textDecoration: stOf(act)==='done'?"line-through":"none" }}>
+                          <span style={{ display:"inline-block", opacity: evStatus(act)==='done'?0.55:1, textDecoration: evStatus(act)==='done'?"line-through":"none" }}>
                             {Editable({ kind:'activity', ids:{ dayId:day.id, evId:ev.id, actId:act.id }, value:act.text, placeholder:'(empty)', spanStyle:{ fontSize:13, color:'#6E1A10' }, inputWidth:240 })}
                           </span>
                           {/* Docs for this activity */}
@@ -643,7 +664,7 @@ function ScheduleTab({ trip, update }) {
                         </div>
                         {/* right-aligned action columns: status · attach · delete */}
                         <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
-                          <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={stOf(act)} /></span>
+                          <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={evStatus(act)} /></span>
                           <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
                             <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
                             <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,act.id,e.target.files[0]); e.target.value=''; }} />
@@ -996,9 +1017,25 @@ function PicturesTab({ trip, update }) {
 }
 
 
-// ---- Status Tab ----  (read-only rollup of event/activity statuses per day)
-function StatusTab({ trip, shareUrl }) {
+const STATUS_WORD = { todo:'not started', active:'ongoing', done:'complete' };
+
+// Small per-traveler marker: a circle with the traveler's initial, coloured by their status
+function MemberMark({ name, userId, status, size=19 }) {
+  const s = STATUS_META[status] ? status : 'todo';
+  const filled = s === 'active' || s === 'done';
+  const bg = s === 'done' ? STATUS_META.done.ring : s === 'active' ? STATUS_META.active.ring : 'transparent';
+  const initial = ((name || userId || '?').trim().charAt(0) || '?').toUpperCase();
+  return (
+    <span title={`${name || userId}: ${STATUS_WORD[s]}`}
+      style={{ width:size, height:size, borderRadius:'50%', border:`1.5px solid ${filled ? bg : '#B0A091'}`, background:bg, color: filled ? '#fff' : '#8A7A6D', fontSize:Math.round(size*0.5), fontWeight:700, display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{initial}</span>
+  );
+}
+
+// ---- Status Tab ----  (per-traveler rollup of event/activity/span statuses per day)
+function StatusTab({ trip, session, shareUrl }) {
   const days = trip.days || [];
+  const roster = trip.members || [];
+  const perTraveler = roster.length > 0; // group trips show a marker per traveler; solo/legacy show one status
   const [copied, setCopied] = useState(false);
   const copyShare = async () => {
     try {
@@ -1010,16 +1047,16 @@ function StatusTab({ trip, shareUrl }) {
     }
   };
 
-  const STATUS_WORD = { todo:'not started', active:'ongoing', done:'complete' };
   const LINE = '#3D0C02';
+  const marksFor = (statuses) => roster.map((m, i) => ({ userId:m.userId, name:m.name, status:statuses[i] }));
 
-  // overall counts across the whole trip
+  // overall counts across the whole trip (aggregated across travelers per item)
   const total = { todo:0, active:0, done:0 };
   days.forEach(d => {
-    spansOnDay(trip, d.date).forEach(s => { total[spanStOf(s, d.date)]++; }); // each span-day counts once
+    spansOnDay(trip, d.date).forEach(s => { total[aggStatus(perTraveler ? roster.map(m => spanMemStOf(s, m.userId, d.date)) : [spanStOf(s, d.date)])]++; });
     (d.events||[]).forEach(ev => {
-      total[stOf(ev)]++;
-      (ev.activities||[]).forEach(a => { total[stOf(a)]++; });
+      total[aggStatus(perTraveler ? roster.map(m => memStOf(ev, m.userId)) : [stOf(ev)])]++;
+      (ev.activities||[]).forEach(a => { total[aggStatus(perTraveler ? roster.map(m => memStOf(a, m.userId)) : [stOf(a)])]++; });
     });
   });
   const totalItems = total.todo + total.active + total.done;
@@ -1027,16 +1064,17 @@ function StatusTab({ trip, shareUrl }) {
   // flatten a day into timeline items (spans that touch it, then each event + activities)
   const dayItems = (day) => {
     const out = [];
+    const push = (key, time, name, statuses) => out.push({ key, time, name, agg: aggStatus(statuses), marks: perTraveler ? marksFor(statuses) : null, legacy: perTraveler ? null : statuses[0] });
     spansOnDay(trip, day.date).forEach(s => {
       const meta = SPAN_TYPES[s.type] || {};
-      out.push({ key:s.id+'_'+day.id, status:spanStOf(s, day.date), time:spanSegLabel(s, day.date), name:`${meta.icon||''} ${s.title || '(untitled)'}`.trim() });
+      const statuses = perTraveler ? roster.map(m => spanMemStOf(s, m.userId, day.date)) : [spanStOf(s, day.date)];
+      push(s.id+'_'+day.id, spanSegLabel(s, day.date), `${meta.icon||''} ${s.title || '(untitled)'}`.trim(), statuses);
     });
     (day.events||[]).forEach(ev => {
-      out.push({ key:ev.id, status:stOf(ev),
-        time: ev.time ? `${ev.time}${ev.endTime ? ` to ${ev.endTime}` : ''}` : 'event',
-        name: ev.title || '(untitled)' });
+      push(ev.id, ev.time ? `${ev.time}${ev.endTime ? ` to ${ev.endTime}` : ''}` : 'event', ev.title || '(untitled)',
+        perTraveler ? roster.map(m => memStOf(ev, m.userId)) : [stOf(ev)]);
       (ev.activities||[]).forEach(a => {
-        out.push({ key:a.id, status:stOf(a), time:'activity', name:a.text || '(activity)' });
+        push(a.id, 'activity', a.text || '(activity)', perTraveler ? roster.map(m => memStOf(a, m.userId)) : [stOf(a)]);
       });
     });
     return out;
@@ -1054,12 +1092,23 @@ function StatusTab({ trip, shareUrl }) {
           <button onClick={copyShare} style={{ padding:'7px 14px', borderRadius:8, border:'none', background:'#6E1A10', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>{copied ? '✓ Link copied' : 'Share status'}</button>
         </div>
       )}
-      {/* Overall counts */}
+      {/* Overall counts (aggregated across travelers) */}
       {totalItems>0 && (
-        <div style={{ fontSize:12.5, display:'flex', gap:12, flexWrap:'wrap', marginBottom:26 }}>
+        <div style={{ fontSize:12.5, display:'flex', gap:12, flexWrap:'wrap', marginBottom: perTraveler?12:26 }}>
           <span style={{ color: STATUS_META.done.color, fontWeight:600 }}>{total.done} complete</span>
           <span style={{ color: STATUS_META.active.color, fontWeight:600 }}>{total.active} ongoing</span>
           <span style={{ color: STATUS_META.todo.color, fontWeight:600 }}>{total.todo} not started</span>
+        </div>
+      )}
+      {/* Traveler legend — which initial is who */}
+      {perTraveler && (
+        <div style={{ display:'flex', gap:14, flexWrap:'wrap', alignItems:'center', marginBottom:24, paddingBottom:14, borderBottom:'1px solid #E2D8C8' }}>
+          {roster.map(m => (
+            <span key={m.userId} style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:12, color:'#6E1A10' }}>
+              <span style={{ width:22, height:22, borderRadius:'50%', background:'#E8E2D4', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#8A6A50' }}>{((m.name||m.userId||'?').trim().charAt(0)||'?').toUpperCase()}</span>
+              {m.name || m.userId}{session && m.userId===session.userId ? ' (you)' : ''}
+            </span>
+          ))}
         </div>
       )}
 
@@ -1092,13 +1141,18 @@ function StatusTab({ trip, shareUrl }) {
                     <div style={{ position:'relative', width:16, flexShrink:0 }}>
                       {!first && <div style={{ position:'absolute', left:7, top:0, height:10, width:2, background:LINE }} />}
                       {!last && <div style={{ position:'absolute', left:7, top:10, bottom:0, width:2, background:LINE }} />}
-                      <div style={{ position:'absolute', left:2, top:4, width:12, height:12, borderRadius:'50%', boxSizing:'border-box', border:`2px solid ${LINE}`, background: it.status==='done' ? LINE : '#F0EBE0', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        {it.status==='active' && <span style={{ width:4, height:4, borderRadius:'50%', background:LINE }} />}
+                      <div style={{ position:'absolute', left:2, top:4, width:12, height:12, borderRadius:'50%', boxSizing:'border-box', border:`2px solid ${LINE}`, background: it.agg==='done' ? LINE : '#F0EBE0', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {it.agg==='active' && <span style={{ width:4, height:4, borderRadius:'50%', background:LINE }} />}
                       </div>
                     </div>
                     <div style={{ width:80, flexShrink:0, paddingBottom: last?0:28, fontSize:12, letterSpacing:'0.03em', color:'#4A3B34', textTransform:'uppercase', lineHeight:1.35 }}>{it.time}</div>
                     <div style={{ flex:1, minWidth:0, paddingBottom: last?0:28, fontSize:13.5, color:'#2E2320', lineHeight:1.4 }}>
-                      {it.name} <span style={{ color: STATUS_META[it.status].color, fontWeight:600 }}>{STATUS_WORD[it.status]}</span>
+                      <div>{it.name}</div>
+                      {it.marks
+                        ? <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginTop:5 }}>
+                            {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} />)}
+                          </div>
+                        : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
                     </div>
                   </div>
                 );
@@ -1258,6 +1312,26 @@ async function directoryLookup(userId) {
     return null;
   } catch(e) { return null; }
 }
+// Load a traveler's full profile (photo/age/gender/city) from the directory
+async function directoryGetProfile(userId) {
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/profiles?user_id=eq.' + encodeURIComponent(normUserId(userId)) + '&select=name,profile', { headers: supaHeaders });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (rows && rows[0]) return { name: rows[0].name, profile: rows[0].profile || {} };
+    return null;
+  } catch(e) { return null; }
+}
+// Save a traveler's profile (name + details) to the directory
+async function directorySaveProfile(userId, name, profileObj) {
+  try {
+    await fetch(SUPA_URL + '/rest/v1/profiles', {
+      method: 'POST',
+      headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify({ user_id: normUserId(userId), name: name || normUserId(userId), profile: profileObj || {} })
+    });
+  } catch(e) {}
+}
 
 function MainApp() {
   const [trips, setTrips] = useState([]);
@@ -1360,9 +1434,25 @@ function MainApp() {
     ));
   };
 
+  // Profile is per-account when logged in (synced via the directory), else device-local
+  useEffect(() => {
+    let cancelled = false;
+    if (session) {
+      directoryGetProfile(session.userId).then(res => {
+        if (cancelled) return;
+        const prof = (res && res.profile) ? res.profile : {};
+        setProfile({ name: (res && res.name) || session.name, ...prof });
+      });
+    } else {
+      try { const p = localStorage.getItem('travelerProfile'); setProfile(p ? JSON.parse(p) : null); } catch(e){ setProfile(null); }
+    }
+    return () => { cancelled = true; };
+  }, [session]);
+
   const saveProfile = (p) => {
     setProfile(p);
-    try { localStorage.setItem('travelerProfile', JSON.stringify(p)); } catch(e){}
+    if (session) directorySaveProfile(session.userId, p.name || session.name, p);
+    else { try { localStorage.setItem('travelerProfile', JSON.stringify(p)); } catch(e){} }
     setShowProfile(false);
   };
 
@@ -1594,10 +1684,10 @@ function MainApp() {
             </div>
           </div>
 
-          {activeTab==="Schedule" && <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
+          {activeTab==="Schedule" && <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />}
           {activeTab==="Budget" && <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
           {activeTab==="Packing" && <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
-          {activeTab==="Status" && <StatusTab trip={trip} shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}`} />}
+          {activeTab==="Status" && <StatusTab trip={trip} session={session} shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}`} />}
           {activeTab==="Pictures" && <PicturesTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
         </div>
       )}
@@ -1617,7 +1707,7 @@ function MainApp() {
       )}
 
       {showToday && (
-        <TodayView trips={trips} todayISO={todayISO} updateTrip={updateTrip} onClose={()=>setShowToday(false)} />
+        <TodayView trips={trips} todayISO={todayISO} updateTrip={updateTrip} session={session} onClose={()=>setShowToday(false)} />
       )}
 
       {showAccount && (
@@ -1867,7 +1957,10 @@ function TravelersModal({ trip, session, onAdd, onRemove, onNeedLogin, onClose }
 }
 
 // ---- Today's Plan (focused view of the current date across all trips) ----
-function TodayView({ trips, todayISO, updateTrip, onClose }) {
+function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
+  const myId = session ? session.userId : null;
+  const evStatus = (item) => myId ? memStOf(item, myId) : stOf(item);
+  const spStatus = (s, iso) => myId ? spanMemStOf(s, myId, iso) : spanStOf(s, iso);
   const matches = [];
   (trips || []).forEach(trip => (trip.days || []).forEach(day => {
     if ((day.date || '').slice(0, 10) === todayISO) matches.push({ trip, day });
@@ -1881,12 +1974,23 @@ function TodayView({ trips, todayISO, updateTrip, onClose }) {
   }));
 
   const cycleEvent = (tripId, dayId, evId) => updateTrip(tripId, t => ({ days:(t.days||[]).map(d => d.id===dayId
-    ? { ...d, events:(d.events||[]).map(e => e.id===evId ? { ...e, status: nextStatus(stOf(e)), done: undefined } : e) } : d) }));
+    ? { ...d, events:(d.events||[]).map(e => {
+        if (e.id!==evId) return e;
+        if (myId) return { ...e, memberStatus:{ ...(e.memberStatus||{}), [myId]: nextStatus(memStOf(e, myId)) } };
+        return { ...e, status: nextStatus(stOf(e)), done: undefined };
+      }) } : d) }));
   const toggleAct = (tripId, dayId, evId, actId) => updateTrip(tripId, t => ({ days:(t.days||[]).map(d => d.id===dayId
     ? { ...d, events:(d.events||[]).map(e => e.id===evId
-        ? { ...e, activities:(e.activities||[]).map(a => a.id===actId ? { ...a, status: stOf(a)==='done'?'todo':'done', done: undefined } : a) } : e) } : d) }));
-  const toggleSpan = (tripId, spanId, dayISO) => updateTrip(tripId, t => ({ spans:(t.spans||[]).map(s =>
-    s.id===spanId ? { ...s, dayStatus:{ ...(s.dayStatus||{}), [dayISO]: nextStatus(spanStOf(s, dayISO)) } } : s) }));
+        ? { ...e, activities:(e.activities||[]).map(a => {
+            if (a.id!==actId) return a;
+            if (myId) { const cur=memStOf(a, myId); return { ...a, memberStatus:{ ...(a.memberStatus||{}), [myId]: cur==='done'?'todo':'done' } }; }
+            return { ...a, status: stOf(a)==='done'?'todo':'done', done: undefined };
+          }) } : e) } : d) }));
+  const toggleSpan = (tripId, spanId, dayISO) => updateTrip(tripId, t => ({ spans:(t.spans||[]).map(s => {
+    if (s.id!==spanId) return s;
+    if (myId) { const mds={ ...(s.memberDayStatus||{}) }; mds[myId]={ ...(mds[myId]||{}), [dayISO]: nextStatus(spanMemStOf(s, myId, dayISO)) }; return { ...s, memberDayStatus: mds }; }
+    return { ...s, dayStatus:{ ...(s.dayStatus||{}), [dayISO]: nextStatus(spanStOf(s, dayISO)) } };
+  }) }));
 
   const docLinks = (docs) => (docs && docs.length > 0) ? (
     <div style={{ marginTop:6, display:'flex', flexDirection:'column', gap:4 }}>
@@ -1932,13 +2036,13 @@ function TodayView({ trips, todayISO, updateTrip, onClose }) {
             {/* ── Multi-day spans (hotel / travel) active today ── */}
             {spansOnDay(trip, todayISO).map(s => (
               <div key={s.id} style={{ display:'flex', gap:12, padding:'12px 0', borderTop:'1px solid #E2D8C8', background:'#F5EEDC' }}>
-                <StatusBox status={spanStOf(s, todayISO)} onClick={()=>toggleSpan(trip.id, s.id, todayISO)} size={18} style={{ marginTop:2 }} />
+                <StatusBox status={spStatus(s, todayISO)} onClick={()=>toggleSpan(trip.id, s.id, todayISO)} size={18} style={{ marginTop:2 }} />
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                     <span style={{ fontSize:16 }}>{(SPAN_TYPES[s.type]||{}).icon}</span>
-                    <span style={{ fontSize:14, fontWeight:700, color:'#2E2320', textDecoration: spanStOf(s, todayISO)==='done'?'line-through':'none', opacity: spanStOf(s, todayISO)==='done'?0.55:1 }}>{s.title || '(untitled)'}</span>
+                    <span style={{ fontSize:14, fontWeight:700, color:'#2E2320', textDecoration: spStatus(s, todayISO)==='done'?'line-through':'none', opacity: spStatus(s, todayISO)==='done'?0.55:1 }}>{s.title || '(untitled)'}</span>
                     <span style={{ fontSize:11, background:'#E4D3B4', borderRadius:4, padding:'1px 6px', color:'#7A4A1A', fontWeight:700 }}>{spanSegLabel(s, todayISO)}</span>
-                    <StatusBadge status={spanStOf(s, todayISO)} />
+                    <StatusBadge status={spStatus(s, todayISO)} />
                   </div>
                   {spanLocationText(s) && <div style={{ fontSize:12.5, color:'#A83020', marginTop:3 }}>📍 {spanLocationText(s)}</div>}
                   {s.notes && <div style={{ fontSize:12.5, color:'#7A685F', marginTop:3 }}>{s.notes}</div>}
@@ -1949,13 +2053,13 @@ function TodayView({ trips, todayISO, updateTrip, onClose }) {
 
             {(day.events||[]).map(ev => (
               <div key={ev.id} style={{ display:'flex', gap:12, padding:'12px 0', borderTop:'1px solid #E2D8C8' }}>
-                <StatusBox status={stOf(ev)} onClick={()=>cycleEvent(trip.id, day.id, ev.id)} size={18} style={{ marginTop:2 }} />
+                <StatusBox status={evStatus(ev)} onClick={()=>cycleEvent(trip.id, day.id, ev.id)} size={18} style={{ marginTop:2 }} />
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                     {(ev.time || ev.endTime) && <span style={{ fontSize:12.5, fontWeight:600, color:'#B54030' }}>{ev.time}{ev.endTime?` – ${ev.endTime}`:''}</span>}
-                    <span style={{ fontSize:14, fontWeight:600, color:'#2E2320', textDecoration: stOf(ev)==='done'?'line-through':'none', opacity: stOf(ev)==='done'?0.55:1 }}>{ev.title || '(untitled)'}</span>
+                    <span style={{ fontSize:14, fontWeight:600, color:'#2E2320', textDecoration: evStatus(ev)==='done'?'line-through':'none', opacity: evStatus(ev)==='done'?0.55:1 }}>{ev.title || '(untitled)'}</span>
                     {ev.category && <span style={{ fontSize:11, background:'#E4DED0', borderRadius:4, padding:'1px 6px', color:'#8B2A14' }}>{ev.category}</span>}
-                    <StatusBadge status={stOf(ev)} />
+                    <StatusBadge status={evStatus(ev)} />
                   </div>
                   {ev.location && <div style={{ fontSize:12.5, color:'#A83020', marginTop:3 }}>📍 {ev.location}</div>}
                   {ev.notes && <div style={{ fontSize:12.5, color:'#7A685F', marginTop:3 }}>{ev.notes}</div>}
@@ -1964,9 +2068,9 @@ function TodayView({ trips, todayISO, updateTrip, onClose }) {
                     <div style={{ marginTop:10, borderLeft:'2px solid #E2D8C8' }}>
                       {(ev.activities||[]).map(act => (
                         <div key={act.id} style={{ display:'flex', gap:10, alignItems:'flex-start', paddingLeft:8, marginBottom:8 }}>
-                          <StatusBox status={stOf(act)} onClick={()=>toggleAct(trip.id, day.id, ev.id, act.id)} size={14} style={{ marginTop:2 }} />
+                          <StatusBox status={evStatus(act)} onClick={()=>toggleAct(trip.id, day.id, ev.id, act.id)} size={14} style={{ marginTop:2 }} />
                           <div style={{ flex:1, minWidth:0 }}>
-                            <span style={{ fontSize:13.5, color:'#2E2320', textDecoration: stOf(act)==='done'?'line-through':'none', opacity: stOf(act)==='done'?0.55:1 }}>{act.text || '(activity)'}</span>
+                            <span style={{ fontSize:13.5, color:'#2E2320', textDecoration: evStatus(act)==='done'?'line-through':'none', opacity: evStatus(act)==='done'?0.55:1 }}>{act.text || '(activity)'}</span>
                             {docLinks(act.docs)}
                           </div>
                         </div>
