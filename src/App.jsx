@@ -1019,15 +1019,28 @@ function PicturesTab({ trip, update }) {
 
 const STATUS_WORD = { todo:'not started', active:'ongoing', done:'complete' };
 
-// Small per-traveler marker: a circle with the traveler's initial, coloured by their status
-function MemberMark({ name, userId, status, size=19 }) {
+// Per-traveler marker: the traveler's PHOTO is their identity; a coloured ring shows
+// their status, and a corner ✓ (done) / dot (ongoing) adds a shape cue so status isn't
+// conveyed by colour alone (readability for elderly / colour-blind viewers).
+function MemberMark({ name, userId, status, pic, size=24 }) {
   const s = STATUS_META[status] ? status : 'todo';
-  const filled = s === 'active' || s === 'done';
-  const bg = s === 'done' ? STATUS_META.done.ring : s === 'active' ? STATUS_META.active.ring : 'transparent';
+  const ring = STATUS_META[s].ring;
   const initial = ((name || userId || '?').trim().charAt(0) || '?').toUpperCase();
+  const badge = Math.round(size * 0.46);
   return (
-    <span title={`${name || userId}: ${STATUS_WORD[s]}`}
-      style={{ width:size, height:size, borderRadius:'50%', border:`1.5px solid ${filled ? bg : '#B0A091'}`, background:bg, color: filled ? '#fff' : '#8A7A6D', fontSize:Math.round(size*0.5), fontWeight:700, display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{initial}</span>
+    <span title={`${name || userId}: ${STATUS_WORD[s]}`} style={{ position:'relative', display:'inline-flex', width:size, height:size, flexShrink:0 }}>
+      <span style={{ width:size, height:size, borderRadius:'50%', boxSizing:'border-box', border:`2.5px solid ${ring}`, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
+        {pic
+          ? <img src={pic} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+          : <span style={{ fontSize:Math.round(size*0.42), fontWeight:700, color:'#8A6A50' }}>{initial}</span>}
+      </span>
+      {s === 'done' && (
+        <span style={{ position:'absolute', right:-3, bottom:-3, width:badge, height:badge, borderRadius:'50%', background:STATUS_META.done.ring, color:'#fff', fontSize:Math.round(badge*0.72), fontWeight:700, lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center', border:'1.5px solid #F0EBE0' }}>✓</span>
+      )}
+      {s === 'active' && (
+        <span style={{ position:'absolute', right:-2, bottom:-2, width:Math.round(badge*0.7), height:Math.round(badge*0.7), borderRadius:'50%', background:STATUS_META.active.ring, border:'1.5px solid #F0EBE0' }} />
+      )}
+    </span>
   );
 }
 
@@ -1037,6 +1050,17 @@ function StatusTab({ trip, session, shareUrl }) {
   const roster = trip.members || [];
   const perTraveler = roster.length > 0; // group trips show a marker per traveler; solo/legacy show one status
   const [copied, setCopied] = useState(false);
+
+  // Load each traveler's photo (identity) from the directory
+  const [memberPics, setMemberPics] = useState({});
+  const memberKey = roster.map(m => m.userId).join(',');
+  useEffect(() => {
+    let cancelled = false;
+    const ids = memberKey ? memberKey.split(',') : [];
+    if (ids.length) directoryGetProfiles(ids).then(map => { if (!cancelled) setMemberPics(map); });
+    return () => { cancelled = true; };
+  }, [memberKey]);
+  const picOf = (userId) => (memberPics[userId] || {}).pic || '';
   const copyShare = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
@@ -1105,7 +1129,11 @@ function StatusTab({ trip, session, shareUrl }) {
         <div style={{ display:'flex', gap:14, flexWrap:'wrap', alignItems:'center', marginBottom:24, paddingBottom:14, borderBottom:'1px solid #E2D8C8' }}>
           {roster.map(m => (
             <span key={m.userId} style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:12, color:'#6E1A10' }}>
-              <span style={{ width:22, height:22, borderRadius:'50%', background:'#E8E2D4', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#8A6A50' }}>{((m.name||m.userId||'?').trim().charAt(0)||'?').toUpperCase()}</span>
+              <span style={{ width:24, height:24, borderRadius:'50%', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#8A6A50', flexShrink:0 }}>
+                {picOf(m.userId)
+                  ? <img src={picOf(m.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                  : ((m.name||m.userId||'?').trim().charAt(0)||'?').toUpperCase()}
+              </span>
               {m.name || m.userId}{session && m.userId===session.userId ? ' (you)' : ''}
             </span>
           ))}
@@ -1149,8 +1177,8 @@ function StatusTab({ trip, session, shareUrl }) {
                     <div style={{ flex:1, minWidth:0, paddingBottom: last?0:28, fontSize:13.5, color:'#2E2320', lineHeight:1.4 }}>
                       <div>{it.name}</div>
                       {it.marks
-                        ? <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginTop:5 }}>
-                            {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} />)}
+                        ? <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
+                            {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} />)}
                           </div>
                         : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
                     </div>
@@ -1321,6 +1349,20 @@ async function directoryGetProfile(userId) {
     if (rows && rows[0]) return { name: rows[0].name, profile: rows[0].profile || {} };
     return null;
   } catch(e) { return null; }
+}
+// Fetch several travelers' name+photo at once → { userId: { name, pic } }
+async function directoryGetProfiles(userIds) {
+  try {
+    const ids = (userIds || []).map(u => normUserId(u)).filter(Boolean);
+    if (!ids.length) return {};
+    const list = ids.map(u => encodeURIComponent(u)).join(',');
+    const r = await fetch(SUPA_URL + '/rest/v1/profiles?user_id=in.(' + list + ')&select=user_id,name,profile', { headers: supaHeaders });
+    if (!r.ok) return {};
+    const rows = await r.json();
+    const map = {};
+    (rows || []).forEach(row => { map[row.user_id] = { name: row.name, pic: (row.profile && row.profile.pic) || '' }; });
+    return map;
+  } catch(e) { return {}; }
 }
 // Save a traveler's profile (name + details) to the directory
 async function directorySaveProfile(userId, name, profileObj) {
