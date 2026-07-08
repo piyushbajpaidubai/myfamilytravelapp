@@ -1492,6 +1492,34 @@ function MainApp() {
   const todayISO = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; })();
   const dateRange = trip ? tripDateRange(trip) : { start:"", end:"" };
 
+  // ── Logged-out gate: no trips until a traveler signs in ──
+  if (!session) {
+    return (
+      <div style={{ fontFamily:"var(--font-body)",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0",paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
+        <div style={{ background:"#5C1A1A", boxShadow:"0 2px 12px rgba(0,0,0,0.18)" }}>
+          <div style={{ display:"flex", alignItems:"center", padding:"calc(env(safe-area-inset-top, 0px) + 16px) 20px 16px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <img src="/logo-travelhub.png" alt="My Travel Hub" width="38" height="38" style={{ flexShrink:0, borderRadius:9, display:"block" }} />
+              <div>
+                <h1 style={{ margin:0, fontSize:20, fontWeight:800, color:"#F5ECD7", letterSpacing:"0.03em", lineHeight:1.15, textTransform:"uppercase" }}>My Travel Hub</h1>
+                <p style={{ margin:0, fontSize:10.5, color:"rgba(245,236,215,0.6)", letterSpacing:"0.1em", textTransform:"uppercase", fontWeight:500, marginTop:3 }}>Your trips, all in one place</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign:"center", padding:"72px 24px" }}>
+          <div style={{ fontSize:52, marginBottom:16 }}>🔒</div>
+          <h2 style={{ margin:"0 0 8px", fontSize:20, fontWeight:700, color:"#6E1A10" }}>Log in to view your trips</h2>
+          <p style={{ fontSize:14, color:"#8A7A6D", margin:"0 auto 24px", lineHeight:1.5, maxWidth:340 }}>Sign in with your traveler account to see and manage your trips.</p>
+          <Btn onClick={()=>setShowAccount(true)} style={{ padding:"12px 28px", fontSize:15 }}>Log In / Sign Up</Btn>
+        </div>
+        {showAccount && (
+          <AccountModal session={null} profile={null} onAuth={onAuth} onLogout={onLogout} onOpenDetails={()=>{}} onClose={()=>setShowAccount(false)} />
+        )}
+      </div>
+    );
+  }
+
 
   return (
     <div style={{ fontFamily:"var(--font-body)",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0",paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
