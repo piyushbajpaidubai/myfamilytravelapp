@@ -113,12 +113,17 @@ const SPAN_TYPES = {
   Car:           { icon:'🚗', kind:'travel', startLabel:'Depart',   endLabel:'Arrive' },
 };
 const SPAN_TYPE_OPTIONS = ["Accommodation", "Travel", "Other"];
-// Travel sub-category (mode). Step 1 = By Road (driving directions); Air/Rail/Sea come later.
-const TRAVEL_MODES = ["By Road"];
+// Travel sub-category (mode). By Road → Google Maps driving; By Air → Flightradar24 by flight no.
+const TRAVEL_MODES = ["By Road", "By Air"];
 // Official Google Maps directions URL (no API key needed; opens the Maps app on phones for live navigation)
-const gmapsDirUrl = (from, to, mode) => {
-  const tm = mode === 'By Road' ? 'driving' : 'driving';
-  return 'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(from || '') + '&destination=' + encodeURIComponent(to || '') + '&travelmode=' + tm;
+const gmapsDirUrl = (from, to) =>
+  'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(from || '') + '&destination=' + encodeURIComponent(to || '') + '&travelmode=driving';
+// Flightradar24 flight-status page for a given flight number (free feature; live when airborne)
+const fr24Url = (flightNo) => 'https://www.flightradar24.com/data/flights/' + encodeURIComponent((flightNo || '').replace(/\s+/g, '').toLowerCase());
+// Icon for a span: travel shows mode-specific (road/air), else the type icon
+const spanIcon = (s) => {
+  if ((SPAN_TYPES[s.type] || {}).kind === 'travel') return s.mode === 'By Air' ? '✈️' : '🚗';
+  return (SPAN_TYPES[s.type] || {}).icon || '';
 };
 // whole calendar days between two ISO dates (UTC, DST-safe)
 const dayDiff = (a, b) => Math.round((Date.parse(a) - Date.parse(b)) / 86400000);
@@ -130,10 +135,14 @@ const spanRole = (s, dayISO) => s.startDate === s.endDate ? 'single'
   : dayISO === s.startDate ? 'start' : dayISO === s.endDate ? 'end' : 'mid';
 // spans carry a per-day status map (dayStatus[iso]); each day the span touches is tracked independently
 const spanStOf = (s, dayISO) => (s && s.dayStatus && s.dayStatus[dayISO]) || 'todo';
-// location text for a span: travel shows "From → To"; stay/other shows the single location
+// location text for a span: travel shows "From → To" (air also prefixes the flight no); stay/other shows the single location
 const spanLocationText = (s) => {
   const isTravel = (SPAN_TYPES[s.type] || {}).kind === 'travel';
-  if (isTravel && (s.from || s.to)) return `${s.from || '?'} → ${s.to || '?'}`;
+  if (isTravel) {
+    const route = (s.from || s.to) ? `${s.from || '?'} → ${s.to || '?'}` : '';
+    if (s.mode === 'By Air' && s.flightNo) return route ? `${s.flightNo.toUpperCase()} · ${route}` : s.flightNo.toUpperCase();
+    return route;
+  }
   return s.location || '';
 };
 // short contextual label for a span on a given day, e.g. "Check-in · 14:00", "Night 2", "Arrive · 09:30"
@@ -189,7 +198,7 @@ function ScheduleTab({ trip, update, session }) {
   const [dayForm, setDayForm] = useState({ date:"", label:"" });
   // evForm covers both single-day activities (time/endTime/category) and multi-day spans (startDate/endDate/…)
   // duration = 'single' | 'multi' decides which; type only matters for multi-day spans
-  const [evForm, setEvForm] = useState({ duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" });
+  const [evForm, setEvForm] = useState({ duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" });
   // Activity state: { [eventId]: inputText }
   const [activityInput, setActivityInput] = useState({});
   // Which event is showing the activity input box
@@ -282,7 +291,7 @@ function ScheduleTab({ trip, update, session }) {
 
   const delDay = (id) => update({ days: (trip.days||[]).filter(d=>d.id!==id) });
 
-  const blankForm = { duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" };
+  const blankForm = { duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" };
   const closeModal = () => { setShowEvent(null); setEvForm(blankForm); };
   // Open "add" modal from a day; prefill span dates to that day
   const openAddEvent = (day) => { setEvForm({ ...blankForm, startDate:day.date, endDate:day.date }); setShowEvent(day.id); };
@@ -307,9 +316,12 @@ function ScheduleTab({ trip, update, session }) {
     const f = evForm;
     if (!f.title || !f.startDate || !f.endDate) { alert('Please fill in Title, start date and end date.'); return; }
     if (f.endDate < f.startDate) { alert('The end date must be on or after the start date.'); return; }
-    if (f.type === 'Travel' && (!f.from || !f.to)) { alert('Please fill in the From and To locations.'); return; }
+    if (f.type === 'Travel') {
+      if (f.mode === 'By Air') { if (!f.flightNo) { alert('Please enter the flight number.'); return; } }
+      else if (!f.from || !f.to) { alert('Please fill in the From and To locations.'); return; }
+    }
     const endDate = f.duration === 'single' ? f.startDate : f.endDate; // single-day travel stays same-day
-    const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, mode:f.mode, notes:f.notes, startDate:f.startDate, startTime:f.startTime, endDate, endTime:f.spanEndTime };
+    const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, mode:f.mode, flightNo:f.flightNo, notes:f.notes, startDate:f.startDate, startTime:f.startTime, endDate, endTime:f.spanEndTime };
     update({ spans:[...(trip.spans||[]), { id:uid(), ...fields, dayStatus:{}, docs:[] }] });
     closeModal();
   };
@@ -587,7 +599,7 @@ function ScheduleTab({ trip, update, session }) {
             <div key={s.id} style={{ padding:"9px 14px",borderTop:"1px solid #D4BFB0",background:"#F3ECDA" }}>
               <div style={{ display:"flex",alignItems:"flex-start",gap:8 }}>
                 <StatusBox status={spStatus(s, day.date)} onClick={()=>cycleSpanStatus(s.id, day.date)} size={16} style={{ marginRight:0 }} />
-                <span style={{ fontSize:17,lineHeight:1.2,flexShrink:0 }}>{(SPAN_TYPES[s.type]||{}).icon}</span>
+                <span style={{ fontSize:17,lineHeight:1.2,flexShrink:0 }}>{spanIcon(s)}</span>
                 <div style={{ flex:1,minWidth:0 }}>
                   <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
                     <span style={{ opacity: spStatus(s, day.date)==='done'?0.55:1, textDecoration: spStatus(s, day.date)==='done'?"line-through":"none" }}>
@@ -758,13 +770,17 @@ function ScheduleTab({ trip, update, session }) {
               </div>
             </>
           ) : evForm.type === 'Travel' ? (
-            // ── Travel (single- or multi-day): From → To + mode, for live Google Maps ──
+            // ── Travel (single- or multi-day): By Road → Google Maps, By Air → Flightradar24 ──
             <>
               <Select label="Mode" value={evForm.mode} onChange={e=>setEvForm({...evForm,mode:e.target.value})} options={TRAVEL_MODES} />
-              <Input label="Title *" value={evForm.title} onChange={e=>setEvForm({...evForm,title:e.target.value})} placeholder="e.g. Drive Dehradun → Kedarnath" />
+              <Input label="Title *" value={evForm.title} onChange={e=>setEvForm({...evForm,title:e.target.value})}
+                placeholder={evForm.mode==='By Air' ? 'e.g. AI 865  Delhi → Dubai' : 'e.g. Drive Dehradun → Kedarnath'} />
+              {evForm.mode === 'By Air' && (
+                <Input label="Flight No. *" value={evForm.flightNo} onChange={e=>setEvForm({...evForm,flightNo:e.target.value})} placeholder="e.g. AI 865" />
+              )}
               <div style={{ display:"flex", gap:10 }}>
-                <div style={{ flex:1 }}><Input label="From *" value={evForm.from} onChange={e=>setEvForm({...evForm,from:e.target.value})} placeholder="e.g. Dehradun" /></div>
-                <div style={{ flex:1 }}><Input label="To *" value={evForm.to} onChange={e=>setEvForm({...evForm,to:e.target.value})} placeholder="e.g. Kedarnath" /></div>
+                <div style={{ flex:1 }}><Input label={evForm.mode==='By Air' ? 'From' : 'From *'} value={evForm.from} onChange={e=>setEvForm({...evForm,from:e.target.value})} placeholder={evForm.mode==='By Air' ? 'e.g. Delhi (DEL)' : 'e.g. Dehradun'} /></div>
+                <div style={{ flex:1 }}><Input label={evForm.mode==='By Air' ? 'To' : 'To *'} value={evForm.to} onChange={e=>setEvForm({...evForm,to:e.target.value})} placeholder={evForm.mode==='By Air' ? 'e.g. Dubai (DXB)' : 'e.g. Kedarnath'} /></div>
               </div>
               {evForm.duration === 'multi' ? (
                 <>
@@ -1107,7 +1123,7 @@ function StatusTab({ trip, session, shareUrl }) {
   };
 
   const LINE = '#3D0C02';
-  const [mapsRoute, setMapsRoute] = useState(null); // { from, to, mode, name } for the live-maps popup
+  const [livePopup, setLivePopup] = useState(null); // { kind:'maps'|'flight', from, to, mode, flightNo, name }
   const marksFor = (statuses) => roster.map((m, i) => ({ userId:m.userId, name:m.name, status:statuses[i] }));
 
   // overall counts across the whole trip (aggregated across travelers per item)
@@ -1129,8 +1145,9 @@ function StatusTab({ trip, session, shareUrl }) {
       const meta = SPAN_TYPES[s.type] || {};
       const statuses = perTraveler ? roster.map(m => spanMemStOf(s, m.userId, day.date)) : [spanStOf(s, day.date)];
       const isTravel = meta.kind === 'travel';
-      const extra = (isTravel && (s.from || s.to)) ? { maps: { from:s.from, to:s.to, mode:s.mode, name:s.title || 'Travel' } } : null;
-      push(s.id+'_'+day.id, spanSegLabel(s, day.date), `${meta.icon||''} ${s.title || '(untitled)'}`.trim(), statuses, extra);
+      const hasLink = isTravel && (s.mode === 'By Air' ? !!s.flightNo : (s.from || s.to));
+      const extra = hasLink ? { travel: { mode:s.mode, from:s.from, to:s.to, flightNo:s.flightNo, name:s.title || 'Travel' } } : null;
+      push(s.id+'_'+day.id, spanSegLabel(s, day.date), `${spanIcon(s)} ${s.title || '(untitled)'}`.trim(), statuses, extra);
     });
     (day.events||[]).forEach(ev => {
       push(ev.id, ev.time ? `${ev.time}${ev.endTime ? ` to ${ev.endTime}` : ''}` : 'event', ev.title || '(untitled)',
@@ -1219,12 +1236,17 @@ function StatusTab({ trip, session, shareUrl }) {
                             {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} />)}
                           </div>
                         : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
-                      {it.maps && it.anyActive && (
+                      {it.travel && it.anyActive && (
                         <div style={{ marginTop:8 }}>
-                          <button onClick={()=>setMapsRoute(it.maps)}
-                            style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#1A73E8', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
-                            <span style={{ fontSize:14 }}>🗺</span> Show live on Google Maps
-                          </button>
+                          {it.travel.mode === 'By Air'
+                            ? <button onClick={()=>setLivePopup({ kind:'flight', ...it.travel })}
+                                style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#F16C1E', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
+                                <span style={{ fontSize:14 }}>✈️</span> Show live on Flightradar24
+                              </button>
+                            : <button onClick={()=>setLivePopup({ kind:'maps', ...it.travel })}
+                                style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#1A73E8', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
+                                <span style={{ fontSize:14 }}>🗺</span> Show live on Google Maps
+                              </button>}
                         </div>
                       )}
                     </div>
@@ -1237,20 +1259,36 @@ function StatusTab({ trip, session, shareUrl }) {
         );
       })}
 
-      {mapsRoute && (
-        <Modal title="Live on Google Maps" onClose={()=>setMapsRoute(null)}>
-          <div style={{ fontSize:13.5, color:'#6E1A10', marginBottom:6 }}>{mapsRoute.name}</div>
+      {livePopup && (livePopup.kind === 'flight' ? (
+        <Modal title="Live on Flightradar24" onClose={()=>setLivePopup(null)}>
+          <div style={{ fontSize:13.5, color:'#6E1A10', marginBottom:6 }}>{livePopup.name}</div>
           <div style={{ display:'flex', alignItems:'center', gap:8, background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:9, padding:'12px 14px', marginBottom:16 }}>
-            <span style={{ fontSize:18 }}>🚗</span>
-            <span style={{ fontSize:14, fontWeight:600, color:'#2E2320' }}>{mapsRoute.from || '?'} <span style={{ color:'#B0967A' }}>→</span> {mapsRoute.to || '?'}</span>
+            <span style={{ fontSize:18 }}>✈️</span>
+            <div>
+              <div style={{ fontSize:14, fontWeight:700, color:'#2E2320', letterSpacing:'0.03em' }}>{(livePopup.flightNo||'').toUpperCase()}</div>
+              {(livePopup.from || livePopup.to) && <div style={{ fontSize:12, color:'#8A7A6D' }}>{livePopup.from || '?'} → {livePopup.to || '?'}</div>}
+            </div>
           </div>
-          <p style={{ fontSize:12.5, color:'#8A7A6D', margin:'0 0 16px', lineHeight:1.5 }}>Opens live driving directions in Google Maps{mapsRoute.mode ? ` (${mapsRoute.mode.toLowerCase()})` : ''} — on a phone this launches turn-by-turn navigation.</p>
+          <p style={{ fontSize:12.5, color:'#8A7A6D', margin:'0 0 16px', lineHeight:1.5 }}>Opens this flight's live status on Flightradar24 — shows the aircraft's position and progress when it's airborne.</p>
           <div style={{ display:'flex', gap:8 }}>
-            <Btn onClick={()=>{ window.open(gmapsDirUrl(mapsRoute.from, mapsRoute.to, mapsRoute.mode), '_blank', 'noopener'); setMapsRoute(null); }} style={{ background:'#1A73E8' }}>Open live in Google Maps</Btn>
-            <Btn variant="ghost" onClick={()=>setMapsRoute(null)}>Cancel</Btn>
+            <Btn onClick={()=>{ window.open(fr24Url(livePopup.flightNo), '_blank', 'noopener'); setLivePopup(null); }} style={{ background:'#F16C1E' }}>Open on Flightradar24</Btn>
+            <Btn variant="ghost" onClick={()=>setLivePopup(null)}>Cancel</Btn>
           </div>
         </Modal>
-      )}
+      ) : (
+        <Modal title="Live on Google Maps" onClose={()=>setLivePopup(null)}>
+          <div style={{ fontSize:13.5, color:'#6E1A10', marginBottom:6 }}>{livePopup.name}</div>
+          <div style={{ display:'flex', alignItems:'center', gap:8, background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:9, padding:'12px 14px', marginBottom:16 }}>
+            <span style={{ fontSize:18 }}>🚗</span>
+            <span style={{ fontSize:14, fontWeight:600, color:'#2E2320' }}>{livePopup.from || '?'} <span style={{ color:'#B0967A' }}>→</span> {livePopup.to || '?'}</span>
+          </div>
+          <p style={{ fontSize:12.5, color:'#8A7A6D', margin:'0 0 16px', lineHeight:1.5 }}>Opens live driving directions in Google Maps — on a phone this launches turn-by-turn navigation.</p>
+          <div style={{ display:'flex', gap:8 }}>
+            <Btn onClick={()=>{ window.open(gmapsDirUrl(livePopup.from, livePopup.to), '_blank', 'noopener'); setLivePopup(null); }} style={{ background:'#1A73E8' }}>Open live in Google Maps</Btn>
+            <Btn variant="ghost" onClick={()=>setLivePopup(null)}>Cancel</Btn>
+          </div>
+        </Modal>
+      ))}
     </div>
   );
 }
@@ -2170,7 +2208,7 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
                 <StatusBox status={spStatus(s, todayISO)} onClick={()=>toggleSpan(trip.id, s.id, todayISO)} size={18} style={{ marginTop:2 }} />
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                    <span style={{ fontSize:16 }}>{(SPAN_TYPES[s.type]||{}).icon}</span>
+                    <span style={{ fontSize:16 }}>{spanIcon(s)}</span>
                     <span style={{ fontSize:14, fontWeight:700, color:'#2E2320', textDecoration: spStatus(s, todayISO)==='done'?'line-through':'none', opacity: spStatus(s, todayISO)==='done'?0.55:1 }}>{s.title || '(untitled)'}</span>
                     <span style={{ fontSize:11, background:'#E4D3B4', borderRadius:4, padding:'1px 6px', color:'#7A4A1A', fontWeight:700 }}>{spanSegLabel(s, todayISO)}</span>
                     <StatusBadge status={spStatus(s, todayISO)} />
