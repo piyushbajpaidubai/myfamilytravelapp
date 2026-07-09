@@ -1073,13 +1073,14 @@ const STATUS_WORD = { todo:'not started', active:'ongoing', done:'complete' };
 // Per-traveler marker: the traveler's PHOTO is their identity; a coloured ring shows
 // their status, and a corner ✓ (done) / dot (ongoing) adds a shape cue so status isn't
 // conveyed by colour alone (readability for elderly / colour-blind viewers).
-function MemberMark({ name, userId, status, pic, size=24 }) {
+function MemberMark({ name, userId, status, pic, size=24, onClick }) {
   const s = STATUS_META[status] ? status : 'todo';
   const ring = STATUS_META[s].ring;
   const initial = ((name || userId || '?').trim().charAt(0) || '?').toUpperCase();
   const badge = Math.round(size * 0.46);
+  const title = onClick ? `${name || userId}: ${STATUS_WORD[s]} — tap to update` : `${name || userId}: ${STATUS_WORD[s]}`;
   return (
-    <span title={`${name || userId}: ${STATUS_WORD[s]}`} style={{ position:'relative', display:'inline-flex', width:size, height:size, flexShrink:0 }}>
+    <span onClick={onClick} role={onClick ? 'button' : undefined} title={title} style={{ position:'relative', display:'inline-flex', width:size, height:size, flexShrink:0, cursor: onClick ? 'pointer' : 'default' }}>
       <span style={{ width:size, height:size, borderRadius:'50%', boxSizing:'border-box', border:`2.5px solid ${ring}`, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
         {pic
           ? <img src={pic} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
@@ -1096,7 +1097,7 @@ function MemberMark({ name, userId, status, pic, size=24 }) {
 }
 
 // ---- Status Tab ----  (per-traveler rollup of event/activity/span statuses per day)
-function StatusTab({ trip, session, shareUrl }) {
+function StatusTab({ trip, session, update, shareUrl }) {
   const days = trip.days || [];
   const roster = trip.members || [];
   const perTraveler = roster.length > 0; // group trips show a marker per traveler; solo/legacy show one status
@@ -1126,6 +1127,22 @@ function StatusTab({ trip, session, shareUrl }) {
   const [livePopup, setLivePopup] = useState(null); // { kind:'maps'|'flight', from, to, mode, flightNo, name }
   const marksFor = (statuses) => roster.map((m, i) => ({ userId:m.userId, name:m.name, status:statuses[i] }));
 
+  // Advance a given traveler's status on any item (lets one traveler update another's — e.g. a family travelling together)
+  const cycleMemberStatus = (ref, userId) => {
+    if (!update || !userId || !ref) return;
+    if (ref.kind === 'span') {
+      update(t => ({ spans:(t.spans||[]).map(s => s.id===ref.spanId
+        ? { ...s, memberDayStatus:{ ...(s.memberDayStatus||{}), [userId]:{ ...((s.memberDayStatus||{})[userId]||{}), [ref.dayISO]: nextStatus(spanMemStOf(s, userId, ref.dayISO)) } } } : s) }));
+    } else if (ref.kind === 'event') {
+      update(t => ({ days:(t.days||[]).map(d => d.id===ref.dayId
+        ? { ...d, events:(d.events||[]).map(e => e.id===ref.evId ? { ...e, memberStatus:{ ...(e.memberStatus||{}), [userId]: nextStatus(memStOf(e, userId)) } } : e) } : d) }));
+    } else if (ref.kind === 'activity') {
+      update(t => ({ days:(t.days||[]).map(d => d.id===ref.dayId
+        ? { ...d, events:(d.events||[]).map(e => e.id===ref.evId
+            ? { ...e, activities:(e.activities||[]).map(a => a.id===ref.actId ? { ...a, memberStatus:{ ...(a.memberStatus||{}), [userId]: (memStOf(a, userId)==='done' ? 'todo' : 'done') } } : a) } : e) } : d) }));
+    }
+  };
+
   // overall counts across the whole trip (aggregated across travelers per item)
   const total = { todo:0, active:0, done:0 };
   days.forEach(d => {
@@ -1146,14 +1163,14 @@ function StatusTab({ trip, session, shareUrl }) {
       const statuses = perTraveler ? roster.map(m => spanMemStOf(s, m.userId, day.date)) : [spanStOf(s, day.date)];
       const isTravel = meta.kind === 'travel';
       const hasLink = isTravel && (s.mode === 'By Air' ? !!s.flightNo : (s.from || s.to));
-      const extra = hasLink ? { travel: { mode:s.mode, from:s.from, to:s.to, flightNo:s.flightNo, name:s.title || 'Travel' } } : null;
+      const extra = { ref:{ kind:'span', spanId:s.id, dayISO:day.date }, ...(hasLink ? { travel: { mode:s.mode, from:s.from, to:s.to, flightNo:s.flightNo, name:s.title || 'Travel' } } : {}) };
       push(s.id+'_'+day.id, spanSegLabel(s, day.date), `${spanIcon(s)} ${s.title || '(untitled)'}`.trim(), statuses, extra);
     });
     (day.events||[]).forEach(ev => {
       push(ev.id, ev.time ? `${ev.time}${ev.endTime ? ` to ${ev.endTime}` : ''}` : 'event', ev.title || '(untitled)',
-        perTraveler ? roster.map(m => memStOf(ev, m.userId)) : [stOf(ev)]);
+        perTraveler ? roster.map(m => memStOf(ev, m.userId)) : [stOf(ev)], { ref:{ kind:'event', dayId:day.id, evId:ev.id } });
       (ev.activities||[]).forEach(a => {
-        push(a.id, 'activity', a.text || '(activity)', perTraveler ? roster.map(m => memStOf(a, m.userId)) : [stOf(a)]);
+        push(a.id, 'activity', a.text || '(activity)', perTraveler ? roster.map(m => memStOf(a, m.userId)) : [stOf(a)], { ref:{ kind:'activity', dayId:day.id, evId:ev.id, actId:a.id } });
       });
     });
     return out;
@@ -1194,6 +1211,9 @@ function StatusTab({ trip, session, shareUrl }) {
           ))}
         </div>
       )}
+      {perTraveler && update && (
+        <p style={{ fontSize:11.5, color:'#8A7A6D', margin:'-14px 0 22px', lineHeight:1.45 }}>💡 Tap any traveler's photo on an item to update their status — handy when you're travelling together and someone's away from their phone.</p>
+      )}
 
       {days.length===0 && (
         <p style={{ color:'#C05040', fontSize:13, textAlign:'center', padding:'24px 0' }}>No days added yet.</p>
@@ -1233,7 +1253,7 @@ function StatusTab({ trip, session, shareUrl }) {
                       <div>{it.name}</div>
                       {it.marks
                         ? <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
-                            {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} />)}
+                            {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} onClick={update ? ()=>cycleMemberStatus(it.ref, mk.userId) : undefined} />)}
                           </div>
                         : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
                       {it.travel && it.anyActive && (
@@ -1856,7 +1876,7 @@ function MainApp() {
           {activeTab==="Schedule" && <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />}
           {activeTab==="Budget" && <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
           {activeTab==="Packing" && <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
-          {activeTab==="Status" && <StatusTab trip={trip} session={session} shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}`} />}
+          {activeTab==="Status" && <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}`} />}
           {activeTab==="Pictures" && <PicturesTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
         </div>
       )}
