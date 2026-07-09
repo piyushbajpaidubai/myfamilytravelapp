@@ -113,6 +113,13 @@ const SPAN_TYPES = {
   Car:           { icon:'🚗', kind:'travel', startLabel:'Depart',   endLabel:'Arrive' },
 };
 const SPAN_TYPE_OPTIONS = ["Accommodation", "Travel", "Other"];
+// Travel sub-category (mode). Step 1 = By Road (driving directions); Air/Rail/Sea come later.
+const TRAVEL_MODES = ["By Road"];
+// Official Google Maps directions URL (no API key needed; opens the Maps app on phones for live navigation)
+const gmapsDirUrl = (from, to, mode) => {
+  const tm = mode === 'By Road' ? 'driving' : 'driving';
+  return 'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(from || '') + '&destination=' + encodeURIComponent(to || '') + '&travelmode=' + tm;
+};
 // whole calendar days between two ISO dates (UTC, DST-safe)
 const dayDiff = (a, b) => Math.round((Date.parse(a) - Date.parse(b)) / 86400000);
 // trip-level spans that overlap a given ISO day (string compare works for YYYY-MM-DD)
@@ -182,7 +189,7 @@ function ScheduleTab({ trip, update, session }) {
   const [dayForm, setDayForm] = useState({ date:"", label:"" });
   // evForm covers both single-day activities (time/endTime/category) and multi-day spans (startDate/endDate/…)
   // duration = 'single' | 'multi' decides which; type only matters for multi-day spans
-  const [evForm, setEvForm] = useState({ duration:"single", type:"Accommodation", time:"", endTime:"", title:"", location:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" });
+  const [evForm, setEvForm] = useState({ duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" });
   // Activity state: { [eventId]: inputText }
   const [activityInput, setActivityInput] = useState({});
   // Which event is showing the activity input box
@@ -275,13 +282,14 @@ function ScheduleTab({ trip, update, session }) {
 
   const delDay = (id) => update({ days: (trip.days||[]).filter(d=>d.id!==id) });
 
-  const blankForm = { duration:"single", type:"Accommodation", time:"", endTime:"", title:"", location:"", from:"", to:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" };
+  const blankForm = { duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" };
   const closeModal = () => { setShowEvent(null); setEvForm(blankForm); };
   // Open "add" modal from a day; prefill span dates to that day
   const openAddEvent = (day) => { setEvForm({ ...blankForm, startDate:day.date, endDate:day.date }); setShowEvent(day.id); };
 
   const addEvent = (dayId) => {
-    if (evForm.duration === 'multi') { submitSpan(); return; }
+    // Multi-day (any type) and single-day Travel are stored as spans; single-day Activity is a timed event
+    if (evForm.duration === 'multi' || evForm.type === 'Travel') { submitSpan(); return; }
     if (!evForm.title || !evForm.time || !evForm.endTime) {
       alert('Please fill in Title, Start Time and End Time.');
       return;
@@ -300,7 +308,8 @@ function ScheduleTab({ trip, update, session }) {
     if (!f.title || !f.startDate || !f.endDate) { alert('Please fill in Title, start date and end date.'); return; }
     if (f.endDate < f.startDate) { alert('The end date must be on or after the start date.'); return; }
     if (f.type === 'Travel' && (!f.from || !f.to)) { alert('Please fill in the From and To locations.'); return; }
-    const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, notes:f.notes, startDate:f.startDate, startTime:f.startTime, endDate:f.endDate, endTime:f.spanEndTime };
+    const endDate = f.duration === 'single' ? f.startDate : f.endDate; // single-day travel stays same-day
+    const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, mode:f.mode, notes:f.notes, startDate:f.startDate, startTime:f.startTime, endDate, endTime:f.spanEndTime };
     update({ spans:[...(trip.spans||[]), { id:uid(), ...fields, dayStatus:{}, docs:[] }] });
     closeModal();
   };
@@ -719,46 +728,15 @@ function ScheduleTab({ trip, update, session }) {
       {showEvent && (
         <Modal title="Add to Itinerary" onClose={closeModal}>
           <Select label="Duration" value={evForm.duration}
-            onChange={e=>setEvForm({...evForm, duration:e.target.value})}
+            onChange={e=>{ const dur=e.target.value; setEvForm({...evForm, duration:dur, type: dur==='single' ? 'Activity' : 'Accommodation'}); }}
             options={["single","multi"]}
             renderOption={o => o==='single' ? 'Single day' : 'Multi-day'} />
 
-          {evForm.duration === 'multi' ? (
-            // ── Multi-day span: accommodation (check-in/out) / travel (depart/arrive) / other ──
-            <>
-              <Select label="Type" value={evForm.type}
-                onChange={e=>setEvForm({...evForm, type:e.target.value})}
-                options={SPAN_TYPE_OPTIONS} />
-              {(() => { const m = SPAN_TYPES[evForm.type] || SPAN_TYPES.Other; return (
-                <>
-                  <Input label="Title *" value={evForm.title} onChange={e=>setEvForm({...evForm,title:e.target.value})}
-                    placeholder={evForm.type==='Accommodation' ? 'e.g. Taj Hotel, Rishikesh' : evForm.type==='Travel' ? 'e.g. AI 865  Delhi → Dehradun' : 'e.g. Yoga retreat'} />
-                  <div style={{ display:"flex", gap:10 }}>
-                    <div style={{ flex:1.4 }}><Input label={`${m.startLabel} date *`} type="date" value={evForm.startDate} onChange={e=>setEvForm({...evForm,startDate:e.target.value})} /></div>
-                    <div style={{ flex:1 }}><Input label={`${m.startLabel} time`} type="time" value={evForm.startTime} onChange={e=>setEvForm({...evForm,startTime:e.target.value})} /></div>
-                  </div>
-                  <div style={{ display:"flex", gap:10 }}>
-                    <div style={{ flex:1.4 }}><Input label={`${m.endLabel} date *`} type="date" value={evForm.endDate} onChange={e=>setEvForm({...evForm,endDate:e.target.value})} /></div>
-                    <div style={{ flex:1 }}><Input label={`${m.endLabel} time`} type="time" value={evForm.spanEndTime} onChange={e=>setEvForm({...evForm,spanEndTime:e.target.value})} /></div>
-                  </div>
-                  {evForm.type === 'Travel' ? (
-                    <div style={{ display:"flex", gap:10 }}>
-                      <div style={{ flex:1 }}><Input label="From *" value={evForm.from} onChange={e=>setEvForm({...evForm,from:e.target.value})} placeholder="e.g. Delhi (DEL)" /></div>
-                      <div style={{ flex:1 }}><Input label="To *" value={evForm.to} onChange={e=>setEvForm({...evForm,to:e.target.value})} placeholder="e.g. Dehradun (DED)" /></div>
-                    </div>
-                  ) : (
-                    <Input label="Location" value={evForm.location} onChange={e=>setEvForm({...evForm,location:e.target.value})}
-                      placeholder={evForm.type==='Accommodation' ? 'e.g. Laxman Jhula Rd' : 'Optional'} />
-                  )}
-                  <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Booking ref, PNR, room type…" />
-                </>
-              ); })()}
-              <div style={{ display:"flex",gap:8,marginTop:8 }}>
-                <Btn onClick={submitSpan}>Add</Btn>
-                <Btn variant="ghost" onClick={closeModal}>Cancel</Btn>
-              </div>
-            </>
-          ) : (
+          <Select label="Type" value={evForm.type}
+            onChange={e=>setEvForm({...evForm, type:e.target.value})}
+            options={evForm.duration==='single' ? ["Activity","Travel"] : SPAN_TYPE_OPTIONS} />
+
+          {evForm.type === 'Activity' ? (
             // ── Single-day timed activity ──
             <>
               <div style={{ display:"flex", gap:10 }}>
@@ -776,6 +754,63 @@ function ScheduleTab({ trip, update, session }) {
               <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Any notes…" />
               <div style={{ display:"flex",gap:8,marginTop:8 }}>
                 <Btn onClick={()=>addEvent(showEvent)}>Add Event</Btn>
+                <Btn variant="ghost" onClick={closeModal}>Cancel</Btn>
+              </div>
+            </>
+          ) : evForm.type === 'Travel' ? (
+            // ── Travel (single- or multi-day): From → To + mode, for live Google Maps ──
+            <>
+              <Select label="Mode" value={evForm.mode} onChange={e=>setEvForm({...evForm,mode:e.target.value})} options={TRAVEL_MODES} />
+              <Input label="Title *" value={evForm.title} onChange={e=>setEvForm({...evForm,title:e.target.value})} placeholder="e.g. Drive Dehradun → Kedarnath" />
+              <div style={{ display:"flex", gap:10 }}>
+                <div style={{ flex:1 }}><Input label="From *" value={evForm.from} onChange={e=>setEvForm({...evForm,from:e.target.value})} placeholder="e.g. Dehradun" /></div>
+                <div style={{ flex:1 }}><Input label="To *" value={evForm.to} onChange={e=>setEvForm({...evForm,to:e.target.value})} placeholder="e.g. Kedarnath" /></div>
+              </div>
+              {evForm.duration === 'multi' ? (
+                <>
+                  <div style={{ display:"flex", gap:10 }}>
+                    <div style={{ flex:1.4 }}><Input label="Depart date *" type="date" value={evForm.startDate} onChange={e=>setEvForm({...evForm,startDate:e.target.value})} /></div>
+                    <div style={{ flex:1 }}><Input label="Depart time" type="time" value={evForm.startTime} onChange={e=>setEvForm({...evForm,startTime:e.target.value})} /></div>
+                  </div>
+                  <div style={{ display:"flex", gap:10 }}>
+                    <div style={{ flex:1.4 }}><Input label="Arrive date *" type="date" value={evForm.endDate} onChange={e=>setEvForm({...evForm,endDate:e.target.value})} /></div>
+                    <div style={{ flex:1 }}><Input label="Arrive time" type="time" value={evForm.spanEndTime} onChange={e=>setEvForm({...evForm,spanEndTime:e.target.value})} /></div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ display:"flex", gap:10 }}>
+                  <div style={{ flex:1 }}><Input label="Depart time" type="time" value={evForm.startTime} onChange={e=>setEvForm({...evForm,startTime:e.target.value})} /></div>
+                  <div style={{ flex:1 }}><Input label="Arrive time" type="time" value={evForm.spanEndTime} onChange={e=>setEvForm({...evForm,spanEndTime:e.target.value})} /></div>
+                </div>
+              )}
+              <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Vehicle, driver, PNR…" />
+              <div style={{ display:"flex",gap:8,marginTop:8 }}>
+                <Btn onClick={submitSpan}>Add</Btn>
+                <Btn variant="ghost" onClick={closeModal}>Cancel</Btn>
+              </div>
+            </>
+          ) : (
+            // ── Accommodation / Other (multi-day) ──
+            <>
+              {(() => { const m = SPAN_TYPES[evForm.type] || SPAN_TYPES.Other; return (
+                <>
+                  <Input label="Title *" value={evForm.title} onChange={e=>setEvForm({...evForm,title:e.target.value})}
+                    placeholder={evForm.type==='Accommodation' ? 'e.g. Taj Hotel, Rishikesh' : 'e.g. Yoga retreat'} />
+                  <div style={{ display:"flex", gap:10 }}>
+                    <div style={{ flex:1.4 }}><Input label={`${m.startLabel} date *`} type="date" value={evForm.startDate} onChange={e=>setEvForm({...evForm,startDate:e.target.value})} /></div>
+                    <div style={{ flex:1 }}><Input label={`${m.startLabel} time`} type="time" value={evForm.startTime} onChange={e=>setEvForm({...evForm,startTime:e.target.value})} /></div>
+                  </div>
+                  <div style={{ display:"flex", gap:10 }}>
+                    <div style={{ flex:1.4 }}><Input label={`${m.endLabel} date *`} type="date" value={evForm.endDate} onChange={e=>setEvForm({...evForm,endDate:e.target.value})} /></div>
+                    <div style={{ flex:1 }}><Input label={`${m.endLabel} time`} type="time" value={evForm.spanEndTime} onChange={e=>setEvForm({...evForm,spanEndTime:e.target.value})} /></div>
+                  </div>
+                  <Input label="Location" value={evForm.location} onChange={e=>setEvForm({...evForm,location:e.target.value})}
+                    placeholder={evForm.type==='Accommodation' ? 'e.g. Laxman Jhula Rd' : 'Optional'} />
+                  <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Booking ref, room type…" />
+                </>
+              ); })()}
+              <div style={{ display:"flex",gap:8,marginTop:8 }}>
+                <Btn onClick={submitSpan}>Add</Btn>
                 <Btn variant="ghost" onClick={closeModal}>Cancel</Btn>
               </div>
             </>
@@ -1072,6 +1107,7 @@ function StatusTab({ trip, session, shareUrl }) {
   };
 
   const LINE = '#3D0C02';
+  const [mapsRoute, setMapsRoute] = useState(null); // { from, to, mode, name } for the live-maps popup
   const marksFor = (statuses) => roster.map((m, i) => ({ userId:m.userId, name:m.name, status:statuses[i] }));
 
   // overall counts across the whole trip (aggregated across travelers per item)
@@ -1088,11 +1124,13 @@ function StatusTab({ trip, session, shareUrl }) {
   // flatten a day into timeline items (spans that touch it, then each event + activities)
   const dayItems = (day) => {
     const out = [];
-    const push = (key, time, name, statuses) => out.push({ key, time, name, agg: aggStatus(statuses), marks: perTraveler ? marksFor(statuses) : null, legacy: perTraveler ? null : statuses[0] });
+    const push = (key, time, name, statuses, extra) => out.push({ key, time, name, agg: aggStatus(statuses), marks: perTraveler ? marksFor(statuses) : null, legacy: perTraveler ? null : statuses[0], anyActive: statuses.some(x => x === 'active'), ...(extra||{}) });
     spansOnDay(trip, day.date).forEach(s => {
       const meta = SPAN_TYPES[s.type] || {};
       const statuses = perTraveler ? roster.map(m => spanMemStOf(s, m.userId, day.date)) : [spanStOf(s, day.date)];
-      push(s.id+'_'+day.id, spanSegLabel(s, day.date), `${meta.icon||''} ${s.title || '(untitled)'}`.trim(), statuses);
+      const isTravel = meta.kind === 'travel';
+      const extra = (isTravel && (s.from || s.to)) ? { maps: { from:s.from, to:s.to, mode:s.mode, name:s.title || 'Travel' } } : null;
+      push(s.id+'_'+day.id, spanSegLabel(s, day.date), `${meta.icon||''} ${s.title || '(untitled)'}`.trim(), statuses, extra);
     });
     (day.events||[]).forEach(ev => {
       push(ev.id, ev.time ? `${ev.time}${ev.endTime ? ` to ${ev.endTime}` : ''}` : 'event', ev.title || '(untitled)',
@@ -1181,6 +1219,14 @@ function StatusTab({ trip, session, shareUrl }) {
                             {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} />)}
                           </div>
                         : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
+                      {it.maps && it.anyActive && (
+                        <div style={{ marginTop:8 }}>
+                          <button onClick={()=>setMapsRoute(it.maps)}
+                            style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#1A73E8', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
+                            <span style={{ fontSize:14 }}>🗺</span> Show live on Google Maps
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -1190,6 +1236,21 @@ function StatusTab({ trip, session, shareUrl }) {
           </div>
         );
       })}
+
+      {mapsRoute && (
+        <Modal title="Live on Google Maps" onClose={()=>setMapsRoute(null)}>
+          <div style={{ fontSize:13.5, color:'#6E1A10', marginBottom:6 }}>{mapsRoute.name}</div>
+          <div style={{ display:'flex', alignItems:'center', gap:8, background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:9, padding:'12px 14px', marginBottom:16 }}>
+            <span style={{ fontSize:18 }}>🚗</span>
+            <span style={{ fontSize:14, fontWeight:600, color:'#2E2320' }}>{mapsRoute.from || '?'} <span style={{ color:'#B0967A' }}>→</span> {mapsRoute.to || '?'}</span>
+          </div>
+          <p style={{ fontSize:12.5, color:'#8A7A6D', margin:'0 0 16px', lineHeight:1.5 }}>Opens live driving directions in Google Maps{mapsRoute.mode ? ` (${mapsRoute.mode.toLowerCase()})` : ''} — on a phone this launches turn-by-turn navigation.</p>
+          <div style={{ display:'flex', gap:8 }}>
+            <Btn onClick={()=>{ window.open(gmapsDirUrl(mapsRoute.from, mapsRoute.to, mapsRoute.mode), '_blank', 'noopener'); setMapsRoute(null); }} style={{ background:'#1A73E8' }}>Open live in Google Maps</Btn>
+            <Btn variant="ghost" onClick={()=>setMapsRoute(null)}>Cancel</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
