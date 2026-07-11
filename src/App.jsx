@@ -1233,8 +1233,8 @@ function StatusTab({ trip, session, update, shareUrl }) {
               {day.label && <div style={{ fontSize:12, color:'#8B2A14', marginTop:4, fontStyle:'italic' }}>{day.label}</div>}
             </div>
 
-            {/* Timeline below — full width */}
-            <div style={{ minWidth:0, marginBottom:30 }}>
+            {/* Timeline below — indented so the vertical bar/dots sit under the centre of the DAY header */}
+            <div style={{ minWidth:0, marginBottom:30, paddingLeft:32 }}>
               {items.length===0 && <div style={{ fontSize:13, color:'#C05040', padding:'2px 0' }}>No events</div>}
               {items.map((it, idx) => {
                 const first = idx===0, last = idx===items.length-1;
