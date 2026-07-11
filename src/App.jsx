@@ -203,6 +203,24 @@ function ScheduleTab({ trip, update, session }) {
   const [activityInput, setActivityInput] = useState({});
   // Which event is showing the activity input box
   const [addingActivityFor, setAddingActivityFor] = useState(null);
+  // Event expense modal: eventId being logged + the form
+  const members = trip.members || [];
+  const [expenseFor, setExpenseFor] = useState(null); // eventId
+  const [expForm, setExpForm] = useState({ amount:"", category:"Food", travelerId:"", desc:"" });
+  const eventExpenses = (evId) => (trip.expenses || []).filter(e => e.eventId === evId);
+  const nameOfTraveler = (uid) => { const m = members.find(x => x.userId === uid); return m ? m.name : ''; };
+  const openExpense = (evId) => {
+    const defTrav = (myId && members.some(m => m.userId === myId)) ? myId : (members[0] ? members[0].userId : '');
+    setExpForm({ amount:"", category:"Food", travelerId:defTrav, desc:"" });
+    setExpenseFor(evId);
+  };
+  const addEventExpense = () => {
+    if (!expForm.amount) { alert('Please enter an amount.'); return; }
+    const exp = { id:uid(), desc:expForm.desc, amount:expForm.amount, category:expForm.category, eventId:expenseFor, travelerId:expForm.travelerId };
+    update(t => ({ expenses:[...(t.expenses||[]), exp] }));
+    setExpenseFor(null); setExpForm({ amount:"", category:"Food", travelerId:"", desc:"" });
+  };
+  const delExpense = (id) => update(t => ({ expenses:(t.expenses||[]).filter(e => e.id !== id) }));
 
   // ── Inline editing of day labels / event titles / activity text ──
   // editing = { kind:'day'|'event'|'activity', dayId, evId?, actId? }
@@ -350,10 +368,10 @@ function ScheduleTab({ trip, update, session }) {
   };
 
   const delEvent = (dayId, evId) => {
-    const days = (trip.days||[]).map(d => d.id===dayId
-      ? { ...d, events:(d.events||[]).filter(e=>e.id!==evId) }
-      : d);
-    update({ days });
+    update(t => ({
+      days:(t.days||[]).map(d => d.id===dayId ? { ...d, events:(d.events||[]).filter(e=>e.id!==evId) } : d),
+      expenses:(t.expenses||[]).filter(e => e.eventId !== evId), // drop expenses logged against this event
+    }));
   };
 
   // Add a text activity to an event
@@ -720,11 +738,51 @@ function ScheduleTab({ trip, update, session }) {
                   + Activity
                 </button>
               )}
+
+              {/* ── Expenses logged against this event ── */}
+              {eventExpenses(ev.id).length > 0 && (
+                <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4 }}>
+                  {eventExpenses(ev.id).map(x => (
+                    <div key={x.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12.5, color:'#6E1A10', background:'#F3ECDA', border:'1px solid #E4D3B4', borderRadius:6, padding:'4px 8px' }}>
+                      <span>💰</span>
+                      <span style={{ flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {x.desc || x.category}
+                        {nameOfTraveler(x.travelerId) && <span style={{ color:'#9A6A2A', fontWeight:600 }}> · {nameOfTraveler(x.travelerId)}</span>}
+                        <span style={{ color:'#B0967A' }}> · {x.category}</span>
+                      </span>
+                      <span style={{ fontWeight:600 }}>${parseFloat(x.amount||0).toFixed(2)}</span>
+                      <button title="Remove expense" onClick={()=>delExpense(x.id)} style={{ background:'none', border:'none', color:'#C04428', cursor:'pointer', fontSize:12, padding:'0 2px', lineHeight:1 }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button onClick={()=>openExpense(ev.id)}
+                style={{ marginTop:8, marginLeft:8, background:'none', border:'1px dashed #C8B09A', borderRadius:6, padding:'3px 10px', fontSize:12, color:'#8B2A14', cursor:'pointer', fontWeight:500 }}>
+                + Expense
+              </button>
             </div>
           ))}
           </>)}
         </div>
       ))}
+
+      {expenseFor && (
+        <Modal title="Log Expense" onClose={()=>setExpenseFor(null)}>
+          <div style={{ display:"flex", gap:10 }}>
+            <div style={{ flex:1 }}><Input label="Amount *" type="number" value={expForm.amount} onChange={e=>setExpForm({...expForm,amount:e.target.value})} placeholder="0.00" /></div>
+            <div style={{ flex:1.2 }}><Select label="Category" options={BUDGET_CATS} value={expForm.category} onChange={e=>setExpForm({...expForm,category:e.target.value})} /></div>
+          </div>
+          {members.length > 0 && (
+            <Select label="Traveler" value={expForm.travelerId} onChange={e=>setExpForm({...expForm,travelerId:e.target.value})}
+              options={['', ...members.map(m=>m.userId)]} renderOption={o => o==='' ? '— shared —' : (nameOfTraveler(o)||o)} />
+          )}
+          <Input label="Description" value={expForm.desc} onChange={e=>setExpForm({...expForm,desc:e.target.value})} placeholder="e.g. Lunch, taxi, tickets…" />
+          <div style={{ display:"flex",gap:8,justifyContent:"flex-end",marginTop:8 }}>
+            <Btn variant="ghost" onClick={()=>setExpenseFor(null)}>Cancel</Btn>
+            <Btn onClick={addEventExpense}>Add</Btn>
+          </div>
+        </Modal>
+      )}
 
       {showDay && (
         <Modal title="Add Day" onClose={()=>setShowDay(false)}>
@@ -837,23 +895,41 @@ function ScheduleTab({ trip, update, session }) {
   );
 }
 
-function BudgetTab({ trip, update }) {
+function BudgetTab({ trip, update, session }) {
   const [showExp, setShowExp] = useState(false);
-  const [form, setForm] = useState({ desc:"", amount:"", category:"Food" });
+  const myId = session ? session.userId : null;
+  const members = trip.members || [];
+  const [form, setForm] = useState({ desc:"", amount:"", category:"Food", travelerId:"" });
 
-  const total = (trip.expenses||[]).reduce((s,e)=>s+parseFloat(e.amount||0),0);
+  const expenses = trip.expenses || [];
+  const total = expenses.reduce((s,e)=>s+parseFloat(e.amount||0),0);
   const budget = parseFloat(trip.budget||0);
 
+  const nameOf = (uid) => { const m = members.find(x => x.userId === uid); return m ? m.name : (uid || 'Shared'); };
+  // event-title lookup so an expense can show which event it belongs to
+  const evTitle = {};
+  (trip.days||[]).forEach(d => (d.events||[]).forEach(ev => { evTitle[ev.id] = ev.title || 'event'; }));
+
+  const openAdd = () => { setForm({ desc:"", amount:"", category:"Food", travelerId: (myId && members.some(m=>m.userId===myId)) ? myId : "" }); setShowExp(true); };
   const addExp = () => {
-    if (!form.desc||!form.amount) return;
-    update({ expenses:[...(trip.expenses||[]), { id:uid(), ...form }] });
-    setShowExp(false); setForm({ desc:"", amount:"", category:"Food" });
+    if (!form.amount) { alert('Please enter an amount.'); return; }
+    update({ expenses:[...expenses, { id:uid(), desc:form.desc, amount:form.amount, category:form.category, travelerId:form.travelerId }] });
+    setShowExp(false); setForm({ desc:"", amount:"", category:"Food", travelerId:"" });
   };
-  const delExp = (id) => update({ expenses: trip.expenses.filter(e=>e.id!==id) });
+  const delExp = (id) => update({ expenses: expenses.filter(e=>e.id!==id) });
 
   const bycat = BUDGET_CATS.map(c => ({
-    cat:c, total:(trip.expenses||[]).filter(e=>e.category===c).reduce((s,e)=>s+parseFloat(e.amount||0),0)
+    cat:c, total:expenses.filter(e=>e.category===c).reduce((s,e)=>s+parseFloat(e.amount||0),0)
   })).filter(x=>x.total>0);
+
+  // group spend by traveler (roster order first, then any other ids, then shared/unassigned)
+  const travTotals = {};
+  expenses.forEach(e => { const k = e.travelerId || '__shared__'; travTotals[k] = (travTotals[k]||0) + parseFloat(e.amount||0); });
+  const bytrav = [
+    ...members.filter(m => travTotals[m.userId]).map(m => ({ key:m.userId, label:m.name, total:travTotals[m.userId] })),
+    ...Object.keys(travTotals).filter(k => k!=='__shared__' && !members.some(m=>m.userId===k)).map(k => ({ key:k, label:k, total:travTotals[k] })),
+    ...(travTotals['__shared__'] ? [{ key:'__shared__', label:'Shared / unassigned', total:travTotals['__shared__'] }] : []),
+  ];
 
   return (
     <div>
@@ -880,30 +956,46 @@ function BudgetTab({ trip, update }) {
         )}
       </div>
 
-      {bycat.length>0 && (
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontSize:12,color:"#B54030",marginBottom:8 }}>By Category</div>
-          {bycat.map(x=>(
-            <div key={x.cat} style={{ display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0",borderBottom:"1px solid #f3f4f6" }}>
-              <span>{x.cat}</span><span style={{ fontWeight:500 }}>${x.total.toFixed(2)}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:16 }}>
+        {bycat.length>0 && (
+          <div style={{ flex:1, minWidth:150 }}>
+            <div style={{ fontSize:12,color:"#B54030",marginBottom:8 }}>By Category</div>
+            {bycat.map(x=>(
+              <div key={x.cat} style={{ display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0",borderBottom:"1px solid #E8E2D4" }}>
+                <span>{x.cat}</span><span style={{ fontWeight:500 }}>${x.total.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {bytrav.length>0 && (
+          <div style={{ flex:1, minWidth:150 }}>
+            <div style={{ fontSize:12,color:"#B54030",marginBottom:8 }}>By Traveler</div>
+            {bytrav.map(x=>(
+              <div key={x.key} style={{ display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0",borderBottom:"1px solid #E8E2D4" }}>
+                <span style={{ overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{x.label}</span><span style={{ fontWeight:500 }}>${x.total.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12 }}>
         <span style={{ fontWeight:600 }}>Expenses</span>
-        <Btn onClick={()=>setShowExp(true)}>+ Add Expense</Btn>
+        <Btn onClick={openAdd}>+ Add Expense</Btn>
       </div>
-      {(trip.expenses||[]).length===0 && <p style={{ color:"#C86050",textAlign:"center",marginTop:24 }}>No expenses logged yet.</p>}
-      {(trip.expenses||[]).map(e=>(
-        <div key={e.id} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #f3f4f6" }}>
-          <div>
-            <div style={{ fontSize:13,fontWeight:500 }}>{e.desc}</div>
-            <div style={{ fontSize:11,color:"#B54030" }}>{e.category}</div>
+      {expenses.length===0 && <p style={{ color:"#C86050",textAlign:"center",marginTop:24 }}>No expenses logged yet. Add one here, or log it against an event in the Schedule tab.</p>}
+      {expenses.map(e=>(
+        <div key={e.id} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #E8E2D4" }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:13,fontWeight:500 }}>{e.desc || e.category}</div>
+            <div style={{ fontSize:11,color:"#B54030" }}>
+              {e.category}
+              {e.travelerId && <span> · {nameOf(e.travelerId)}</span>}
+              {e.eventId && evTitle[e.eventId] && <span style={{ color:"#9A8478" }}> · {evTitle[e.eventId]}</span>}
+            </div>
           </div>
-          <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-            <span style={{ fontWeight:600 }}>${parseFloat(e.amount).toFixed(2)}</span>
+          <div style={{ display:"flex",alignItems:"center",gap:10,flexShrink:0 }}>
+            <span style={{ fontWeight:600 }}>${parseFloat(e.amount||0).toFixed(2)}</span>
             <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>delExp(e.id)}>✕</Btn>
           </div>
         </div>
@@ -911,9 +1003,15 @@ function BudgetTab({ trip, update }) {
 
       {showExp && (
         <Modal title="Add Expense" onClose={()=>setShowExp(false)}>
-          <Input label="Description *" value={form.desc} onChange={e=>setForm({...form,desc:e.target.value})} />
-          <Input label="Amount *" type="number" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} />
-          <Select label="Category" options={BUDGET_CATS} value={form.category} onChange={e=>setForm({...form,category:e.target.value})} />
+          <div style={{ display:"flex", gap:10 }}>
+            <div style={{ flex:1 }}><Input label="Amount *" type="number" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} placeholder="0.00" /></div>
+            <div style={{ flex:1.2 }}><Select label="Category" options={BUDGET_CATS} value={form.category} onChange={e=>setForm({...form,category:e.target.value})} /></div>
+          </div>
+          {members.length>0 && (
+            <Select label="Traveler" value={form.travelerId} onChange={e=>setForm({...form,travelerId:e.target.value})}
+              options={['', ...members.map(m=>m.userId)]} renderOption={o => o==='' ? '— shared —' : nameOf(o)} />
+          )}
+          <Input label="Description" value={form.desc} onChange={e=>setForm({...form,desc:e.target.value})} placeholder="e.g. Dinner, taxi, tickets…" />
           <div style={{ display:"flex",gap:8,justifyContent:"flex-end" }}>
             <Btn variant="ghost" onClick={()=>setShowExp(false)}>Cancel</Btn>
             <Btn onClick={addExp}>Add</Btn>
@@ -1872,7 +1970,7 @@ function MainApp() {
           </div>
 
           {activeTab==="Schedule" && <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />}
-          {activeTab==="Budget" && <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
+          {activeTab==="Budget" && <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />}
           {activeTab==="Packing" && <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
           {activeTab==="Status" && <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}`} />}
           {activeTab==="Pictures" && <PicturesTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
