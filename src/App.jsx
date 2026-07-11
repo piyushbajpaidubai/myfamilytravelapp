@@ -1226,16 +1226,15 @@ function StatusTab({ trip, session, update, shareUrl }) {
         return (
           <div key={day.id}>
             {di>0 && <div style={{ borderTop:'2px dotted #C8B09A', margin:'0 0 30px' }} />}
-            <div style={{ display:'flex', alignItems:'center', marginBottom:30 }}>
-            {/* Left: day label */}
-            <div style={{ width:100, flexShrink:0, textAlign:'right', paddingRight:16 }}>
-              <div style={{ fontSize:21, fontWeight:400, letterSpacing:'0.14em', color:'#2E2320', lineHeight:1.05 }}>DAY {dayNum}</div>
-              <div style={{ fontSize:10.5, fontWeight:500, letterSpacing:'0.12em', color:'#7A685F', marginTop:4 }}>{fmtDate(day.date).toUpperCase()}</div>
-              {day.label && <div style={{ fontSize:11, color:'#8B2A14', marginTop:4, fontStyle:'italic' }}>{day.label}</div>}
+            {/* Day header on top, left-aligned — frees the full width for the timeline content below */}
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:25, fontWeight:400, letterSpacing:'0.14em', color:'#2E2320', lineHeight:1.05 }}>DAY {dayNum}</div>
+              <div style={{ fontSize:11, fontWeight:500, letterSpacing:'0.12em', color:'#7A685F', marginTop:5 }}>{fmtDate(day.date).toUpperCase()}</div>
+              {day.label && <div style={{ fontSize:12, color:'#8B2A14', marginTop:4, fontStyle:'italic' }}>{day.label}</div>}
             </div>
 
-            {/* Right: timeline */}
-            <div style={{ flex:1, minWidth:0 }}>
+            {/* Timeline below — full width */}
+            <div style={{ minWidth:0, marginBottom:30 }}>
               {items.length===0 && <div style={{ fontSize:13, color:'#C05040', padding:'2px 0' }}>No events</div>}
               {items.map((it, idx) => {
                 const first = idx===0, last = idx===items.length-1;
@@ -1274,7 +1273,6 @@ function StatusTab({ trip, session, update, shareUrl }) {
                 );
               })}
             </div>
-          </div>
           </div>
         );
       })}
