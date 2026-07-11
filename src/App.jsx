@@ -722,6 +722,24 @@ function ScheduleTab({ trip, update, session }) {
                 onDel={(docId)=>delDoc(day.id,ev.id,null,docId)}
               />
 
+              {/* ── Expenses logged against this event (shown just below the event) ── */}
+              {eventExpenses(ev.id).length > 0 && (
+                <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4 }}>
+                  {eventExpenses(ev.id).map(x => (
+                    <div key={x.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12.5, color:'#6E1A10', background:'#F3ECDA', border:'1px solid #E4D3B4', borderRadius:6, padding:'4px 8px' }}>
+                      <span>💰</span>
+                      <span style={{ flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {x.desc || x.category}
+                        {nameOfTraveler(x.travelerId) && <span style={{ color:'#9A6A2A', fontWeight:600 }}> · {nameOfTraveler(x.travelerId)}</span>}
+                        <span style={{ color:'#B0967A' }}> · {x.category}</span>
+                      </span>
+                      <span style={{ fontWeight:600 }}>${parseFloat(x.amount||0).toFixed(2)}</span>
+                      <button title="Remove expense" onClick={()=>delExpense(x.id)} style={{ background:'none', border:'none', color:'#C04428', cursor:'pointer', fontSize:12, padding:'0 2px', lineHeight:1 }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* ── Activities ── */}
               {(ev.activities||[]).length > 0 && (
                 <div style={{ marginTop:10,paddingLeft:12,borderLeft:"2px solid #D4BFB0" }}>
@@ -770,35 +788,21 @@ function ScheduleTab({ trip, update, session }) {
                   <Btn variant="ghost" style={{ padding:'4px 8px',fontSize:12 }} onClick={()=>setAddingActivityFor(null)}>Cancel</Btn>
                 </div>
               ) : (
-                <button
-                  onClick={()=>setAddingActivityFor(ev.id)}
-                  style={{ marginTop:8,background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}
-                >
-                  + Activity
-                </button>
-              )}
-
-              {/* ── Expenses logged against this event ── */}
-              {eventExpenses(ev.id).length > 0 && (
-                <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4 }}>
-                  {eventExpenses(ev.id).map(x => (
-                    <div key={x.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12.5, color:'#6E1A10', background:'#F3ECDA', border:'1px solid #E4D3B4', borderRadius:6, padding:'4px 8px' }}>
-                      <span>💰</span>
-                      <span style={{ flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                        {x.desc || x.category}
-                        {nameOfTraveler(x.travelerId) && <span style={{ color:'#9A6A2A', fontWeight:600 }}> · {nameOfTraveler(x.travelerId)}</span>}
-                        <span style={{ color:'#B0967A' }}> · {x.category}</span>
-                      </span>
-                      <span style={{ fontWeight:600 }}>${parseFloat(x.amount||0).toFixed(2)}</span>
-                      <button title="Remove expense" onClick={()=>delExpense(x.id)} style={{ background:'none', border:'none', color:'#C04428', cursor:'pointer', fontSize:12, padding:'0 2px', lineHeight:1 }}>✕</button>
-                    </div>
-                  ))}
+                <div style={{ display:'flex', gap:8, marginTop:8 }}>
+                  <button
+                    onClick={()=>setAddingActivityFor(ev.id)}
+                    style={{ background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}
+                  >
+                    + Activity
+                  </button>
+                  <button
+                    onClick={()=>openExpense(ev.id)}
+                    style={{ background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}
+                  >
+                    + Expense
+                  </button>
                 </div>
               )}
-              <button onClick={()=>openExpense(ev.id)}
-                style={{ marginTop:8, marginLeft:8, background:'none', border:'1px dashed #C8B09A', borderRadius:6, padding:'3px 10px', fontSize:12, color:'#8B2A14', cursor:'pointer', fontWeight:500 }}>
-                + Expense
-              </button>
             </div>
           ))}
           </>)}
