@@ -207,7 +207,6 @@ function ScheduleTab({ trip, update, session }) {
   const members = trip.members || [];
   const [expenseFor, setExpenseFor] = useState(null); // eventId
   const [expForm, setExpForm] = useState({ amount:"", category:"Food", travelerId:"", desc:"" });
-  const eventExpenses = (evId) => (trip.expenses || []).filter(e => e.eventId === evId);
   const nameOfTraveler = (uid) => { const m = members.find(x => x.userId === uid); return m ? m.name : ''; };
   const openExpense = (evId) => {
     const defTrav = (myId && members.some(m => m.userId === myId)) ? myId : (members[0] ? members[0].userId : '');
@@ -220,7 +219,6 @@ function ScheduleTab({ trip, update, session }) {
     update(t => ({ expenses:[...(t.expenses||[]), exp] }));
     setExpenseFor(null); setExpForm({ amount:"", category:"Food", travelerId:"", desc:"" });
   };
-  const delExpense = (id) => update(t => ({ expenses:(t.expenses||[]).filter(e => e.id !== id) }));
 
   // Optional expense fields shown inside the add-event popup (all types)
   const expenseFields = (
@@ -661,16 +659,6 @@ function ScheduleTab({ trip, update, session }) {
                     {fmtDate(s.startDate)}{s.startTime?` · ${s.startTime}`:''} → {fmtDate(s.endDate)}{s.endTime?` · ${s.endTime}`:''}
                   </div>
                   <DocList docs={s.docs||[]} onAdd={(file)=>attachSpanDoc(s.id,file)} onDel={(docId)=>delSpanDoc(s.id,docId)} />
-                  {eventExpenses(s.id).map(x => (
-                    <div key={x.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:'#6E1A10', marginTop:4 }}>
-                      <span>💰</span>
-                      <span style={{ flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                        {x.desc || x.category}{nameOfTraveler(x.travelerId) && <span style={{ color:'#9A6A2A', fontWeight:600 }}> · {nameOfTraveler(x.travelerId)}</span>}<span style={{ color:'#B0967A' }}> · {x.category}</span>
-                      </span>
-                      <span style={{ fontWeight:600 }}>${parseFloat(x.amount||0).toFixed(2)}</span>
-                      <button title="Remove expense" onClick={()=>delExpense(x.id)} style={{ background:'none', border:'none', color:'#C04428', cursor:'pointer', fontSize:12, padding:'0 2px', lineHeight:1 }}>✕</button>
-                    </div>
-                  ))}
                 </div>
                 <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
                   <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={spStatus(s, day.date)} /></span>
@@ -721,24 +709,6 @@ function ScheduleTab({ trip, update, session }) {
                 onAdd={(file)=>attachDoc(day.id,ev.id,null,file)}
                 onDel={(docId)=>delDoc(day.id,ev.id,null,docId)}
               />
-
-              {/* ── Expenses logged against this event (shown just below the event) ── */}
-              {eventExpenses(ev.id).length > 0 && (
-                <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4 }}>
-                  {eventExpenses(ev.id).map(x => (
-                    <div key={x.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12.5, color:'#6E1A10', background:'#F3ECDA', border:'1px solid #E4D3B4', borderRadius:6, padding:'4px 8px' }}>
-                      <span>💰</span>
-                      <span style={{ flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                        {x.desc || x.category}
-                        {nameOfTraveler(x.travelerId) && <span style={{ color:'#9A6A2A', fontWeight:600 }}> · {nameOfTraveler(x.travelerId)}</span>}
-                        <span style={{ color:'#B0967A' }}> · {x.category}</span>
-                      </span>
-                      <span style={{ fontWeight:600 }}>${parseFloat(x.amount||0).toFixed(2)}</span>
-                      <button title="Remove expense" onClick={()=>delExpense(x.id)} style={{ background:'none', border:'none', color:'#C04428', cursor:'pointer', fontSize:12, padding:'0 2px', lineHeight:1 }}>✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
 
               {/* ── Activities ── */}
               {(ev.activities||[]).length > 0 && (
