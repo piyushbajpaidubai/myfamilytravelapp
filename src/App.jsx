@@ -198,7 +198,7 @@ function ScheduleTab({ trip, update, session }) {
   const [dayForm, setDayForm] = useState({ date:"", label:"" });
   // evForm covers both single-day activities (time/endTime/category) and multi-day spans (startDate/endDate/…)
   // duration = 'single' | 'multi' decides which; type only matters for multi-day spans
-  const [evForm, setEvForm] = useState({ duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" });
+  const [evForm, setEvForm] = useState({ duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" });
   // Activity state: { [eventId]: inputText }
   const [activityInput, setActivityInput] = useState({});
   // Which event is showing the activity input box
@@ -221,6 +221,21 @@ function ScheduleTab({ trip, update, session }) {
     setExpenseFor(null); setExpForm({ amount:"", category:"Food", travelerId:"", desc:"" });
   };
   const delExpense = (id) => update(t => ({ expenses:(t.expenses||[]).filter(e => e.id !== id) }));
+
+  // Optional expense fields shown inside the add-event popup (all types)
+  const expenseFields = (
+    <div style={{ marginTop:4, paddingTop:12, borderTop:'1px dashed #D4BFB0' }}>
+      <div style={{ fontSize:12, color:'#A83020', marginBottom:8, fontWeight:600 }}>Expense (optional)</div>
+      <div style={{ display:'flex', gap:10 }}>
+        <div style={{ flex:1 }}><Input label="Amount" type="number" value={evForm.expAmount} onChange={e=>setEvForm({...evForm,expAmount:e.target.value})} placeholder="0.00" /></div>
+        <div style={{ flex:1.2 }}><Select label="Category" options={BUDGET_CATS} value={evForm.expCat} onChange={e=>setEvForm({...evForm,expCat:e.target.value})} /></div>
+      </div>
+      {members.length>0 && (
+        <Select label="Traveler" value={evForm.expTraveler} onChange={e=>setEvForm({...evForm,expTraveler:e.target.value})}
+          options={['', ...members.map(m=>m.userId)]} renderOption={o => o==='' ? '— shared —' : (nameOfTraveler(o)||o)} />
+      )}
+    </div>
+  );
 
   // ── Inline editing of day labels / event titles / activity text ──
   // editing = { kind:'day'|'event'|'activity', dayId, evId?, actId? }
@@ -309,10 +324,18 @@ function ScheduleTab({ trip, update, session }) {
 
   const delDay = (id) => update({ days: (trip.days||[]).filter(d=>d.id!==id) });
 
-  const blankForm = { duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"" };
+  const blankForm = { duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" };
   const closeModal = () => { setShowEvent(null); setEvForm(blankForm); };
-  // Open "add" modal from a day; prefill span dates to that day
-  const openAddEvent = (day) => { setEvForm({ ...blankForm, startDate:day.date, endDate:day.date }); setShowEvent(day.id); };
+  // Open "add" modal from a day; prefill span dates to that day + default the optional expense to the current traveler
+  const openAddEvent = (day) => {
+    const defTrav = (myId && members.some(m => m.userId === myId)) ? myId : (members[0] ? members[0].userId : '');
+    setEvForm({ ...blankForm, startDate:day.date, endDate:day.date, expTraveler:defTrav });
+    setShowEvent(day.id);
+  };
+  // Optional expense entered in the add popup → an expense object tagged to the new item (or null)
+  const expenseFromForm = (itemId) => evForm.expAmount
+    ? { id:uid(), desc:"", amount:evForm.expAmount, category:evForm.expCat, eventId:itemId, travelerId:evForm.expTraveler }
+    : null;
 
   const addEvent = (dayId) => {
     // Multi-day (any type) and single-day Travel are stored as spans; single-day Activity is a timed event
@@ -322,10 +345,11 @@ function ScheduleTab({ trip, update, session }) {
       return;
     }
     const newEvent = { id:uid(), time:evForm.time, endTime:evForm.endTime, title:evForm.title, location:evForm.location, category:evForm.category, notes:evForm.notes, activities:[], docs:[] };
-    const days = (trip.days||[]).map(d => d.id===dayId
-      ? { ...d, events:[...(d.events||[]), newEvent].sort((a,b)=>a.time>b.time?1:-1) }
-      : d);
-    update({ days });
+    const exp = expenseFromForm(newEvent.id);
+    update(t => ({
+      days:(t.days||[]).map(d => d.id===dayId ? { ...d, events:[...(d.events||[]), newEvent].sort((a,b)=>a.time>b.time?1:-1) } : d),
+      ...(exp ? { expenses:[...(t.expenses||[]), exp] } : {}),
+    }));
     closeModal();
   };
 
@@ -340,13 +364,18 @@ function ScheduleTab({ trip, update, session }) {
     }
     const endDate = f.duration === 'single' ? f.startDate : f.endDate; // single-day travel stays same-day
     const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, mode:f.mode, flightNo:f.flightNo, notes:f.notes, startDate:f.startDate, startTime:f.startTime, endDate, endTime:f.spanEndTime };
-    update({ spans:[...(trip.spans||[]), { id:uid(), ...fields, dayStatus:{}, docs:[] }] });
+    const span = { id:uid(), ...fields, dayStatus:{}, docs:[] };
+    const exp = expenseFromForm(span.id);
+    update(t => ({
+      spans:[...(t.spans||[]), span],
+      ...(exp ? { expenses:[...(t.expenses||[]), exp] } : {}),
+    }));
     closeModal();
   };
   const delSpan = (id) => {
     const s = (trip.spans||[]).find(x=>x.id===id);
     if (s && s.docs) s.docs.forEach(d => d.url && deleteFromStorage(d.url));
-    update({ spans:(trip.spans||[]).filter(x=>x.id!==id) });
+    update(t => ({ spans:(t.spans||[]).filter(x=>x.id!==id), expenses:(t.expenses||[]).filter(e => e.eventId !== id) }));
   };
   const cycleSpanStatus = (id, dayISO) =>
     update(t => ({ spans:(t.spans||[]).map(s => {
@@ -632,6 +661,16 @@ function ScheduleTab({ trip, update, session }) {
                     {fmtDate(s.startDate)}{s.startTime?` · ${s.startTime}`:''} → {fmtDate(s.endDate)}{s.endTime?` · ${s.endTime}`:''}
                   </div>
                   <DocList docs={s.docs||[]} onAdd={(file)=>attachSpanDoc(s.id,file)} onDel={(docId)=>delSpanDoc(s.id,docId)} />
+                  {eventExpenses(s.id).map(x => (
+                    <div key={x.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:'#6E1A10', marginTop:4 }}>
+                      <span>💰</span>
+                      <span style={{ flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {x.desc || x.category}{nameOfTraveler(x.travelerId) && <span style={{ color:'#9A6A2A', fontWeight:600 }}> · {nameOfTraveler(x.travelerId)}</span>}<span style={{ color:'#B0967A' }}> · {x.category}</span>
+                      </span>
+                      <span style={{ fontWeight:600 }}>${parseFloat(x.amount||0).toFixed(2)}</span>
+                      <button title="Remove expense" onClick={()=>delExpense(x.id)} style={{ background:'none', border:'none', color:'#C04428', cursor:'pointer', fontSize:12, padding:'0 2px', lineHeight:1 }}>✕</button>
+                    </div>
+                  ))}
                 </div>
                 <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
                   <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={spStatus(s, day.date)} /></span>
@@ -822,6 +861,7 @@ function ScheduleTab({ trip, update, session }) {
               <Select label="Category" value={evForm.category} onChange={e=>setEvForm({...evForm,category:e.target.value})}
                 options={["Sightseeing","Transport","Food","Accommodation","Activity","Other"]} />
               <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Any notes…" />
+              {expenseFields}
               <div style={{ display:"flex",gap:8,marginTop:8 }}>
                 <Btn onClick={()=>addEvent(showEvent)}>Add Event</Btn>
                 <Btn variant="ghost" onClick={closeModal}>Cancel</Btn>
@@ -858,6 +898,7 @@ function ScheduleTab({ trip, update, session }) {
                 </div>
               )}
               <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Vehicle, driver, PNR…" />
+              {expenseFields}
               <div style={{ display:"flex",gap:8,marginTop:8 }}>
                 <Btn onClick={submitSpan}>Add</Btn>
                 <Btn variant="ghost" onClick={closeModal}>Cancel</Btn>
@@ -883,6 +924,7 @@ function ScheduleTab({ trip, update, session }) {
                   <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Booking ref, room type…" />
                 </>
               ); })()}
+              {expenseFields}
               <div style={{ display:"flex",gap:8,marginTop:8 }}>
                 <Btn onClick={submitSpan}>Add</Btn>
                 <Btn variant="ghost" onClick={closeModal}>Cancel</Btn>
