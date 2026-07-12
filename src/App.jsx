@@ -34,8 +34,16 @@ const tripDateRange = (trip) => {
 const defaultTrip = () => ({
   id: uid(), name: "", destination: "", startDate: "", endDate: "",
   days: [], expenses: [], packItems: [], pictures: [],
-  budget: "", ownerId: "", members: [], status: "todo"
+  budget: "", ownerId: "", members: [], status: "todo", currency: "$"
 });
+
+// Currency options + money formatter (symbol prefixes directly; letter-codes get a space)
+const CURRENCIES = ["$", "€", "£", "₹", "AED", "¥", "₩", "฿", "R$", "A$", "C$"];
+const fmtMoney = (amt, cur) => {
+  const c = cur || "$";
+  const n = parseFloat(amt || 0).toFixed(2);
+  return /[A-Za-z]/.test(c) ? `${c} ${n}` : `${c}${n}`;
+};
 
 // Whole-trip lifecycle status: not started → active → complete
 const TRIP_STATUS = {
@@ -667,6 +675,10 @@ function ScheduleTab({ trip, update, session }) {
                     {fmtDate(s.startDate)}{s.startTime?` · ${s.startTime}`:''} → {fmtDate(s.endDate)}{s.endTime?` · ${s.endTime}`:''}
                   </div>
                   <DocList docs={s.docs||[]} onAdd={(file)=>attachSpanDoc(s.id,file)} onDel={(docId)=>delSpanDoc(s.id,docId)} />
+                  <button onClick={()=>openExpense(s.id)}
+                    style={{ marginTop:8, background:'none', border:'1px dashed #C8B09A', borderRadius:6, padding:'3px 10px', fontSize:12, color:'#8B2A14', cursor:'pointer', fontWeight:500 }}>
+                    + Expense
+                  </button>
                 </div>
                 <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
                   <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={spStatus(s, day.date)} /></span>
@@ -928,6 +940,7 @@ function BudgetTab({ trip, update, session }) {
   const expenses = trip.expenses || [];
   const total = expenses.reduce((s,e)=>s+parseFloat(e.amount||0),0);
   const budget = parseFloat(trip.budget||0);
+  const cur = trip.currency || '$';
 
   const nameOf = (uid) => { const m = members.find(x => x.userId === uid); return m ? m.name : (uid || 'Shared'); };
   // event-title lookup so an expense can show which event it belongs to
@@ -958,6 +971,16 @@ function BudgetTab({ trip, update, session }) {
   return (
     <div>
       <div style={{ background:"#EDE7D9",border:"1px solid #D4BFB0",borderRadius:10,padding:16,marginBottom:16 }}>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10 }}>
+          <span style={{ fontWeight:700,fontSize:14,color:"#6E1A10" }}>Budget</span>
+          <label style={{ display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#A83020" }}>
+            Currency
+            <select value={cur} onChange={e=>update({currency:e.target.value})}
+              style={{ padding:"3px 6px",border:"1px solid #C8B09A",borderRadius:6,fontSize:13,background:"#F5EFE2",color:"#6E1A10" }}>
+              {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+        </div>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8 }}>
           <span style={{ fontSize:13,color:"#A83020" }}>Trip Budget</span>
           <input value={trip.budget||""} onChange={e=>update({budget:e.target.value})} placeholder="0.00" type="number"
@@ -965,7 +988,7 @@ function BudgetTab({ trip, update, session }) {
         </div>
         <div style={{ display:"flex",justifyContent:"space-between" }}>
           <span style={{ fontSize:13,color:"#A83020" }}>Spent</span>
-          <span style={{ fontWeight:600,color: budget&&total>budget?"#8B2A14":"#6E1A10" }}>${total.toFixed(2)}</span>
+          <span style={{ fontWeight:600,color: budget&&total>budget?"#8B2A14":"#6E1A10" }}>{fmtMoney(total, cur)}</span>
         </div>
         {budget>0 && (
           <>
@@ -973,7 +996,7 @@ function BudgetTab({ trip, update, session }) {
               <div style={{ height:"100%",background: total>budget?"#C04428":"#6E1A10",width:`${Math.min(100,(total/budget)*100)}%`,transition:"width .3s" }} />
             </div>
             <div style={{ display:"flex",justifyContent:"space-between",marginTop:4,fontSize:12,color:"#B54030" }}>
-              <span>Remaining: ${Math.max(0,budget-total).toFixed(2)}</span>
+              <span>Remaining: {fmtMoney(Math.max(0,budget-total), cur)}</span>
               <span>{budget>0?Math.round((total/budget)*100):0}%</span>
             </div>
           </>
@@ -986,7 +1009,7 @@ function BudgetTab({ trip, update, session }) {
             <div style={{ fontSize:12,color:"#B54030",marginBottom:8 }}>By Category</div>
             {bycat.map(x=>(
               <div key={x.cat} style={{ display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0",borderBottom:"1px solid #E8E2D4" }}>
-                <span>{x.cat}</span><span style={{ fontWeight:500 }}>${x.total.toFixed(2)}</span>
+                <span>{x.cat}</span><span style={{ fontWeight:500 }}>{fmtMoney(x.total, cur)}</span>
               </div>
             ))}
           </div>
@@ -996,7 +1019,7 @@ function BudgetTab({ trip, update, session }) {
             <div style={{ fontSize:12,color:"#B54030",marginBottom:8 }}>By Traveler</div>
             {bytrav.map(x=>(
               <div key={x.key} style={{ display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0",borderBottom:"1px solid #E8E2D4" }}>
-                <span style={{ overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{x.label}</span><span style={{ fontWeight:500 }}>${x.total.toFixed(2)}</span>
+                <span style={{ overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{x.label}</span><span style={{ fontWeight:500 }}>{fmtMoney(x.total, cur)}</span>
               </div>
             ))}
           </div>
@@ -1019,7 +1042,7 @@ function BudgetTab({ trip, update, session }) {
             </div>
           </div>
           <div style={{ display:"flex",alignItems:"center",gap:10,flexShrink:0 }}>
-            <span style={{ fontWeight:600 }}>${parseFloat(e.amount||0).toFixed(2)}</span>
+            <span style={{ fontWeight:600 }}>{fmtMoney(e.amount, cur)}</span>
             <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>delExp(e.id)}>✕</Btn>
           </div>
         </div>
