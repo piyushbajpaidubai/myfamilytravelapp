@@ -143,6 +143,35 @@ const gmapsDirUrl = (from, to) =>
   'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(from || '') + '&destination=' + encodeURIComponent(to || '') + '&travelmode=driving';
 // Flightradar24 flight-status page for a given flight number (free feature; live when airborne)
 const fr24Url = (flightNo) => 'https://www.flightradar24.com/data/flights/' + encodeURIComponent((flightNo || '').replace(/\s+/g, '').toLowerCase());
+
+// Free driving route (OpenStreetMap Nominatim geocode + OSRM routing; no API key) → { seconds, meters } or null
+async function roadRoute(from, to) {
+  try {
+    const geocode = async (q) => {
+      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) return null;
+      const rows = await r.json();
+      return (rows && rows[0]) ? { lat: rows[0].lat, lon: rows[0].lon } : null;
+    };
+    const a = await geocode(from); if (!a) return null;
+    const b = await geocode(to);   if (!b) return null;
+    const rr = await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`);
+    if (!rr.ok) return null;
+    const j = await rr.json();
+    if (j.code !== 'Ok' || !j.routes || !j.routes[0]) return null;
+    return { seconds: j.routes[0].duration, meters: j.routes[0].distance };
+  } catch (e) { return null; }
+}
+// Add seconds to a (YYYY-MM-DD, HH:MM) → { date, time }, UTC math to avoid timezone drift
+const addSeconds = (dateISO, timeHM, secs) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateISO || '');
+  if (!m) return null;
+  const t = /^(\d{1,2}):(\d{2})/.exec(timeHM || '00:00');
+  const base = new Date(Date.UTC(+m[1], +m[2]-1, +m[3], t ? +t[1] : 0, t ? +t[2] : 0));
+  const end = new Date(base.getTime() + secs * 1000);
+  const p = n => String(n).padStart(2, '0');
+  return { date: `${end.getUTCFullYear()}-${p(end.getUTCMonth()+1)}-${p(end.getUTCDate())}`, time: `${p(end.getUTCHours())}:${p(end.getUTCMinutes())}` };
+};
 // Icon for a span: travel shows mode-specific (road/air), else the type icon
 const spanIcon = (s) => {
   if ((SPAN_TYPES[s.type] || {}).kind === 'travel') return s.mode === 'By Air' ? '✈️' : '🚗';
@@ -226,6 +255,9 @@ function ScheduleTab({ trip, update, session }) {
   const [activityInput, setActivityInput] = useState({});
   // Which event is showing the activity input box
   const [addingActivityFor, setAddingActivityFor] = useState(null);
+  // Auto-fill arrival (road route estimate) state
+  const [estimating, setEstimating] = useState(false);
+  const [estimateMsg, setEstimateMsg] = useState('');
   // Event expense modal: eventId being logged + the form
   const members = trip.members || [];
   const [expenseFor, setExpenseFor] = useState(null); // eventId
@@ -351,7 +383,25 @@ function ScheduleTab({ trip, update, session }) {
   const openAddEvent = (day) => {
     const defTrav = (myId && members.some(m => m.userId === myId)) ? myId : (members[0] ? members[0].userId : '');
     setEvForm({ ...blankForm, startDate:day.date, endDate:day.date, expTraveler:defTrav });
+    setEstimateMsg('');
     setShowEvent(day.id);
+  };
+  // Estimate driving time From→To and fill in the arrival date/time (By Road)
+  const autoFillArrival = async () => {
+    const f = evForm;
+    if (!f.from || !f.to) { setEstimateMsg('Enter both From and To first.'); return; }
+    if (!f.startTime) { setEstimateMsg('Enter the depart time first.'); return; }
+    setEstimating(true); setEstimateMsg('Calculating route…');
+    const route = await roadRoute(f.from, f.to);
+    setEstimating(false);
+    if (!route) { setEstimateMsg('Could not find a driving route for those places. Check the spellings.'); return; }
+    const arr = addSeconds(f.startDate, f.startTime, route.seconds);
+    if (!arr) { setEstimateMsg('Could not compute the arrival time.'); return; }
+    setEvForm(prev => ({ ...prev, spanEndTime: arr.time, ...(prev.duration === 'multi' ? { endDate: arr.date } : {}) }));
+    const h = Math.floor(route.seconds / 3600), mn = Math.round((route.seconds % 3600) / 60);
+    const km = Math.round(route.meters / 1000);
+    const nextDay = f.duration === 'single' && arr.date !== f.startDate;
+    setEstimateMsg(`≈ ${h}h ${mn}m · ${km} km${nextDay ? ' — arrives next day, switch to Multi-day' : ''}`);
   };
   // Optional expense entered in the add popup → an expense object tagged to the new item (or null)
   const expenseFromForm = (itemId) => evForm.expAmount
@@ -896,6 +946,15 @@ function ScheduleTab({ trip, update, session }) {
                 <div style={{ display:"flex", gap:10 }}>
                   <div style={{ flex:1 }}><Input label="Depart time" type="time" value={evForm.startTime} onChange={e=>setEvForm({...evForm,startTime:e.target.value})} /></div>
                   <div style={{ flex:1 }}><Input label="Arrive time" type="time" value={evForm.spanEndTime} onChange={e=>setEvForm({...evForm,spanEndTime:e.target.value})} /></div>
+                </div>
+              )}
+              {evForm.mode === 'By Road' && (
+                <div style={{ marginTop:-4, marginBottom:12 }}>
+                  <button type="button" onClick={autoFillArrival} disabled={estimating}
+                    style={{ background:'none', border:'1px dashed #C8B09A', borderRadius:6, padding:'4px 12px', fontSize:12, color:'#8B2A14', cursor:'pointer', fontWeight:500, opacity: estimating?0.6:1 }}>
+                    ⟳ Auto-fill arrival from route
+                  </button>
+                  {estimateMsg && <div style={{ fontSize:11.5, color:'#8A7A6D', marginTop:6, lineHeight:1.4 }}>{estimateMsg}</div>}
                 </div>
               )}
               <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Vehicle, driver, PNR…" />
