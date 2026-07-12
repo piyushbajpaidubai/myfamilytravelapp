@@ -22,6 +22,13 @@ const compactDate = (iso) => {
   if (!m) return { d: iso || "", mon: "" };
   return { d: parseInt(m[3], 10), mon: (MONTHS[parseInt(m[2], 10) - 1] || "").toUpperCase() };
 };
+// Weekday name for an ISO date (UTC-based so it never shifts by timezone)
+const WEEKDAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const weekdayOf = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  if (!m) return "";
+  return WEEKDAYS[new Date(Date.UTC(+m[1], +m[2]-1, +m[3])).getUTCDay()];
+};
 // Trip date span derived from the itinerary (earliest → latest day); falls back to manual dates if no days yet
 const tripDateRange = (trip) => {
   const ds = ((trip && trip.days) || []).map(d => (d.date || "").slice(0, 10)).filter(Boolean).sort();
@@ -2512,15 +2519,26 @@ function SearchModal({ trips, onGoToTrip, onClose }) {
   );
 }
 
-// ---- Documents repository: every attachment across a trip ----
+// ---- Documents repository: every attachment across a trip, filed by day/date ----
 function DocsView({ trip, onClose }) {
-  const items = [];
+  // Group every attachment under its day/date
+  const byDate = {}; // iso (or '__undated__') -> [{ doc, ctx }]
+  const dayLabelOf = {};
+  (trip.days || []).forEach(d => { dayLabelOf[(d.date || '').slice(0, 10)] = d.label || ''; });
+  const push = (date, doc, ctx) => {
+    const key = (date || '').slice(0, 10) || '__undated__';
+    (byDate[key] = byDate[key] || []).push({ doc, ctx });
+  };
   (trip.days || []).forEach(day => (day.events || []).forEach(ev => {
-    (ev.docs || []).forEach(d => items.push({ doc: d, ctx: `${fmtDate(day.date)} · ${ev.title || 'event'}` }));
-    (ev.activities || []).forEach(a => (a.docs || []).forEach(d => items.push({ doc: d, ctx: `${fmtDate(day.date)} · ${ev.title || 'event'} · ${a.text || 'activity'}` })));
+    (ev.docs || []).forEach(d => push(day.date, d, ev.title || 'event'));
+    (ev.activities || []).forEach(a => (a.docs || []).forEach(d => push(day.date, d, `${ev.title || 'event'} · ${a.text || 'activity'}`)));
   }));
-  (trip.spans || []).forEach(s => (s.docs || []).forEach(d => items.push({ doc: d, ctx: `${s.type} · ${s.title || ''} · ${fmtDate(s.startDate)}` })));
+  (trip.spans || []).forEach(s => (s.docs || []).forEach(d => push(s.startDate, d, `${spanIcon(s)} ${s.title || s.type}`)));
+
+  const dates = Object.keys(byDate).sort((a, b) => a === '__undated__' ? 1 : b === '__undated__' ? -1 : (a > b ? 1 : -1));
+  const totalCount = Object.values(byDate).reduce((n, arr) => n + arr.length, 0);
   const fmtSize = b => (b == null ? '' : b < 1024 ? b + 'B' : b < 1048576 ? (b / 1024).toFixed(1) + 'KB' : (b / 1048576).toFixed(1) + 'MB');
+
   return (
     <div style={{ position:'fixed', inset:0, zIndex:200, background:'#F0EBE0', overflowY:'auto', fontFamily:'var(--font-body)', color:'#6E1A10', paddingBottom:'env(safe-area-inset-bottom, 0px)' }}>
       <div style={{ background:'#5C1A1A', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', position:'sticky', top:0, zIndex:5 }}>
@@ -2530,27 +2548,43 @@ function DocsView({ trip, onClose }) {
           </button>
           <div>
             <div style={{ fontSize:17, fontWeight:800, color:'#F5ECD7', letterSpacing:'0.02em' }}>Documents</div>
-            <div style={{ fontSize:12, color:'rgba(245,236,215,0.65)', marginTop:2 }}>{trip.name} · {items.length} file{items.length===1?'':'s'}</div>
+            <div style={{ fontSize:12, color:'rgba(245,236,215,0.65)', marginTop:2 }}>{trip.name} · {totalCount} file{totalCount===1?'':'s'}</div>
           </div>
         </div>
       </div>
-      <div style={{ maxWidth:680, margin:'0 auto', padding:'16px 20px' }}>
-        {items.length === 0 ? (
+      <div style={{ maxWidth:680, margin:'0 auto', padding:'8px 20px 16px' }}>
+        {totalCount === 0 ? (
           <div style={{ textAlign:'center', padding:'60px 10px', color:'#B54030' }}>
             <div style={{ fontSize:44, marginBottom:12 }}>📎</div>
             <p style={{ fontSize:15, margin:0 }}>No documents attached yet.</p>
             <p style={{ fontSize:13, color:'#8A7A6D', marginTop:8 }}>Attach files to events or activities in the Schedule tab.</p>
           </div>
-        ) : items.map((it, i) => (
-          <a key={i} href={it.doc.url || it.doc.data} target="_blank" rel="noopener noreferrer"
-            style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 4px', borderBottom:'1px solid #E2D8C8', textDecoration:'none', color:'inherit' }}>
-            <span style={{ fontSize:20 }}>📎</span>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:13.5, color:'#8B2A14', textDecoration:'underline', wordBreak:'break-word' }}>{it.doc.name}</div>
-              <div style={{ fontSize:11.5, color:'#9A8478' }}>{it.ctx}</div>
+        ) : dates.map((iso, di) => (
+          <div key={iso}>
+            {/* Day / date header */}
+            <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', margin: di===0 ? '10px 0 10px' : '28px 0 10px' }}>
+              <span style={{ background:'#5C1A1A', color:'#F5ECD7', borderRadius:8, padding:'6px 12px', fontSize:13.5, fontWeight:700, letterSpacing:'0.02em' }}>
+                {iso==='__undated__' ? 'Undated' : fmtDate(iso)}
+              </span>
+              {iso!=='__undated__' && (
+                <span style={{ fontSize:12, color:'#9A8478', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600 }}>
+                  {weekdayOf(iso)}{dayLabelOf[iso] ? ` · ${dayLabelOf[iso]}` : ''}
+                </span>
+              )}
+              <span style={{ fontSize:11.5, color:'#B07A4A', marginLeft:'auto' }}>{byDate[iso].length} file{byDate[iso].length===1?'':'s'}</span>
             </div>
-            {it.doc.size != null && <span style={{ fontSize:11.5, color:'#B07A4A', flexShrink:0 }}>{fmtSize(it.doc.size)}</span>}
-          </a>
+            {byDate[iso].map((it, i) => (
+              <a key={i} href={it.doc.url || it.doc.data} target="_blank" rel="noopener noreferrer"
+                style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 4px', borderBottom:'1px solid #E2D8C8', textDecoration:'none', color:'inherit' }}>
+                <span style={{ fontSize:20 }}>📎</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13.5, color:'#8B2A14', textDecoration:'underline', wordBreak:'break-word' }}>{it.doc.name}</div>
+                  <div style={{ fontSize:11.5, color:'#9A8478' }}>{it.ctx}</div>
+                </div>
+                {it.doc.size != null && <span style={{ fontSize:11.5, color:'#B07A4A', flexShrink:0 }}>{fmtSize(it.doc.size)}</span>}
+              </a>
+            ))}
+          </div>
         ))}
       </div>
     </div>
