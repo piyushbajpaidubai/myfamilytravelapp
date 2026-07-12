@@ -34,8 +34,16 @@ const tripDateRange = (trip) => {
 const defaultTrip = () => ({
   id: uid(), name: "", destination: "", startDate: "", endDate: "",
   days: [], expenses: [], packItems: [], pictures: [],
-  budget: "", ownerId: "", members: []
+  budget: "", ownerId: "", members: [], status: "todo"
 });
+
+// Whole-trip lifecycle status: not started → active → complete
+const TRIP_STATUS = {
+  todo:   { label:'Not started', color:'#8A7A6D', bg:'#E5DFD2', dot:'#B0A091' },
+  active: { label:'Active',      color:'#1F6FB2', bg:'#D8E8F4', dot:'#2E86C8' },
+  done:   { label:'Complete',    color:'#3C8A3C', bg:'#DCEEDC', dot:'#3C8A3C' },
+};
+const tripStatusOf = (trip) => (trip && trip.status) || 'todo';
 
 function Modal({ title, onClose, children }) {
   return (
@@ -1899,6 +1907,7 @@ function MainApp() {
                 whiteSpace:"nowrap",
                 transition:"all 0.15s"
               }}>
+              {tripStatusOf(t)!=='todo' && <span title={TRIP_STATUS[tripStatusOf(t)].label} style={{ display:"inline-block", width:7, height:7, borderRadius:"50%", background:TRIP_STATUS[tripStatusOf(t)].dot, marginRight:6, verticalAlign:"middle" }} />}
               {t.name||"Unnamed"}
             </button>
           ))}
@@ -1958,14 +1967,30 @@ function MainApp() {
                 )}
                 {dateRange.start && <span style={{ marginLeft:8 }}>🗓 {fmtDate(dateRange.start)}{dateRange.end && dateRange.end!==dateRange.start ? ` → ${fmtDate(dateRange.end)}` : ""}</span>}
               </div>
-              {/* Travelers on this trip */}
-              <button onClick={()=>setShowTravelers(true)} title="Travelers on this trip"
-                style={{ marginTop:8, display:"inline-flex", alignItems:"center", gap:6, background:"#EDE7D9", border:"1px solid #D4BFB0", borderRadius:20, padding:"4px 12px", fontSize:12.5, color:"#6E1A10", cursor:"pointer" }}>
-                <span style={{ fontSize:14 }}>👥</span>
-                {(() => { const n = (trip.members || []).length; return n > 0
-                  ? <span><strong>{n}</strong> traveler{n===1?'':'s'}</span>
-                  : <span>Add travelers</span>; })()}
-              </button>
+              {/* Travelers + trip lifecycle status */}
+              <div style={{ marginTop:8, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                <button onClick={()=>setShowTravelers(true)} title="Travelers on this trip"
+                  style={{ display:"inline-flex", alignItems:"center", gap:6, background:"#EDE7D9", border:"1px solid #D4BFB0", borderRadius:20, padding:"4px 12px", fontSize:12.5, color:"#6E1A10", cursor:"pointer" }}>
+                  <span style={{ fontSize:14 }}>👥</span>
+                  {(() => { const n = (trip.members || []).length; return n > 0
+                    ? <span><strong>{n}</strong> traveler{n===1?'':'s'}</span>
+                    : <span>Add travelers</span>; })()}
+                </button>
+                {(() => { const m = TRIP_STATUS[tripStatusOf(trip)]; return (
+                  <span style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:11, fontWeight:700, letterSpacing:"0.03em", color:m.color, background:m.bg, borderRadius:20, padding:"4px 10px" }}>
+                    <span style={{ width:7, height:7, borderRadius:"50%", background:m.dot }} />{m.label.toUpperCase()}
+                  </span>
+                ); })()}
+                {tripStatusOf(trip)==='todo' && (
+                  <button onClick={()=>updateTrip(trip.id,{status:'active'})} style={{ border:"none", borderRadius:20, padding:"5px 14px", fontSize:12, fontWeight:600, cursor:"pointer", background:"#6E1A10", color:"#fff" }}>▶ Start trip</button>
+                )}
+                {tripStatusOf(trip)==='active' && (
+                  <button onClick={()=>updateTrip(trip.id,{status:'done'})} style={{ border:"none", borderRadius:20, padding:"5px 14px", fontSize:12, fontWeight:600, cursor:"pointer", background:"#3C8A3C", color:"#fff" }}>✓ Complete trip</button>
+                )}
+                {tripStatusOf(trip)==='done' && (
+                  <button onClick={()=>updateTrip(trip.id,{status:'active'})} style={{ border:"1px solid #C8B09A", borderRadius:20, padding:"5px 14px", fontSize:12, fontWeight:600, cursor:"pointer", background:"transparent", color:"#8B2A14" }}>↺ Reopen</button>
+                )}
+              </div>
             </div>
             <Btn variant="danger" style={{ fontSize:12,padding:"4px 10px" }} onClick={()=>deleteTrip(trip.id)}>Delete Trip</Btn>
           </div>
