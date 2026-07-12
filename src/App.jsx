@@ -1813,7 +1813,7 @@ function MainApp() {
           <img src="/logo-travelhub.png" alt="My Travel Hub" width="86" height="86" style={{ borderRadius:22, display:"block", margin:"0 auto 18px", boxShadow:"0 8px 26px rgba(0,0,0,0.32)" }} />
           <h1 style={{ margin:0, fontSize:30, fontWeight:800, color:"#F5ECD7", letterSpacing:"0.06em", textTransform:"uppercase", lineHeight:1.1 }}>My Travel Hub</h1>
           <p style={{ margin:"14px auto 0", fontSize:15.5, lineHeight:1.55, color:"rgba(245,236,215,0.82)", maxWidth:430 }}>
-            Itineraries, documents and live trip status — for everyone travelling together.
+            Every trip, every document, everyone — in one place.
           </p>
           <button onClick={()=>openAccount('signup')}
             style={{ marginTop:28, background:"#F5ECD7", color:"#5C1A1A", border:"none", borderRadius:30, padding:"13px 38px", fontSize:15, fontWeight:700, letterSpacing:"0.02em", cursor:"pointer", boxShadow:"0 5px 18px rgba(0,0,0,0.28)" }}>
@@ -1867,7 +1867,7 @@ function MainApp() {
             <img src="/logo-travelhub.png" alt="My Travel Hub" width="38" height="38" style={{ flexShrink:0, borderRadius:9, display:"block" }} />
             <div>
               <h1 style={{ margin:0,fontSize:20,fontWeight:800,color:"#F5ECD7",letterSpacing:"0.03em",lineHeight:1.15,textTransform:"uppercase" }}>My Travel Hub</h1>
-              <p style={{ margin:0,fontSize:10.5,color:"rgba(245,236,215,0.6)",letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:500,marginTop:3 }}>Your trips, all in one place</p>
+              <p style={{ margin:0,fontSize:10.5,color:"rgba(245,236,215,0.6)",letterSpacing:"0.08em",textTransform:"uppercase",fontWeight:500,marginTop:3 }}>Every trip, every document, everyone — in one place</p>
             </div>
           </div>
         </div>
