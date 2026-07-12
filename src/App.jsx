@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Geolocation } from "@capacitor/geolocation";
 
 const TABS = ["Schedule", "Status", "Budget", "Packing", "Pictures"];
 const CATEGORIES = ["Transport", "Hotel", "Food", "Sightseeing", "Other"];
@@ -1908,23 +1909,27 @@ function MainApp() {
   // ── Live location sharing: while sharingTripId is set, push my GPS to Supabase ──
   useEffect(() => { try { sharingTripId ? localStorage.setItem('sharingTripId', sharingTripId) : localStorage.removeItem('sharingTripId'); } catch(e){} }, [sharingTripId]);
   useEffect(() => {
-    if (!sharingTripId || !session || !navigator.geolocation) return;
-    let last = 0;
-    const onPos = (pos) => {
-      const now = Date.now();
-      if (now - last < 12000) return; // throttle to ~12s
-      last = now;
-      locUpsert(sharingTripId, session.userId, pos.coords.latitude, pos.coords.longitude, true);
-    };
-    const id = navigator.geolocation.watchPosition(onPos, () => {}, { enableHighAccuracy:true, maximumAge:10000, timeout:25000 });
-    return () => navigator.geolocation.clearWatch(id);
+    if (!sharingTripId || !session) return;
+    let watchId = null, last = 0, active = true;
+    (async () => {
+      try { await Geolocation.requestPermissions(); } catch(e){} // prompts on Android; no-op on web
+      try {
+        watchId = await Geolocation.watchPosition({ enableHighAccuracy:true, timeout:25000, maximumAge:10000 }, (pos, err) => {
+          if (!active || err || !pos) return;
+          const now = Date.now();
+          if (now - last < 12000) return; // throttle to ~12s
+          last = now;
+          locUpsert(sharingTripId, session.userId, pos.coords.latitude, pos.coords.longitude, true);
+        });
+      } catch(e){}
+    })();
+    return () => { active = false; if (watchId) { try { Geolocation.clearWatch({ id: watchId }); } catch(e){} } };
   }, [sharingTripId, session]);
   const toggleSharing = (tripId) => {
     if (sharingTripId === tripId) {
       if (session) locUpsert(tripId, session.userId, null, null, false); // stop → hide from viewers
       setSharingTripId(null);
     } else {
-      if (!navigator.geolocation) { alert('Location is not available on this device/browser.'); return; }
       setSharingTripId(tripId);
     }
   };
