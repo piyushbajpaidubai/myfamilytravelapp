@@ -1647,6 +1647,7 @@ function MainApp() {
   const [showDocs, setShowDocs] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
+  const [accountMode, setAccountMode] = useState('login'); // which tab the account modal opens on
   const [showTravelers, setShowTravelers] = useState(false);
   const [session, setSession] = useState(loadAuth);
   const [profile, setProfile] = useState(() => { try { const p = localStorage.getItem('travelerProfile'); return p ? JSON.parse(p) : null; } catch(e){ return null; } });
@@ -1796,29 +1797,59 @@ function MainApp() {
   const todayISO = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; })();
   const dateRange = trip ? tripDateRange(trip) : { start:"", end:"" };
 
-  // ── Logged-out gate: no trips until a traveler signs in ──
+  // ── Landing page for logged-out visitors ──
   if (!session) {
+    const openAccount = (mode) => { setAccountMode(mode); setShowAccount(true); };
+    const features = [
+      { icon:"🗓️", title:"Plan your itinerary", desc:"Days, events, stays and travel — one clean timeline." },
+      { icon:"📎", title:"Docs in one place", desc:"Tickets, bookings and PDFs, always within reach." },
+      { icon:"👥", title:"Travel as a group", desc:"Add travellers and track everyone's progress." },
+      { icon:"📍", title:"Live trip status", desc:"Follow the journey live and share a read-only link." },
+    ];
     return (
-      <div style={{ fontFamily:"var(--font-body)",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0",paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
-        <div style={{ background:"#5C1A1A", boxShadow:"0 2px 12px rgba(0,0,0,0.18)" }}>
-          <div style={{ display:"flex", alignItems:"center", padding:"calc(env(safe-area-inset-top, 0px) + 16px) 20px 16px" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <img src="/logo-travelhub.png" alt="My Travel Hub" width="38" height="38" style={{ flexShrink:0, borderRadius:9, display:"block" }} />
-              <div>
-                <h1 style={{ margin:0, fontSize:20, fontWeight:800, color:"#F5ECD7", letterSpacing:"0.03em", lineHeight:1.15, textTransform:"uppercase" }}>My Travel Hub</h1>
-                <p style={{ margin:0, fontSize:10.5, color:"rgba(245,236,215,0.6)", letterSpacing:"0.1em", textTransform:"uppercase", fontWeight:500, marginTop:3 }}>Your trips, all in one place</p>
+      <div style={{ fontFamily:"var(--font-body)", maxWidth:680, margin:"0 auto", minHeight:"100vh", background:"#F0EBE0", paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
+        {/* Hero */}
+        <div style={{ background:"radial-gradient(120% 90% at 50% 0%, #7A241A 0%, #5C1A1A 58%)", padding:"calc(env(safe-area-inset-top, 0px) + 56px) 24px 52px", textAlign:"center", boxShadow:"0 2px 18px rgba(0,0,0,0.22)" }}>
+          <img src="/logo-travelhub.png" alt="My Travel Hub" width="86" height="86" style={{ borderRadius:22, display:"block", margin:"0 auto 18px", boxShadow:"0 8px 26px rgba(0,0,0,0.32)" }} />
+          <h1 style={{ margin:0, fontSize:30, fontWeight:800, color:"#F5ECD7", letterSpacing:"0.06em", textTransform:"uppercase", lineHeight:1.1 }}>My Travel Hub</h1>
+          <p style={{ margin:"14px auto 0", fontSize:15.5, lineHeight:1.55, color:"rgba(245,236,215,0.82)", maxWidth:430 }}>
+            Itineraries, documents and live trip status — for everyone travelling together.
+          </p>
+          <button onClick={()=>openAccount('signup')}
+            style={{ marginTop:28, background:"#F5ECD7", color:"#5C1A1A", border:"none", borderRadius:30, padding:"13px 38px", fontSize:15, fontWeight:700, letterSpacing:"0.02em", cursor:"pointer", boxShadow:"0 5px 18px rgba(0,0,0,0.28)" }}>
+            Get Started
+          </button>
+          <div style={{ marginTop:14, fontSize:12.5, color:"rgba(245,236,215,0.62)" }}>Free · just a User ID to begin</div>
+        </div>
+
+        {/* Feature highlights */}
+        <div style={{ padding:"38px 20px 4px" }}>
+          <div style={{ textAlign:"center", fontSize:12, fontWeight:700, letterSpacing:"0.15em", textTransform:"uppercase", color:"#B07A4A", marginBottom:20 }}>Everything for the trip</div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(148px, 1fr))", gap:12 }}>
+            {features.map(f => (
+              <div key={f.title} style={{ background:"#EDE7D9", border:"1px solid #E2D8C8", borderRadius:14, padding:"18px 16px" }}>
+                <div style={{ fontSize:26, marginBottom:8 }}>{f.icon}</div>
+                <div style={{ fontSize:14.5, fontWeight:700, color:"#6E1A10", marginBottom:4 }}>{f.title}</div>
+                <div style={{ fontSize:12.5, color:"#8A7A6D", lineHeight:1.5 }}>{f.desc}</div>
               </div>
-            </div>
+            ))}
           </div>
         </div>
-        <div style={{ textAlign:"center", padding:"72px 24px" }}>
-          <div style={{ fontSize:52, marginBottom:16 }}>🔒</div>
-          <h2 style={{ margin:"0 0 8px", fontSize:20, fontWeight:700, color:"#6E1A10" }}>Log in to view your trips</h2>
-          <p style={{ fontSize:14, color:"#8A7A6D", margin:"0 auto 24px", lineHeight:1.5, maxWidth:340 }}>Sign in with your traveler account to see and manage your trips.</p>
-          <Btn onClick={()=>setShowAccount(true)} style={{ padding:"12px 28px", fontSize:15 }}>Log In / Sign Up</Btn>
+
+        {/* Bottom CTA */}
+        <div style={{ textAlign:"center", padding:"30px 24px 46px" }}>
+          <button onClick={()=>openAccount('signup')}
+            style={{ background:"#6E1A10", color:"#fff", border:"none", borderRadius:30, padding:"13px 42px", fontSize:15, fontWeight:700, cursor:"pointer", boxShadow:"0 5px 16px rgba(110,26,16,0.3)" }}>
+            Create your account
+          </button>
+          <div style={{ marginTop:16, fontSize:13, color:"#8A7A6D" }}>
+            Already travelling with us? <span onClick={()=>openAccount('login')} style={{ color:"#8B2A14", fontWeight:700, cursor:"pointer", textDecoration:"underline" }}>Log in</span>
+          </div>
+          <div style={{ marginTop:22, fontSize:11.5, color:"#B0A091", letterSpacing:"0.04em" }}>🏔️  Made for families &amp; groups on the move</div>
         </div>
+
         {showAccount && (
-          <AccountModal session={null} profile={null} onAuth={onAuth} onLogout={onLogout} onOpenDetails={()=>{}} onClose={()=>setShowAccount(false)} />
+          <AccountModal session={null} profile={null} startMode={accountMode} onAuth={onAuth} onLogout={onLogout} onOpenDetails={()=>{}} onClose={()=>setShowAccount(false)} />
         )}
       </div>
     );
@@ -2147,8 +2178,8 @@ function ProfileModal({ initial, onSave, onClose }) {
 }
 
 // ---- Traveler account: sign up / log in, and the logged-in card ----
-function AccountModal({ session, profile, onAuth, onLogout, onOpenDetails, onClose }) {
-  const [mode, setMode] = useState('login'); // 'login' | 'signup'
+function AccountModal({ session, profile, startMode='login', onAuth, onLogout, onOpenDetails, onClose }) {
+  const [mode, setMode] = useState(startMode); // 'login' | 'signup'
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
