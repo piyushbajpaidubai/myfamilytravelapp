@@ -762,7 +762,7 @@ function ScheduleTab({ trip, update, session }) {
                             <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
                             <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,act.id,e.target.files[0]); e.target.value=''; }} />
                           </label>
-                          <button title="Delete activity" onClick={()=>delActivity(day.id,ev.id,act.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
+                          <button title="Delete task" onClick={()=>delActivity(day.id,ev.id,act.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
                         </div>
                       </div>
                     </div>
@@ -775,7 +775,7 @@ function ScheduleTab({ trip, update, session }) {
                 <div style={{ display:'flex',gap:6,marginTop:8,alignItems:'center' }}>
                   <input
                     autoFocus
-                    placeholder="Describe the activity…"
+                    placeholder="Describe the task…"
                     value={activityInput[ev.id]||''}
                     onChange={e=>setActivityInput(prev=>({...prev,[ev.id]:e.target.value}))}
                     onKeyDown={e=>{ if(e.key==='Enter') addActivity(day.id,ev.id); if(e.key==='Escape') setAddingActivityFor(null); }}
@@ -790,7 +790,7 @@ function ScheduleTab({ trip, update, session }) {
                     onClick={()=>setAddingActivityFor(ev.id)}
                     style={{ background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}
                   >
-                    + Activity
+                    + Task
                   </button>
                   <button
                     onClick={()=>openExpense(ev.id)}
@@ -1322,7 +1322,7 @@ function StatusTab({ trip, session, update, shareUrl }) {
       push(ev.id, ev.time ? `${ev.time}${ev.endTime ? ` to ${ev.endTime}` : ''}` : 'event', ev.title || '(untitled)',
         perTraveler ? roster.map(m => memStOf(ev, m.userId)) : [stOf(ev)], { ref:{ kind:'event', dayId:day.id, evId:ev.id } });
       (ev.activities||[]).forEach(a => {
-        push(a.id, 'activity', a.text || '(activity)', perTraveler ? roster.map(m => memStOf(a, m.userId)) : [stOf(a)], { ref:{ kind:'activity', dayId:day.id, evId:ev.id, actId:a.id } });
+        push(a.id, 'task', a.text || '(task)', perTraveler ? roster.map(m => memStOf(a, m.userId)) : [stOf(a)], { ref:{ kind:'activity', dayId:day.id, evId:ev.id, actId:a.id } });
       });
     });
     return out;
@@ -2457,7 +2457,7 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
                         <div key={act.id} style={{ display:'flex', gap:10, alignItems:'flex-start', paddingLeft:8, marginBottom:8 }}>
                           <StatusBox status={evStatus(act)} onClick={()=>toggleAct(trip.id, day.id, ev.id, act.id)} size={14} style={{ marginTop:2 }} />
                           <div style={{ flex:1, minWidth:0 }}>
-                            <span style={{ fontSize:13.5, color:'#2E2320', textDecoration: evStatus(act)==='done'?'line-through':'none', opacity: evStatus(act)==='done'?0.55:1 }}>{act.text || '(activity)'}</span>
+                            <span style={{ fontSize:13.5, color:'#2E2320', textDecoration: evStatus(act)==='done'?'line-through':'none', opacity: evStatus(act)==='done'?0.55:1 }}>{act.text || '(task)'}</span>
                             {docLinks(act.docs)}
                           </div>
                         </div>
@@ -2490,7 +2490,7 @@ function SearchModal({ trips, onGoToTrip, onClose }) {
           if ([ev.title, ev.location, ev.notes, ev.category].filter(Boolean).join(' ').toLowerCase().includes(query)) add(ev.title || '(untitled)', `${trip.name} · ${fmtDate(day.date)}`);
           (ev.docs || []).forEach(d => { if ((d.name || '').toLowerCase().includes(query)) add(d.name, `${trip.name} · ${fmtDate(day.date)} · attachment`); });
           (ev.activities || []).forEach(a => {
-            if ((a.text || '').toLowerCase().includes(query)) add(a.text, `${trip.name} · ${fmtDate(day.date)} · activity`);
+            if ((a.text || '').toLowerCase().includes(query)) add(a.text, `${trip.name} · ${fmtDate(day.date)} · task`);
             (a.docs || []).forEach(d => { if ((d.name || '').toLowerCase().includes(query)) add(d.name, `${trip.name} · attachment`); });
           });
         });
@@ -2503,7 +2503,7 @@ function SearchModal({ trips, onGoToTrip, onClose }) {
   }
   return (
     <Modal title="Search" onClose={onClose}>
-      <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search trips, events, activities, docs…"
+      <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search trips, events, tasks, docs…"
         style={{ width:'100%', padding:'9px 12px', border:'1px solid #C8B09A', borderRadius:8, fontSize:14, boxSizing:'border-box', marginBottom:12, background:'#F5EFE2', color:'#6E1A10', outline:'none' }} />
       <div style={{ maxHeight:'50vh', overflowY:'auto' }}>
         {query && results.length === 0 && <p style={{ color:'#C05040', fontSize:13, textAlign:'center', padding:'14px' }}>No matches found.</p>}
@@ -2531,7 +2531,7 @@ function DocsView({ trip, onClose }) {
   };
   (trip.days || []).forEach(day => (day.events || []).forEach(ev => {
     (ev.docs || []).forEach(d => push(day.date, d, ev.title || 'event'));
-    (ev.activities || []).forEach(a => (a.docs || []).forEach(d => push(day.date, d, `${ev.title || 'event'} · ${a.text || 'activity'}`)));
+    (ev.activities || []).forEach(a => (a.docs || []).forEach(d => push(day.date, d, `${ev.title || 'event'} · ${a.text || 'task'}`)));
   }));
   (trip.spans || []).forEach(s => (s.docs || []).forEach(d => push(s.startDate, d, `${spanIcon(s)} ${s.title || s.type}`)));
 
@@ -2557,7 +2557,7 @@ function DocsView({ trip, onClose }) {
           <div style={{ textAlign:'center', padding:'60px 10px', color:'#B54030' }}>
             <div style={{ fontSize:44, marginBottom:12 }}>📎</div>
             <p style={{ fontSize:15, margin:0 }}>No documents attached yet.</p>
-            <p style={{ fontSize:13, color:'#8A7A6D', marginTop:8 }}>Attach files to events or activities in the Schedule tab.</p>
+            <p style={{ fontSize:13, color:'#8A7A6D', marginTop:8 }}>Attach files to events or tasks in the Schedule tab.</p>
           </div>
         ) : dates.map((iso, di) => (
           <div key={iso}>
