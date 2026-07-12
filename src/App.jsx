@@ -1412,11 +1412,11 @@ function StatusTab({ trip, session, update, shareUrl }) {
                           {it.travel.mode === 'By Air'
                             ? <button onClick={()=>setLivePopup({ kind:'flight', ...it.travel })}
                                 style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#F16C1E', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
-                                <span style={{ fontSize:14 }}>✈️</span> Show live on Flightradar24
+                                <span style={{ fontSize:14 }}>✈️</span> Show Live
                               </button>
                             : <button onClick={()=>setLivePopup({ kind:'maps', ...it.travel })}
                                 style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#1A73E8', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
-                                <span style={{ fontSize:14 }}>🗺</span> Show live on Google Maps
+                                <span style={{ fontSize:14 }}>🗺</span> Show Live
                               </button>}
                         </div>
                       )}
