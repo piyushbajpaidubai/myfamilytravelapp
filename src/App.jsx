@@ -2557,35 +2557,80 @@ function DocsView({ trip, onClose }) {
   );
 }
 
-// ---- Export a trip's itinerary as a downloadable HTML file ----
-function exportTripHtml(trip) {
+// ---- Export a trip's itinerary — download on desktop, native share on mobile ----
+function buildTripHtml(trip) {
   const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));
   let body = '';
   (trip.days || []).forEach(day => {
     body += `<h2>${esc(fmtDate(day.date))}${day.label ? ` — ${esc(day.label)}` : ''}</h2>`;
+    spansOnDay(trip, day.date).forEach(s => {
+      body += `<div class="ev"><strong>${esc(spanIcon(s))} ${esc(s.title || '')}</strong> <span class="cat">${esc(s.type)} · ${esc(spanSegLabel(s, day.date))}</span>`;
+      if (spanLocationText(s)) body += `<div class="loc">📍 ${esc(spanLocationText(s))}</div>`;
+      body += `</div>`;
+    });
     (day.events || []).forEach(ev => {
       const tm = ev.time ? `${esc(ev.time)}${ev.endTime ? '–' + esc(ev.endTime) : ''} ` : '';
-      body += `<div class="ev"><strong>${tm}${esc(ev.title || '')}</strong> <span class="cat">${esc(ev.category || '')}</span> <span class="st">[${esc(stOf(ev))}]</span>`;
+      body += `<div class="ev"><strong>${tm}${esc(ev.title || '')}</strong> <span class="cat">${esc(ev.category || '')}</span>`;
       if (ev.location) body += `<div class="loc">📍 ${esc(ev.location)}</div>`;
       if (ev.notes) body += `<div class="note">${esc(ev.notes)}</div>`;
-      (ev.activities || []).forEach(a => { body += `<div class="act">• ${esc(a.text || '')} <span class="st">[${esc(stOf(a))}]</span></div>`; });
+      (ev.activities || []).forEach(a => { body += `<div class="act">• ${esc(a.text || '')}</div>`; });
       body += `</div>`;
     });
   });
   const r = tripDateRange(trip);
   const dateLine = r.start ? ` &nbsp;•&nbsp; ${esc(fmtDate(r.start))}${r.end && r.end !== r.start ? ' → ' + esc(fmtDate(r.end)) : ''}` : '';
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(trip.name)} — itinerary</title>` +
-    `<style>body{font-family:Arial,Helvetica,sans-serif;color:#3D0C02;max-width:720px;margin:24px auto;padding:0 18px;line-height:1.5;}h1{color:#6E1A10;margin-bottom:4px;}h2{color:#8B2A14;border-bottom:1px solid #D4BFB0;padding-bottom:4px;margin-top:26px;font-size:18px;}.ev{margin:10px 0 14px;padding-left:10px;border-left:3px solid #D4BFB0;}.cat{color:#8B2A14;font-size:12px;}.st{color:#999;font-size:11px;text-transform:uppercase;}.loc{color:#A83020;font-size:13px;}.note{color:#6b5a52;font-size:13px;}.act{margin-left:14px;color:#555;font-size:13px;}.sub{color:#8B5A3C;}</style>` +
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(trip.name)} — itinerary</title>` +
+    `<style>body{font-family:Arial,Helvetica,sans-serif;color:#3D0C02;max-width:720px;margin:24px auto;padding:0 18px;line-height:1.5;}h1{color:#6E1A10;margin-bottom:4px;}h2{color:#8B2A14;border-bottom:1px solid #D4BFB0;padding-bottom:4px;margin-top:26px;font-size:18px;}.ev{margin:10px 0 14px;padding-left:10px;border-left:3px solid #D4BFB0;}.cat{color:#8B2A14;font-size:12px;}.loc{color:#A83020;font-size:13px;}.note{color:#6b5a52;font-size:13px;}.act{margin-left:14px;color:#555;font-size:13px;}.sub{color:#8B5A3C;}</style>` +
     `</head><body><h1>${esc(trip.name || 'Trip')}</h1><p class="sub">${esc(trip.destination || '')}${dateLine}</p>${body || '<p>No days scheduled.</p>'}</body></html>`;
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${(trip.name || 'trip').replace(/[^a-z0-9]+/gi, '_')}-itinerary.html`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+function buildTripText(trip) {
+  let out = `${trip.name || 'Trip'}${trip.destination ? ` — ${trip.destination}` : ''}\n`;
+  const r = tripDateRange(trip);
+  if (r.start) out += `${fmtDate(r.start)}${r.end && r.end !== r.start ? ` → ${fmtDate(r.end)}` : ''}\n`;
+  (trip.days || []).forEach(day => {
+    out += `\n${fmtDate(day.date)}${day.label ? ` — ${day.label}` : ''}\n`;
+    spansOnDay(trip, day.date).forEach(s => { out += `  ${spanIcon(s)} ${s.title || ''} (${spanSegLabel(s, day.date)})${spanLocationText(s) ? ` — ${spanLocationText(s)}` : ''}\n`; });
+    (day.events || []).forEach(ev => {
+      const tm = ev.time ? `${ev.time}${ev.endTime ? '–' + ev.endTime : ''} ` : '';
+      out += `  • ${tm}${ev.title || ''}${ev.location ? ` @ ${ev.location}` : ''}\n`;
+      (ev.activities || []).forEach(a => { out += `      - ${a.text || ''}\n`; });
+    });
+  });
+  return out;
+}
+async function exportTripHtml(trip) {
+  const html = buildTripHtml(trip);
+  const filename = `${(trip.name || 'trip').replace(/[^a-z0-9]+/gi, '_')}-itinerary.html`;
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  // On mobile, use the native share sheet (Save to Files / Drive / share to apps)
+  if (isMobile && navigator.share) {
+    try {
+      const file = new File([html], filename, { type: 'text/html' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: `${trip.name || 'Trip'} — itinerary` });
+        return;
+      }
+      await navigator.share({ title: `${trip.name || 'Trip'} — itinerary`, text: buildTripText(trip) });
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return; // user dismissed the share sheet
+      // otherwise fall through to the download attempt
+    }
+  }
+  // Desktop (or share unavailable): download the HTML file
+  try {
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch (e) {
+    alert('Could not export the itinerary on this device.');
+  }
 }
 
 // ---- Read-only Viewer (shared status link: ?view=<tripId>) ----
