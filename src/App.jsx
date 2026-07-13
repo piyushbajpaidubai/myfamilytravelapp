@@ -1314,44 +1314,8 @@ function PicturesTab({ trip, update }) {
 
 const STATUS_WORD = { todo:'not started', active:'ongoing', done:'complete' };
 
-// ── Natural-language status sentences (Status-tab "Sentences" view + future push notifications) ──
-const joinNames = (names) => names.length <= 1 ? (names[0] || '')
-  : names.length === 2 ? `${names[0]} and ${names[1]}`
-  : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-// full phrase (mentions the object); n = subject count for is/are · has/have
-const phraseFull = (kind, st, obj, n) => {
-  const iA = n === 1 ? 'is' : 'are', hH = n === 1 ? 'has' : 'have', o = obj || 'there';
-  if (kind === 'travel') return st === 'done' ? `${hH} arrived at ${o}` : st === 'active' ? `${iA} currently en route to ${o}` : `${hH}n't left for ${o}`;
-  if (kind === 'stay')   return st === 'done' ? `checked out of ${o}`   : st === 'active' ? `${iA} currently staying at ${o}` : `${hH}n't checked in at ${o}`;
-  if (kind === 'task')   return st === 'done' ? `did ${o}`               : st === 'active' ? `${iA} doing ${o}`               : `${hH}n't done ${o}`;
-  return st === 'done' ? `${hH} been to ${o}` : st === 'active' ? `${iA} currently at ${o}` : `${hH}n't reached ${o}`; // event/other
-};
-// short phrase (object already stated by an earlier clause)
-const phraseShort = (kind, st, n) => {
-  const iA = n === 1 ? 'is' : 'are', hH = n === 1 ? 'has' : 'have';
-  if (kind === 'travel') return st === 'done' ? `${hH} arrived` : st === 'active' ? `${iA} on the way` : `${hH}n't left`;
-  if (kind === 'stay')   return st === 'done' ? 'checked out'   : st === 'active' ? `${iA} there`      : `${hH}n't checked in`;
-  if (kind === 'task')   return st === 'done' ? 'did'           : st === 'active' ? `${iA} on it`      : `${hH}n't`;
-  return st === 'done' ? `${hH} been` : st === 'active' ? `${iA} there` : `${hH}n't`;
-};
-// Build a sentence from an item's per-traveler marks (grouped by status; "Everyone" when all share it)
-const buildStatusSentence = (kind, obj, marks) => {
-  if (!marks || !marks.length) return '';
-  const buckets = { active: [], done: [], todo: [] };
-  marks.forEach(m => { (buckets[m.status] || buckets.todo).push(m.name); });
-  const parts = [];
-  let first = true;
-  ['active', 'done', 'todo'].forEach(st => {
-    const names = buckets[st];
-    if (!names.length) return;
-    const all = names.length === marks.length && marks.length > 1;
-    const subject = all ? 'Everyone' : joinNames(names);
-    const n = all ? 2 : names.length; // "Everyone" takes plural verb
-    parts.push(`${subject} ${first ? phraseFull(kind, st, obj, n) : phraseShort(kind, st, n)}`);
-    first = false;
-  });
-  return parts.join(' · ');
-};
+// Standardised status word for the Status "Sentences" view (coloured via STATUS_META[status].color)
+const STATUS_SENTENCE_WORD = { done:'complete', active:'on-going', todo:'not started' };
 
 // Per-traveler marker: the traveler's PHOTO is their identity; a coloured ring shows
 // their status, and a corner ✓ (done) / dot (ongoing) adds a shape cue so status isn't
@@ -1456,16 +1420,16 @@ function StatusTab({ trip, session, update, shareUrl }) {
       const statuses = perTraveler ? sr.map(m => spanMemStOf(s, m.userId, day.date)) : [spanStOf(s, day.date)];
       const isTravel = meta.kind === 'travel';
       const hasLink = isTravel && (s.mode === 'By Air' ? !!s.flightNo : (s.from || s.to));
-      const extra = { ref:{ kind:'span', spanId:s.id, dayISO:day.date }, sentKind: meta.kind || 'other', obj: isTravel ? (s.to || s.from || s.title) : s.title, ...(hasLink ? { travel: { mode:s.mode, from:s.from, to:s.to, flightNo:s.flightNo, name:s.title || 'Travel' } } : {}) };
+      const extra = { ref:{ kind:'span', spanId:s.id, dayISO:day.date }, titleText: s.title || '(untitled)', ...(hasLink ? { travel: { mode:s.mode, from:s.from, to:s.to, flightNo:s.flightNo, name:s.title || 'Travel' } } : {}) };
       push(s.id+'_'+day.id, spanSegLabel(s, day.date), `${spanIcon(s)} ${s.title || '(untitled)'}`.trim(), statuses, extra, sr);
     };
     const pushEvent = (ev) => {
       const er = assignedRoster(ev);
       push(ev.id, ev.time ? `${ev.time}${ev.endTime ? ` to ${ev.endTime}` : ''}` : 'event', ev.title || '(untitled)',
-        perTraveler ? er.map(m => memStOf(ev, m.userId)) : [stOf(ev)], { ref:{ kind:'event', dayId:day.id, evId:ev.id }, sentKind:'event', obj: ev.title || ev.location }, er);
+        perTraveler ? er.map(m => memStOf(ev, m.userId)) : [stOf(ev)], { ref:{ kind:'event', dayId:day.id, evId:ev.id }, titleText: ev.title || '(untitled)' }, er);
       (ev.activities||[]).forEach(a => {
         const ar = assignedRoster(a);
-        push(a.id, 'task', a.text || '(task)', perTraveler ? ar.map(m => memStOf(a, m.userId)) : [stOf(a)], { ref:{ kind:'activity', dayId:day.id, evId:ev.id, actId:a.id }, sentKind:'task', obj: a.text }, ar);
+        push(a.id, 'task', a.text || '(task)', perTraveler ? ar.map(m => memStOf(a, m.userId)) : [stOf(a)], { ref:{ kind:'activity', dayId:day.id, evId:ev.id, actId:a.id }, titleText: a.text || '(task)' }, ar);
       });
     };
     // Interleave spans + events chronologically; each event's tasks follow it
@@ -1518,16 +1482,14 @@ function StatusTab({ trip, session, update, shareUrl }) {
         <p style={{ fontSize:11.5, color:'#8A7A6D', margin:'-14px 0 22px', lineHeight:1.45 }}>💡 Tap any traveler's photo on an item to update their status — handy when you're travelling together and someone's away from their phone.</p>
       )}
 
-      {/* View toggle: Markers ⇄ Sentences */}
+      {/* Toggle: show status sentences above the markers */}
       {perTraveler && totalItems > 0 && (
-        <div style={{ display:'inline-flex', gap:4, background:'#E8E2D4', borderRadius:8, padding:3, marginBottom:18 }}>
-          {[['markers','Markers'],['sentences','Sentences']].map(([v,label]) => {
-            const on = (v === 'sentences') === sentenceView;
-            return (
-              <button key={v} onClick={()=>setSentenceView(v === 'sentences')}
-                style={{ padding:'5px 14px', border:'none', borderRadius:6, fontSize:12.5, fontWeight:700, cursor:'pointer', background: on ? '#6E1A10' : 'transparent', color: on ? '#fff' : '#8B2A14' }}>{label}</button>
-            );
-          })}
+        <div style={{ display:'inline-flex', alignItems:'center', gap:8, marginBottom:18 }}>
+          <span style={{ fontSize:12.5, color:'#8B2A14', fontWeight:600 }}>Status sentences</span>
+          <button onClick={()=>setSentenceView(v=>!v)}
+            style={{ display:'inline-flex', alignItems:'center', gap:6, border:`1px solid ${sentenceView?'#6E1A10':'#C8B09A'}`, borderRadius:20, padding:'4px 12px', fontSize:12, fontWeight:700, cursor:'pointer', background: sentenceView?'#6E1A10':'transparent', color: sentenceView?'#fff':'#8B2A14' }}>
+            {sentenceView ? '✓ On' : 'Off'}
+          </button>
         </div>
       )}
 
@@ -1566,13 +1528,21 @@ function StatusTab({ trip, session, update, shareUrl }) {
                     <div style={{ width:80, flexShrink:0, paddingBottom: last?0:28, fontSize:12, letterSpacing:'0.03em', color:'#4A3B34', textTransform:'uppercase', lineHeight:1.35 }}>{it.time}</div>
                     <div style={{ flex:1, minWidth:0, paddingBottom: last?0:28, fontSize:13.5, color:'#2E2320', lineHeight:1.4 }}>
                       <div>{it.name}</div>
-                      {(sentenceView && it.marks)
-                        ? <div style={{ marginTop:5, fontSize:13, color:'#4A3B34', lineHeight:1.5 }}>{buildStatusSentence(it.sentKind, it.obj, it.marks)}</div>
-                        : it.marks
-                          ? <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
-                              {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} onClick={update ? ()=>cycleMemberStatus(it.ref, mk.userId) : undefined} />)}
+                      {/* Sentences (one coloured line per traveler) shown above the markers when toggled on */}
+                      {sentenceView && it.marks && (
+                        <div style={{ marginTop:5 }}>
+                          {it.marks.map(mk => (
+                            <div key={mk.userId} style={{ fontSize:12.5, color:'#4A3B34', lineHeight:1.55 }}>
+                              {it.titleText} is <span style={{ color: STATUS_META[mk.status] ? STATUS_META[mk.status].color : '#8A7A6D', fontWeight:700 }}>{STATUS_SENTENCE_WORD[mk.status] || 'not started'}</span> for {mk.name}
                             </div>
-                          : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
+                          ))}
+                        </div>
+                      )}
+                      {it.marks
+                        ? <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
+                            {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} onClick={update ? ()=>cycleMemberStatus(it.ref, mk.userId) : undefined} />)}
+                          </div>
+                        : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
                       {it.travel && it.anyActive && (
                         <div style={{ marginTop:8 }}>
                           {it.travel.mode === 'By Air'
