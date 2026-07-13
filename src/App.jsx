@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Geolocation } from "@capacitor/geolocation";
 
 const TABS = ["Schedule", "Status", "Budget", "Packing", "Pictures"];
 const CATEGORIES = ["Transport", "Hotel", "Food", "Sightseeing", "Other"];
@@ -1309,7 +1308,7 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
 }
 
 // ---- Status Tab ----  (per-traveler rollup of event/activity/span statuses per day)
-function StatusTab({ trip, session, update, sharingLoc, onToggleShare, shareUrl }) {
+function StatusTab({ trip, session, update, shareUrl }) {
   const days = trip.days || [];
   const roster = trip.members || [];
   const perTraveler = roster.length > 0; // group trips show a marker per traveler; solo/legacy show one status
@@ -1325,17 +1324,6 @@ function StatusTab({ trip, session, update, sharingLoc, onToggleShare, shareUrl 
     return () => { cancelled = true; };
   }, [memberKey]);
   const picOf = (userId) => (memberPics[userId] || {}).pic || '';
-
-  // Live locations — poll every 20s (re-fetch also refreshes the "last seen" text)
-  const [locations, setLocations] = useState([]);
-  useEffect(() => {
-    let cancelled = false;
-    const load = () => locFetch(trip.id).then(rows => { if (!cancelled) setLocations(rows || []); });
-    load();
-    const iv = setInterval(load, 20000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, [trip.id, sharingLoc]);
-  const nameForLoc = (uid) => { const m = roster.find(x => x.userId === uid); return m ? m.name : uid; };
   const copyShare = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
@@ -1412,40 +1400,6 @@ function StatusTab({ trip, session, update, sharingLoc, onToggleShare, shareUrl 
         </div>
       )}
 
-      {/* Live locations */}
-      {(onToggleShare || locations.length > 0) && (
-        <div style={{ background:'#EDE7D9', border:'1px solid #D4BFB0', borderRadius:10, padding:'12px 14px', marginBottom:16 }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom: locations.length ? 10 : 0 }}>
-            <span style={{ fontSize:13, fontWeight:700, color:'#6E1A10', display:'inline-flex', alignItems:'center', gap:6 }}>
-              <span style={{ fontSize:15 }}>📍</span> Live location
-            </span>
-            {onToggleShare && (
-              <button onClick={onToggleShare}
-                style={{ border:'none', borderRadius:20, padding:'5px 14px', fontSize:12, fontWeight:700, cursor:'pointer',
-                  background: sharingLoc ? '#3C8A3C' : '#6E1A10', color:'#fff', display:'inline-flex', alignItems:'center', gap:6 }}>
-                {sharingLoc ? <><span style={{ width:7,height:7,borderRadius:'50%',background:'#fff',display:'inline-block' }} /> Sharing · Stop</> : 'Share my location'}
-              </button>
-            )}
-          </div>
-          {locations.length === 0
-            ? <div style={{ fontSize:12, color:'#9A8478' }}>{sharingLoc ? 'Sharing your live location…' : 'No one is sharing their location right now.'}</div>
-            : locations.map(loc => (
-                <div key={loc.user_id} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderTop:'1px solid #E2D8C8' }}>
-                  <div style={{ width:30, height:30, borderRadius:'50%', overflow:'hidden', background:'#E8E2D4', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:12, fontWeight:700, color:'#8A6A50' }}>
-                    {picOf(loc.user_id) ? <img src={picOf(loc.user_id)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : ((nameForLoc(loc.user_id)||'?').trim().charAt(0)||'?').toUpperCase()}
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:600, color:'#6E1A10' }}>{nameForLoc(loc.user_id)}{session && loc.user_id===session.userId ? ' (you)' : ''}</div>
-                    <div style={{ fontSize:11, color:'#9A8478' }}>{loc.lat!=null ? `updated ${timeAgo(loc.updated_at)}` : 'no fix yet'}</div>
-                  </div>
-                  {loc.lat!=null && (
-                    <a href={`https://www.google.com/maps?q=${loc.lat},${loc.lon}`} target="_blank" rel="noopener noreferrer"
-                      style={{ fontSize:12, fontWeight:600, color:'#1A73E8', textDecoration:'none', whiteSpace:'nowrap' }}>View on map ↗</a>
-                  )}
-                </div>
-              ))}
-        </div>
-      )}
       {/* Overall counts (aggregated across travelers) */}
       {totalItems>0 && (
         <div style={{ fontSize:12.5, display:'flex', gap:12, flexWrap:'wrap', marginBottom: perTraveler?12:26 }}>
@@ -1750,34 +1704,6 @@ async function directorySaveProfile(userId, name, profileObj) {
   } catch(e) {}
 }
 
-// ── Live location sharing (public trip_locations table, one row per user+trip) ──
-async function locUpsert(tripId, userId, lat, lon, sharing) {
-  try {
-    await fetch(SUPA_URL + '/rest/v1/trip_locations', {
-      method: 'POST',
-      headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates' },
-      body: JSON.stringify({ trip_id: tripId, user_id: normUserId(userId), lat, lon, sharing, updated_at: new Date().toISOString() })
-    });
-  } catch(e) {}
-}
-async function locFetch(tripId) {
-  try {
-    const r = await fetch(SUPA_URL + '/rest/v1/trip_locations?trip_id=eq.' + encodeURIComponent(tripId) + '&sharing=eq.true&select=user_id,lat,lon,updated_at', { headers: supaHeaders });
-    if (!r.ok) return [];
-    return await r.json();
-  } catch(e) { return []; }
-}
-// "3 min ago" style relative time
-const timeAgo = (iso) => {
-  try {
-    const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-    if (s < 45) return 'just now';
-    if (s < 3600) return `${Math.floor(s/60)} min ago`;
-    if (s < 86400) return `${Math.floor(s/3600)} h ago`;
-    return `${Math.floor(s/86400)} d ago`;
-  } catch(e) { return ''; }
-};
-
 function MainApp() {
   const [trips, setTrips] = useState([]);
   const [activeTrip, setActiveTrip] = useState(null);
@@ -1791,7 +1717,6 @@ function MainApp() {
   const [accountMode, setAccountMode] = useState('login'); // which tab the account modal opens on
   const [showTravelers, setShowTravelers] = useState(false);
   const [session, setSession] = useState(loadAuth);
-  const [sharingTripId, setSharingTripId] = useState(() => { try { return localStorage.getItem('sharingTripId') || null; } catch(e){ return null; } });
   const [profile, setProfile] = useState(() => { try { const p = localStorage.getItem('travelerProfile'); return p ? JSON.parse(p) : null; } catch(e){ return null; } });
   const [editingDest, setEditingDest] = useState(false);
   const [destDraft, setDestDraft] = useState('');
@@ -1905,34 +1830,6 @@ function MainApp() {
 
   const onAuth = (s) => { setSession(s); saveAuth(s); };
   const onLogout = () => { authSignOut(session); setSession(null); saveAuth(null); setShowAccount(false); };
-
-  // ── Live location sharing: while sharingTripId is set, push my GPS to Supabase ──
-  useEffect(() => { try { sharingTripId ? localStorage.setItem('sharingTripId', sharingTripId) : localStorage.removeItem('sharingTripId'); } catch(e){} }, [sharingTripId]);
-  useEffect(() => {
-    if (!sharingTripId || !session) return;
-    let watchId = null, last = 0, active = true;
-    (async () => {
-      try { await Geolocation.requestPermissions(); } catch(e){} // prompts on Android; no-op on web
-      try {
-        watchId = await Geolocation.watchPosition({ enableHighAccuracy:true, timeout:25000, maximumAge:10000 }, (pos, err) => {
-          if (!active || err || !pos) return;
-          const now = Date.now();
-          if (now - last < 12000) return; // throttle to ~12s
-          last = now;
-          locUpsert(sharingTripId, session.userId, pos.coords.latitude, pos.coords.longitude, true);
-        });
-      } catch(e){}
-    })();
-    return () => { active = false; if (watchId) { try { Geolocation.clearWatch({ id: watchId }); } catch(e){} } };
-  }, [sharingTripId, session]);
-  const toggleSharing = (tripId) => {
-    if (sharingTripId === tripId) {
-      if (session) locUpsert(tripId, session.userId, null, null, false); // stop → hide from viewers
-      setSharingTripId(null);
-    } else {
-      setSharingTripId(tripId);
-    }
-  };
 
   // ── Trip travelers (members) ──
   // Add a traveler; also stamps ownership/self onto legacy (unowned) trips on first add
@@ -2237,7 +2134,7 @@ function MainApp() {
           {activeTab==="Schedule" && <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />}
           {activeTab==="Budget" && <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />}
           {activeTab==="Packing" && <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
-          {activeTab==="Status" && <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)} shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}`} />}
+          {activeTab==="Status" && <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}`} />}
           {activeTab==="Pictures" && <PicturesTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
         </div>
       )}
