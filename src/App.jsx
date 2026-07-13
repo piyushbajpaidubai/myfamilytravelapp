@@ -237,6 +237,41 @@ function StatusBadge({ status='todo' }) {
   return <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.05em', padding:'1px 6px', borderRadius:4, color:m.color, background:m.bg, whiteSpace:'nowrap' }}>{m.short}</span>;
 }
 
+// Inline "assigned travelers" picker. Empty value = everyone ("All on this Trip").
+function Assignees({ members, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  if (!members.length) return null;
+  const isAll = !value || value.length === 0;
+  const names = isAll
+    ? 'Everyone'
+    : (members.filter(m => value.includes(m.userId)).map(m => (m.name || m.userId).split(' ')[0]).join(', ') || `${value.length} selected`);
+  const toggle = (uid) => {
+    if (isAll) { onChange([uid]); return; }          // from everyone → just this traveler
+    const next = value.includes(uid) ? value.filter(x => x !== uid) : [...value, uid];
+    onChange(next);                                   // emptying it → back to everyone
+  };
+  return (
+    <div style={{ marginTop:5 }}>
+      <button type="button" onClick={()=>setOpen(o=>!o)}
+        style={{ display:'inline-flex', alignItems:'center', gap:5, background:'#EDE7D9', border:'1px solid #D4BFB0', borderRadius:20, padding:'2px 10px', fontSize:11.5, color:'#6E1A10', cursor:'pointer', fontWeight:500 }}>
+        <span style={{ fontSize:12 }}>👥</span> {names} <span style={{ color:'#B0967A' }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ marginTop:6, background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:8, padding:'4px 2px', maxWidth:280 }}>
+          <label style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', fontSize:12.5, color:'#6E1A10', cursor:'pointer' }}>
+            <input type="checkbox" checked={isAll} onChange={()=>onChange([])} /> <strong>All on this Trip</strong>
+          </label>
+          {members.map(m => (
+            <label key={m.userId} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', fontSize:12.5, color:'#6E1A10', cursor:'pointer', borderTop:'1px solid #EDE7D9' }}>
+              <input type="checkbox" checked={!isAll && value.includes(m.userId)} onChange={()=>toggle(m.userId)} /> {m.name || m.userId}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Schedule Tab ----
 function ScheduleTab({ trip, update, session }) {
   const myId = session ? session.userId : null;
@@ -487,6 +522,13 @@ function ScheduleTab({ trip, update, session }) {
     setActivityInput(prev => ({ ...prev, [evId]: '' }));
     setAddingActivityFor(null);
   };
+
+  // Assign travelers to an event / task ([] = everyone)
+  const setEventAssignees = (dayId, evId, list) =>
+    update(t => ({ days:(t.days||[]).map(d => d.id===dayId ? { ...d, events:(d.events||[]).map(e => e.id===evId ? { ...e, assignees:list } : e) } : d) }));
+  const setTaskAssignees = (dayId, evId, actId, list) =>
+    update(t => ({ days:(t.days||[]).map(d => d.id===dayId ? { ...d, events:(d.events||[]).map(e => e.id===evId
+      ? { ...e, activities:(e.activities||[]).map(a => a.id===actId ? { ...a, assignees:list } : a) } : e) } : d) }));
 
   const delActivity = (dayId, evId, actId) => {
     const days = (trip.days||[]).map(d => d.id===dayId
@@ -768,6 +810,7 @@ function ScheduleTab({ trip, update, session }) {
                   </div>
                   {ev.location && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {ev.location}</div>}
                   {ev.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{ev.notes}</div>}
+                  <Assignees members={members} value={ev.assignees} onChange={(list)=>setEventAssignees(day.id, ev.id, list)} />
                 </div>
                 {/* right-aligned action columns: status · attach · delete */}
                 <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
@@ -804,6 +847,7 @@ function ScheduleTab({ trip, update, session }) {
                             onAdd={(file)=>attachDoc(day.id,ev.id,act.id,file)}
                             onDel={(docId)=>delDoc(day.id,ev.id,act.id,docId)}
                           />
+                          <Assignees members={members} value={act.assignees} onChange={(list)=>setTaskAssignees(day.id, ev.id, act.id, list)} />
                         </div>
                         {/* right-aligned action columns: status · attach · delete */}
                         <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
@@ -1336,7 +1380,11 @@ function StatusTab({ trip, session, update, shareUrl }) {
 
   const LINE = '#3D0C02';
   const [livePopup, setLivePopup] = useState(null); // { kind:'maps'|'flight', from, to, mode, flightNo, name }
-  const marksFor = (statuses) => roster.map((m, i) => ({ userId:m.userId, name:m.name, status:statuses[i] }));
+  // Travelers who count for an item: its assignees, or everyone when unassigned
+  const assignedRoster = (item) => {
+    const a = item && item.assignees;
+    return (!a || a.length === 0) ? roster : roster.filter(m => a.includes(m.userId));
+  };
 
   // Advance a given traveler's status on any item (lets one traveler update another's — e.g. a family travelling together)
   const cycleMemberStatus = (ref, userId) => {
@@ -1359,8 +1407,8 @@ function StatusTab({ trip, session, update, shareUrl }) {
   days.forEach(d => {
     spansOnDay(trip, d.date).forEach(s => { total[aggStatus(perTraveler ? roster.map(m => spanMemStOf(s, m.userId, d.date)) : [spanStOf(s, d.date)])]++; });
     (d.events||[]).forEach(ev => {
-      total[aggStatus(perTraveler ? roster.map(m => memStOf(ev, m.userId)) : [stOf(ev)])]++;
-      (ev.activities||[]).forEach(a => { total[aggStatus(perTraveler ? roster.map(m => memStOf(a, m.userId)) : [stOf(a)])]++; });
+      total[aggStatus(perTraveler ? assignedRoster(ev).map(m => memStOf(ev, m.userId)) : [stOf(ev)])]++;
+      (ev.activities||[]).forEach(a => { total[aggStatus(perTraveler ? assignedRoster(a).map(m => memStOf(a, m.userId)) : [stOf(a)])]++; });
     });
   });
   const totalItems = total.todo + total.active + total.done;
@@ -1368,7 +1416,11 @@ function StatusTab({ trip, session, update, shareUrl }) {
   // flatten a day into timeline items (spans that touch it, then each event + activities)
   const dayItems = (day) => {
     const out = [];
-    const push = (key, time, name, statuses, extra) => out.push({ key, time, name, agg: aggStatus(statuses), marks: perTraveler ? marksFor(statuses) : null, legacy: perTraveler ? null : statuses[0], anyActive: statuses.some(x => x === 'active'), ...(extra||{}) });
+    // itemRoster = the travelers whose markers this item shows (assignees, or everyone)
+    const push = (key, time, name, statuses, extra, itemRoster) => {
+      const r = itemRoster || roster;
+      out.push({ key, time, name, agg: aggStatus(statuses), marks: perTraveler ? r.map((m, i) => ({ userId:m.userId, name:m.name, status:statuses[i] })) : null, legacy: perTraveler ? null : statuses[0], anyActive: statuses.some(x => x === 'active'), ...(extra||{}) });
+    };
     spansOnDay(trip, day.date).forEach(s => {
       const meta = SPAN_TYPES[s.type] || {};
       const statuses = perTraveler ? roster.map(m => spanMemStOf(s, m.userId, day.date)) : [spanStOf(s, day.date)];
@@ -1378,10 +1430,12 @@ function StatusTab({ trip, session, update, shareUrl }) {
       push(s.id+'_'+day.id, spanSegLabel(s, day.date), `${spanIcon(s)} ${s.title || '(untitled)'}`.trim(), statuses, extra);
     });
     (day.events||[]).forEach(ev => {
+      const er = assignedRoster(ev);
       push(ev.id, ev.time ? `${ev.time}${ev.endTime ? ` to ${ev.endTime}` : ''}` : 'event', ev.title || '(untitled)',
-        perTraveler ? roster.map(m => memStOf(ev, m.userId)) : [stOf(ev)], { ref:{ kind:'event', dayId:day.id, evId:ev.id } });
+        perTraveler ? er.map(m => memStOf(ev, m.userId)) : [stOf(ev)], { ref:{ kind:'event', dayId:day.id, evId:ev.id } }, er);
       (ev.activities||[]).forEach(a => {
-        push(a.id, 'task', a.text || '(task)', perTraveler ? roster.map(m => memStOf(a, m.userId)) : [stOf(a)], { ref:{ kind:'activity', dayId:day.id, evId:ev.id, actId:a.id } });
+        const ar = assignedRoster(a);
+        push(a.id, 'task', a.text || '(task)', perTraveler ? ar.map(m => memStOf(a, m.userId)) : [stOf(a)], { ref:{ kind:'activity', dayId:day.id, evId:ev.id, actId:a.id } }, ar);
       });
     });
     return out;
