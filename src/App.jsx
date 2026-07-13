@@ -523,9 +523,11 @@ function ScheduleTab({ trip, update, session }) {
     setAddingActivityFor(null);
   };
 
-  // Assign travelers to an event / task ([] = everyone)
+  // Assign travelers to an event / task / span ([] = everyone)
   const setEventAssignees = (dayId, evId, list) =>
     update(t => ({ days:(t.days||[]).map(d => d.id===dayId ? { ...d, events:(d.events||[]).map(e => e.id===evId ? { ...e, assignees:list } : e) } : d) }));
+  const setSpanAssignees = (spanId, list) =>
+    update(t => ({ spans:(t.spans||[]).map(s => s.id===spanId ? { ...s, assignees:list } : s) }));
   const setTaskAssignees = (dayId, evId, actId, list) =>
     update(t => ({ days:(t.days||[]).map(d => d.id===dayId ? { ...d, events:(d.events||[]).map(e => e.id===evId
       ? { ...e, activities:(e.activities||[]).map(a => a.id===actId ? { ...a, assignees:list } : a) } : e) } : d) }));
@@ -718,6 +720,132 @@ function ScheduleTab({ trip, update, session }) {
 
 
 
+  // Merge spans + events for a day and sort chronologically by start time (all-day/mid-span items first)
+  const mergedDayItems = (day) => {
+    const spanT = (s) => day.date === s.startDate ? (s.startTime || '') : day.date === s.endDate ? (s.endTime || '') : '';
+    const items = [
+      ...spansOnDay(trip, day.date).map(s => ({ kind:'span', s, t: spanT(s) })),
+      ...(day.events || []).map(ev => ({ kind:'event', ev, t: ev.time || '' })),
+    ];
+    return items.sort((a, b) => (!a.t && !b.t) ? 0 : !a.t ? -1 : !b.t ? 1 : (a.t > b.t ? 1 : a.t < b.t ? -1 : 0));
+  };
+
+  // ── Multi-day span strip (hotel / travel) ──
+  const renderSpanStrip = (day, s) => (
+    <div key={s.id} style={{ padding:"9px 14px",borderTop:"1px solid #D4BFB0",background:"#F3ECDA" }}>
+      <div style={{ display:"flex",alignItems:"flex-start",gap:8 }}>
+        <StatusBox status={spStatus(s, day.date)} onClick={()=>cycleSpanStatus(s.id, day.date)} size={16} style={{ marginRight:0 }} />
+        <span style={{ fontSize:17,lineHeight:1.2,flexShrink:0 }}>{spanIcon(s)}</span>
+        <div style={{ flex:1,minWidth:0 }}>
+          <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
+            <span style={{ opacity: spStatus(s, day.date)==='done'?0.55:1, textDecoration: spStatus(s, day.date)==='done'?"line-through":"none" }}>
+              {Editable({ kind:'span', ids:{ dayId:day.id, evId:s.id }, value:s.title, placeholder:'(untitled)', spanStyle:{ fontSize:13,fontWeight:700,color:'#6E1A10' }, inputWidth:200 })}
+            </span>
+            <span style={{ fontSize:11,background:"#E4D3B4",borderRadius:4,padding:"1px 6px",color:"#7A4A1A",fontWeight:600 }}>{s.type}</span>
+          </div>
+          <div style={{ fontSize:11.5,color:'#9A6A2A',fontWeight:700,marginTop:3,textTransform:'uppercase',letterSpacing:'0.04em' }}>{spanSegLabel(s, day.date)}</div>
+          {spanLocationText(s) && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {spanLocationText(s)}</div>}
+          {s.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{s.notes}</div>}
+          <div style={{ fontSize:10.5,color:'#B0967A',marginTop:3 }}>
+            {fmtDate(s.startDate)}{s.startTime?` · ${s.startTime}`:''} → {fmtDate(s.endDate)}{s.endTime?` · ${s.endTime}`:''}
+          </div>
+          <Assignees members={members} value={s.assignees} onChange={(list)=>setSpanAssignees(s.id, list)} />
+          <DocList docs={s.docs||[]} onAdd={(file)=>attachSpanDoc(s.id,file)} onDel={(docId)=>delSpanDoc(s.id,docId)} />
+          <button onClick={()=>openExpense(s.id)}
+            style={{ marginTop:8, background:'none', border:'1px dashed #C8B09A', borderRadius:6, padding:'3px 10px', fontSize:12, color:'#8B2A14', cursor:'pointer', fontWeight:500 }}>
+            + Expense
+          </button>
+        </div>
+        <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
+          <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={spStatus(s, day.date)} /></span>
+          <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
+            <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
+            <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachSpanDoc(s.id,e.target.files[0]); e.target.value=''; }} />
+          </label>
+          <button title="Delete" onClick={()=>delSpan(s.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── Single-day timed event block ──
+  const renderEventBlock = (day, ev) => (
+    <div key={ev.id} style={{ padding:"10px 14px",borderTop:"1px solid #D4BFB0" }}>
+      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
+        <StatusBox status={evStatus(ev)} onClick={()=>cycleEventStatus(day.id,ev.id)} size={16} style={{ marginRight:8 }} />
+        <div style={{ flex:1 }}>
+          <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
+            <span style={{ fontSize:12,color:"#B54030",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4 }}>
+              {Editable({ kind:'startTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.time, placeholder:'--:--', spanStyle:{ fontSize:12,color:'#B54030',fontWeight:600 }, inputType:'time', inputWidth:108 })}
+              <span style={{ color:'#C8A090' }}>–</span>
+              {Editable({ kind:'endTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.endTime, placeholder:'--:--', spanStyle:{ fontSize:12,color:'#B54030',fontWeight:600 }, inputType:'time', inputWidth:108 })}
+            </span>
+            <span style={{ opacity: evStatus(ev)==='done'?0.55:1, textDecoration: evStatus(ev)==='done'?"line-through":"none" }}>
+              {Editable({ kind:'event', ids:{ dayId:day.id, evId:ev.id }, value:ev.title, placeholder:'(untitled)', spanStyle:{ fontSize:13, fontWeight:500 }, inputWidth:200 })}
+            </span>
+            <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#8B2A14" }}>{ev.category}</span>
+          </div>
+          {ev.location && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {ev.location}</div>}
+          {ev.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{ev.notes}</div>}
+          <Assignees members={members} value={ev.assignees} onChange={(list)=>setEventAssignees(day.id, ev.id, list)} />
+        </div>
+        <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
+          <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={evStatus(ev)} /></span>
+          <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
+            <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
+            <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,null,e.target.files[0]); e.target.value=''; }} />
+          </label>
+          <button title="Delete event" onClick={()=>delEvent(day.id,ev.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
+        </div>
+      </div>
+
+      <DocList docs={ev.docs||[]} onAdd={(file)=>attachDoc(day.id,ev.id,null,file)} onDel={(docId)=>delDoc(day.id,ev.id,null,docId)} />
+
+      {(ev.activities||[]).length > 0 && (
+        <div style={{ marginTop:10,paddingLeft:12,borderLeft:"2px solid #D4BFB0" }}>
+          {(ev.activities||[]).map(act => (
+            <div key={act.id} style={{ marginBottom:6 }}>
+              <div style={{ display:"flex",alignItems:"flex-start",gap:6 }}>
+                <StatusBox status={evStatus(act)} onClick={()=>cycleActivityStatus(day.id,ev.id,act.id)} size={14} style={{ marginTop:2 }} />
+                <div style={{ flex:1 }}>
+                  <span style={{ display:"inline-block", opacity: evStatus(act)==='done'?0.55:1, textDecoration: evStatus(act)==='done'?"line-through":"none" }}>
+                    {Editable({ kind:'activity', ids:{ dayId:day.id, evId:ev.id, actId:act.id }, value:act.text, placeholder:'(empty)', spanStyle:{ fontSize:13, color:'#6E1A10' }, inputWidth:240 })}
+                  </span>
+                  <DocList docs={act.docs||[]} onAdd={(file)=>attachDoc(day.id,ev.id,act.id,file)} onDel={(docId)=>delDoc(day.id,ev.id,act.id,docId)} />
+                  <Assignees members={members} value={act.assignees} onChange={(list)=>setTaskAssignees(day.id, ev.id, act.id, list)} />
+                </div>
+                <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
+                  <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={evStatus(act)} /></span>
+                  <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
+                    <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
+                    <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,act.id,e.target.files[0]); e.target.value=''; }} />
+                  </label>
+                  <button title="Delete task" onClick={()=>delActivity(day.id,ev.id,act.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {addingActivityFor === ev.id ? (
+        <div style={{ display:'flex',gap:6,marginTop:8,alignItems:'center' }}>
+          <input autoFocus placeholder="Describe the task…" value={activityInput[ev.id]||''}
+            onChange={e=>setActivityInput(prev=>({...prev,[ev.id]:e.target.value}))}
+            onKeyDown={e=>{ if(e.key==='Enter') addActivity(day.id,ev.id); if(e.key==='Escape') setAddingActivityFor(null); }}
+            style={{ flex:1,padding:'5px 9px',border:'1px solid #C8B09A',borderRadius:6,fontSize:13,background:'#F0EBE0',color:'#6E1A10',outline:'none' }} />
+          <Btn style={{ padding:'4px 10px',fontSize:12 }} onClick={()=>addActivity(day.id,ev.id)}>Add</Btn>
+          <Btn variant="ghost" style={{ padding:'4px 8px',fontSize:12 }} onClick={()=>setAddingActivityFor(null)}>Cancel</Btn>
+        </div>
+      ) : (
+        <div style={{ display:'flex', gap:8, marginTop:8 }}>
+          <button onClick={()=>setAddingActivityFor(ev.id)} style={{ background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}>+ Task</button>
+          <button onClick={()=>openExpense(ev.id)} style={{ background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}>+ Expense</button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div>
       <div style={{ position:"sticky", top:"calc(env(safe-area-inset-top, 0px) + 51px)", zIndex:15, background:"#F0EBE0", margin:"0 -20px 16px", padding:"6px 20px 10px", borderBottom:"2px solid #C4A882", display:"flex",justifyContent:"space-between",alignItems:"center" }}>
@@ -754,148 +882,9 @@ function ScheduleTab({ trip, update, session }) {
             <p style={{ color:"#C05040",fontSize:13,padding:"10px 14px",margin:0 }}>No events</p>
           )}
 
-          {/* ── Multi-day spans (hotel stays, flights/trains/cars) that touch this day ── */}
-          {spansOnDay(trip, day.date).map(s => (
-            <div key={s.id} style={{ padding:"9px 14px",borderTop:"1px solid #D4BFB0",background:"#F3ECDA" }}>
-              <div style={{ display:"flex",alignItems:"flex-start",gap:8 }}>
-                <StatusBox status={spStatus(s, day.date)} onClick={()=>cycleSpanStatus(s.id, day.date)} size={16} style={{ marginRight:0 }} />
-                <span style={{ fontSize:17,lineHeight:1.2,flexShrink:0 }}>{spanIcon(s)}</span>
-                <div style={{ flex:1,minWidth:0 }}>
-                  <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
-                    <span style={{ opacity: spStatus(s, day.date)==='done'?0.55:1, textDecoration: spStatus(s, day.date)==='done'?"line-through":"none" }}>
-                      {Editable({ kind:'span', ids:{ dayId:day.id, evId:s.id }, value:s.title, placeholder:'(untitled)', spanStyle:{ fontSize:13,fontWeight:700,color:'#6E1A10' }, inputWidth:200 })}
-                    </span>
-                    <span style={{ fontSize:11,background:"#E4D3B4",borderRadius:4,padding:"1px 6px",color:"#7A4A1A",fontWeight:600 }}>{s.type}</span>
-                  </div>
-                  <div style={{ fontSize:11.5,color:'#9A6A2A',fontWeight:700,marginTop:3,textTransform:'uppercase',letterSpacing:'0.04em' }}>{spanSegLabel(s, day.date)}</div>
-                  {spanLocationText(s) && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {spanLocationText(s)}</div>}
-                  {s.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{s.notes}</div>}
-                  <div style={{ fontSize:10.5,color:'#B0967A',marginTop:3 }}>
-                    {fmtDate(s.startDate)}{s.startTime?` · ${s.startTime}`:''} → {fmtDate(s.endDate)}{s.endTime?` · ${s.endTime}`:''}
-                  </div>
-                  <DocList docs={s.docs||[]} onAdd={(file)=>attachSpanDoc(s.id,file)} onDel={(docId)=>delSpanDoc(s.id,docId)} />
-                  <button onClick={()=>openExpense(s.id)}
-                    style={{ marginTop:8, background:'none', border:'1px dashed #C8B09A', borderRadius:6, padding:'3px 10px', fontSize:12, color:'#8B2A14', cursor:'pointer', fontWeight:500 }}>
-                    + Expense
-                  </button>
-                </div>
-                <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
-                  <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={spStatus(s, day.date)} /></span>
-                  <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
-                    <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
-                    <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachSpanDoc(s.id,e.target.files[0]); e.target.value=''; }} />
-                  </label>
-                  <button title="Delete" onClick={()=>delSpan(s.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
-                </div>
-              </div>
-            </div>
-          ))}
+          {/* ── Events, tasks & spans interleaved chronologically by start time ── */}
+          {mergedDayItems(day).map(it => it.kind === 'span' ? renderSpanStrip(day, it.s) : renderEventBlock(day, it.ev))}
 
-          {(day.events||[]).map(ev => (
-            <div key={ev.id} style={{ padding:"10px 14px",borderTop:"1px solid #D4BFB0" }}>
-              {/* ── Event Header ── */}
-              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
-                <StatusBox status={evStatus(ev)} onClick={()=>cycleEventStatus(day.id,ev.id)} size={16} style={{ marginRight:8 }} />
-                <div style={{ flex:1 }}>
-                  <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
-                    <span style={{ fontSize:12,color:"#B54030",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4 }}>
-                      {Editable({ kind:'startTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.time, placeholder:'--:--', spanStyle:{ fontSize:12,color:'#B54030',fontWeight:600 }, inputType:'time', inputWidth:108 })}
-                      <span style={{ color:'#C8A090' }}>–</span>
-                      {Editable({ kind:'endTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.endTime, placeholder:'--:--', spanStyle:{ fontSize:12,color:'#B54030',fontWeight:600 }, inputType:'time', inputWidth:108 })}
-                    </span>
-                    <span style={{ opacity: evStatus(ev)==='done'?0.55:1, textDecoration: evStatus(ev)==='done'?"line-through":"none" }}>
-                      {Editable({ kind:'event', ids:{ dayId:day.id, evId:ev.id }, value:ev.title, placeholder:'(untitled)', spanStyle:{ fontSize:13, fontWeight:500 }, inputWidth:200 })}
-                    </span>
-                    <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#8B2A14" }}>{ev.category}</span>
-                  </div>
-                  {ev.location && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {ev.location}</div>}
-                  {ev.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{ev.notes}</div>}
-                  <Assignees members={members} value={ev.assignees} onChange={(list)=>setEventAssignees(day.id, ev.id, list)} />
-                </div>
-                {/* right-aligned action columns: status · attach · delete */}
-                <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
-                  <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={evStatus(ev)} /></span>
-                  <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
-                    <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
-                    <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,null,e.target.files[0]); e.target.value=''; }} />
-                  </label>
-                  <button title="Delete event" onClick={()=>delEvent(day.id,ev.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
-                </div>
-              </div>
-
-              {/* ── Documents for Event ── */}
-              <DocList
-                docs={ev.docs||[]}
-                onAdd={(file)=>attachDoc(day.id,ev.id,null,file)}
-                onDel={(docId)=>delDoc(day.id,ev.id,null,docId)}
-              />
-
-              {/* ── Activities ── */}
-              {(ev.activities||[]).length > 0 && (
-                <div style={{ marginTop:10,paddingLeft:12,borderLeft:"2px solid #D4BFB0" }}>
-                  {(ev.activities||[]).map(act => (
-                    <div key={act.id} style={{ marginBottom:6 }}>
-                      <div style={{ display:"flex",alignItems:"flex-start",gap:6 }}>
-                        <StatusBox status={evStatus(act)} onClick={()=>cycleActivityStatus(day.id,ev.id,act.id)} size={14} style={{ marginTop:2 }} />
-                        <div style={{ flex:1 }}>
-                          <span style={{ display:"inline-block", opacity: evStatus(act)==='done'?0.55:1, textDecoration: evStatus(act)==='done'?"line-through":"none" }}>
-                            {Editable({ kind:'activity', ids:{ dayId:day.id, evId:ev.id, actId:act.id }, value:act.text, placeholder:'(empty)', spanStyle:{ fontSize:13, color:'#6E1A10' }, inputWidth:240 })}
-                          </span>
-                          {/* Docs for this activity */}
-                          <DocList
-                            docs={act.docs||[]}
-                            onAdd={(file)=>attachDoc(day.id,ev.id,act.id,file)}
-                            onDel={(docId)=>delDoc(day.id,ev.id,act.id,docId)}
-                          />
-                          <Assignees members={members} value={act.assignees} onChange={(list)=>setTaskAssignees(day.id, ev.id, act.id, list)} />
-                        </div>
-                        {/* right-aligned action columns: status · attach · delete */}
-                        <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
-                          <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={evStatus(act)} /></span>
-                          <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
-                            <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
-                            <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,act.id,e.target.files[0]); e.target.value=''; }} />
-                          </label>
-                          <button title="Delete task" onClick={()=>delActivity(day.id,ev.id,act.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* ── Add Activity ── */}
-              {addingActivityFor === ev.id ? (
-                <div style={{ display:'flex',gap:6,marginTop:8,alignItems:'center' }}>
-                  <input
-                    autoFocus
-                    placeholder="Describe the task…"
-                    value={activityInput[ev.id]||''}
-                    onChange={e=>setActivityInput(prev=>({...prev,[ev.id]:e.target.value}))}
-                    onKeyDown={e=>{ if(e.key==='Enter') addActivity(day.id,ev.id); if(e.key==='Escape') setAddingActivityFor(null); }}
-                    style={{ flex:1,padding:'5px 9px',border:'1px solid #C8B09A',borderRadius:6,fontSize:13,background:'#F0EBE0',color:'#6E1A10',outline:'none' }}
-                  />
-                  <Btn style={{ padding:'4px 10px',fontSize:12 }} onClick={()=>addActivity(day.id,ev.id)}>Add</Btn>
-                  <Btn variant="ghost" style={{ padding:'4px 8px',fontSize:12 }} onClick={()=>setAddingActivityFor(null)}>Cancel</Btn>
-                </div>
-              ) : (
-                <div style={{ display:'flex', gap:8, marginTop:8 }}>
-                  <button
-                    onClick={()=>setAddingActivityFor(ev.id)}
-                    style={{ background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}
-                  >
-                    + Task
-                  </button>
-                  <button
-                    onClick={()=>openExpense(ev.id)}
-                    style={{ background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}
-                  >
-                    + Expense
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
           </>)}
         </div>
       ))}
@@ -1405,7 +1394,7 @@ function StatusTab({ trip, session, update, shareUrl }) {
   // overall counts across the whole trip (aggregated across travelers per item)
   const total = { todo:0, active:0, done:0 };
   days.forEach(d => {
-    spansOnDay(trip, d.date).forEach(s => { total[aggStatus(perTraveler ? roster.map(m => spanMemStOf(s, m.userId, d.date)) : [spanStOf(s, d.date)])]++; });
+    spansOnDay(trip, d.date).forEach(s => { total[aggStatus(perTraveler ? assignedRoster(s).map(m => spanMemStOf(s, m.userId, d.date)) : [spanStOf(s, d.date)])]++; });
     (d.events||[]).forEach(ev => {
       total[aggStatus(perTraveler ? assignedRoster(ev).map(m => memStOf(ev, m.userId)) : [stOf(ev)])]++;
       (ev.activities||[]).forEach(a => { total[aggStatus(perTraveler ? assignedRoster(a).map(m => memStOf(a, m.userId)) : [stOf(a)])]++; });
@@ -1421,15 +1410,16 @@ function StatusTab({ trip, session, update, shareUrl }) {
       const r = itemRoster || roster;
       out.push({ key, time, name, agg: aggStatus(statuses), marks: perTraveler ? r.map((m, i) => ({ userId:m.userId, name:m.name, status:statuses[i] })) : null, legacy: perTraveler ? null : statuses[0], anyActive: statuses.some(x => x === 'active'), ...(extra||{}) });
     };
-    spansOnDay(trip, day.date).forEach(s => {
+    const pushSpan = (s) => {
       const meta = SPAN_TYPES[s.type] || {};
-      const statuses = perTraveler ? roster.map(m => spanMemStOf(s, m.userId, day.date)) : [spanStOf(s, day.date)];
+      const sr = assignedRoster(s);
+      const statuses = perTraveler ? sr.map(m => spanMemStOf(s, m.userId, day.date)) : [spanStOf(s, day.date)];
       const isTravel = meta.kind === 'travel';
       const hasLink = isTravel && (s.mode === 'By Air' ? !!s.flightNo : (s.from || s.to));
       const extra = { ref:{ kind:'span', spanId:s.id, dayISO:day.date }, ...(hasLink ? { travel: { mode:s.mode, from:s.from, to:s.to, flightNo:s.flightNo, name:s.title || 'Travel' } } : {}) };
-      push(s.id+'_'+day.id, spanSegLabel(s, day.date), `${spanIcon(s)} ${s.title || '(untitled)'}`.trim(), statuses, extra);
-    });
-    (day.events||[]).forEach(ev => {
+      push(s.id+'_'+day.id, spanSegLabel(s, day.date), `${spanIcon(s)} ${s.title || '(untitled)'}`.trim(), statuses, extra, sr);
+    };
+    const pushEvent = (ev) => {
       const er = assignedRoster(ev);
       push(ev.id, ev.time ? `${ev.time}${ev.endTime ? ` to ${ev.endTime}` : ''}` : 'event', ev.title || '(untitled)',
         perTraveler ? er.map(m => memStOf(ev, m.userId)) : [stOf(ev)], { ref:{ kind:'event', dayId:day.id, evId:ev.id } }, er);
@@ -1437,7 +1427,14 @@ function StatusTab({ trip, session, update, shareUrl }) {
         const ar = assignedRoster(a);
         push(a.id, 'task', a.text || '(task)', perTraveler ? ar.map(m => memStOf(a, m.userId)) : [stOf(a)], { ref:{ kind:'activity', dayId:day.id, evId:ev.id, actId:a.id } }, ar);
       });
-    });
+    };
+    // Interleave spans + events chronologically; each event's tasks follow it
+    const spanT = (s) => day.date === s.startDate ? (s.startTime || '') : day.date === s.endDate ? (s.endTime || '') : '';
+    [
+      ...spansOnDay(trip, day.date).map(s => ({ t: spanT(s), fn: () => pushSpan(s) })),
+      ...(day.events||[]).map(ev => ({ t: ev.time || '', fn: () => pushEvent(ev) })),
+    ].sort((a, b) => (!a.t && !b.t) ? 0 : !a.t ? -1 : !b.t ? 1 : (a.t > b.t ? 1 : a.t < b.t ? -1 : 0))
+     .forEach(e => e.fn());
     return out;
   };
 
