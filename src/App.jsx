@@ -1796,6 +1796,112 @@ async function directorySaveProfile(userId, name, profileObj) {
   } catch(e) {}
 }
 
+// ---- Dashboard: landing page after sign-in (trip buckets, notes, to-dos) ----
+function Dashboard({ session, profile, trips, onOpenTrip, onNewTrip, onOpenAccount, onSaveData }) {
+  const [notes, setNotes] = useState('');
+  const [todoInput, setTodoInput] = useState('');
+  const savedNotes = (profile && profile.notes) || '';
+  useEffect(() => { setNotes(savedNotes); }, [savedNotes]);
+  const todos = (profile && profile.todos) || [];
+  const saveNotes = () => { if (notes !== savedNotes) onSaveData({ notes }); };
+  const addTodo = () => { const t = todoInput.trim(); if (!t) return; onSaveData({ todos:[...todos, { id:uid(), text:t, done:false }] }); setTodoInput(''); };
+  const toggleTodo = (id) => onSaveData({ todos: todos.map(t => t.id===id ? { ...t, done:!t.done } : t) });
+  const delTodo = (id) => onSaveData({ todos: todos.filter(t => t.id!==id) });
+
+  const firstName = ((session && session.name) || '').trim().split(/\s+/)[0] || 'Traveler';
+  const initial = firstName.charAt(0).toUpperCase() || '?';
+  const buckets = [
+    { key:'active', icon:'🧭', title:'Active Trips',   list:trips.filter(t=>tripStatusOf(t)==='active'), empty:'No trip underway right now.' },
+    { key:'todo',   icon:'🗓️', title:'Future Trips',   list:trips.filter(t=>tripStatusOf(t)==='todo'),   empty:'Nothing planned yet — start one!' },
+    { key:'done',   icon:'📦', title:'Archived Trips', list:trips.filter(t=>tripStatusOf(t)==='done'),   empty:'No completed trips yet.' },
+  ];
+  const card = { background:'#EDE7D9', border:'1px solid #D4BFB0', borderRadius:12, padding:'14px 16px' };
+
+  return (
+    <div style={{ fontFamily:'var(--font-body)', maxWidth:680, margin:'0 auto', minHeight:'100vh', background:'#F0EBE0', paddingBottom:'calc(env(safe-area-inset-bottom, 0px) + 24px)', color:'#6E1A10' }}>
+      {/* Header with the user's profile image */}
+      <div style={{ background:'#5C1A1A', boxShadow:'0 2px 12px rgba(0,0,0,0.18)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'calc(env(safe-area-inset-top, 0px) + 16px) 20px 14px' }}>
+          <img src="/logo-travelhub.png" alt="My Travel Hub" width="38" height="38" style={{ borderRadius:9, flexShrink:0, display:'block' }} />
+          <div style={{ flex:1, minWidth:0 }}>
+            <h1 style={{ margin:0, fontSize:18, fontWeight:800, color:'#F5ECD7', letterSpacing:'0.03em', textTransform:'uppercase', lineHeight:1.15 }}>My Travel Hub</h1>
+            <p style={{ margin:'2px 0 0', fontSize:10.5, color:'rgba(245,236,215,0.6)', letterSpacing:'0.08em', textTransform:'uppercase' }}>Dashboard</p>
+          </div>
+          <button onClick={onOpenAccount} title={`Signed in as ${(session && session.name) || ''}`} aria-label="Account"
+            style={{ width:42, height:42, borderRadius:'50%', overflow:'hidden', border:'2px solid rgba(245,236,215,0.5)', background:'rgba(245,236,215,0.12)', cursor:'pointer', padding:0, flexShrink:0, color:'#F5ECD7', fontSize:17, fontWeight:800 }}>
+            {profile && profile.pic ? <img src={profile.pic} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initial}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ padding:'18px 20px' }}>
+        <div style={{ fontSize:19, fontWeight:800, color:'#3D0C02', marginBottom:16 }}>Hi, {firstName} 👋</div>
+
+        {/* Trip buckets */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+          <span style={{ fontSize:15, fontWeight:700 }}>My Trips</span>
+          <Btn onClick={onNewTrip} style={{ padding:'6px 14px', fontSize:12.5 }}>+ New Trip</Btn>
+        </div>
+        {buckets.map(b => (
+          <div key={b.key} style={{ marginBottom:14 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, margin:'0 0 6px' }}>
+              <span style={{ fontSize:13 }}>{b.icon}</span>
+              <span style={{ fontSize:12.5, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase', color:'#8B2A14' }}>{b.title}</span>
+              <span style={{ fontSize:11, fontWeight:700, background:'#E4D3B4', color:'#7A4A1A', borderRadius:10, padding:'1px 8px' }}>{b.list.length}</span>
+            </div>
+            {b.list.length === 0
+              ? <div style={{ ...card, padding:'10px 14px', fontSize:12.5, color:'#9A8478' }}>{b.empty}</div>
+              : b.list.map(t => { const r = tripDateRange(t); const m = TRIP_STATUS[tripStatusOf(t)]; return (
+                  <button key={t.id} onClick={()=>onOpenTrip(t.id)}
+                    style={{ ...card, width:'100%', textAlign:'left', cursor:'pointer', marginBottom:8, display:'block' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <span style={{ width:8, height:8, borderRadius:'50%', background:m.dot, flexShrink:0 }} />
+                      <span style={{ fontSize:14.5, fontWeight:700, color:'#3D0C02', flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name || 'Unnamed trip'}</span>
+                      <span style={{ fontSize:14, color:'#B0967A' }}>›</span>
+                    </div>
+                    <div style={{ fontSize:12, color:'#8B5A3C', marginTop:4, display:'flex', gap:12, flexWrap:'wrap' }}>
+                      {t.destination && <span>📍 {t.destination}</span>}
+                      {r.start && <span>🗓 {fmtDate(r.start)}{r.end && r.end!==r.start ? ` → ${fmtDate(r.end)}` : ''}</span>}
+                      {(t.members||[]).length > 0 && <span>👥 {(t.members||[]).length}</span>}
+                    </div>
+                  </button>
+                ); })}
+          </div>
+        ))}
+
+        {/* My Notes — personal, synced to the account */}
+        <div style={{ ...card, marginTop:20 }}>
+          <div style={{ fontSize:13.5, fontWeight:700, marginBottom:8 }}>📝 My Notes</div>
+          <textarea value={notes} onChange={e=>setNotes(e.target.value)} onBlur={saveNotes} rows={4}
+            placeholder="Jot down ideas, reminders, packing thoughts…"
+            style={{ width:'100%', boxSizing:'border-box', resize:'vertical', padding:'9px 11px', border:'1px solid #C8B09A', borderRadius:8, background:'#F5EFE2', color:'#3D0C02', fontSize:13, fontFamily:'inherit', lineHeight:1.5, outline:'none' }} />
+          <div style={{ fontSize:10.5, color:'#B0967A', marginTop:4 }}>Saves automatically · synced to your account</div>
+        </div>
+
+        {/* To-do list — personal, synced to the account */}
+        <div style={{ ...card, marginTop:14 }}>
+          <div style={{ fontSize:13.5, fontWeight:700, marginBottom:10 }}>✅ To-Do</div>
+          <div style={{ display:'flex', gap:6, marginBottom:10 }}>
+            <input value={todoInput} onChange={e=>setTodoInput(e.target.value)}
+              onKeyDown={e=>{ if(e.key==='Enter') addTodo(); }}
+              placeholder="Add a to-do…"
+              style={{ flex:1, minWidth:0, padding:'7px 10px', border:'1px solid #C8B09A', borderRadius:7, fontSize:13, background:'#F5EFE2', color:'#3D0C02', outline:'none' }} />
+            <Btn onClick={addTodo} style={{ padding:'6px 14px', fontSize:12.5 }}>Add</Btn>
+          </div>
+          {todos.length === 0 && <div style={{ fontSize:12.5, color:'#9A8478' }}>Nothing on the list.</div>}
+          {todos.map(t => (
+            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderTop:'1px solid #E2D8C8' }}>
+              <input type="checkbox" checked={!!t.done} onChange={()=>toggleTodo(t.id)} style={{ cursor:'pointer' }} />
+              <span style={{ flex:1, fontSize:13, color:'#3D0C02', textDecoration:t.done?'line-through':'none', opacity:t.done?0.55:1, wordBreak:'break-word' }}>{t.text}</span>
+              <button onClick={()=>delTodo(t.id)} style={{ background:'none', border:'none', color:'#C04428', cursor:'pointer', fontSize:13, padding:'0 2px', lineHeight:1 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MainApp() {
   const [trips, setTrips] = useState([]);
   const [activeTrip, setActiveTrip] = useState(null);
@@ -1809,6 +1915,7 @@ function MainApp() {
   const [accountMode, setAccountMode] = useState('login'); // which tab the account modal opens on
   const [showTravelers, setShowTravelers] = useState(false);
   const [session, setSession] = useState(loadAuth);
+  const [showDashboard, setShowDashboard] = useState(true); // post-login landing page
   const [profile, setProfile] = useState(() => { try { const p = localStorage.getItem('travelerProfile'); return p ? JSON.parse(p) : null; } catch(e){ return null; } });
   const [editingDest, setEditingDest] = useState(false);
   const [destDraft, setDestDraft] = useState('');
@@ -1920,7 +2027,7 @@ function MainApp() {
     setShowProfile(false);
   };
 
-  const onAuth = (s) => { setSession(s); saveAuth(s); };
+  const onAuth = (s) => { setSession(s); saveAuth(s); setShowDashboard(true); };
   const onLogout = () => { authSignOut(session); setSession(null); saveAuth(null); setShowAccount(false); };
 
   // ── Trip travelers (members) ──
@@ -1934,7 +2041,7 @@ function MainApp() {
   });
   const removeMember = (tripId, userId) => updateTrip(tripId, t => ({ members: (t.members || []).filter(m => m.userId !== userId) }));
 
-  const goToTrip = (id) => { setActiveTrip(id); setActiveTab('Schedule'); setShowSearch(false); };
+  const goToTrip = (id) => { setActiveTrip(id); setActiveTab('Schedule'); setShowSearch(false); setShowDashboard(false); };
 
   // Trips visible to the signed-in traveler: unowned/legacy, owned by me, or shared with me.
   // Logged out shows everything (unchanged behaviour).
@@ -2014,6 +2121,30 @@ function MainApp() {
     );
   }
 
+  // ── Dashboard: where a signed-in traveler lands ──
+  if (showDashboard) {
+    return (
+      <>
+        <Dashboard
+          session={session}
+          profile={profile}
+          trips={visibleTrips}
+          onOpenTrip={(id)=>{ setActiveTrip(id); setActiveTab('Schedule'); setShowDashboard(false); }}
+          onNewTrip={()=>{ setShowDashboard(false); setShowNewTrip(true); }}
+          onOpenAccount={()=>setShowAccount(true)}
+          onSaveData={(patch)=>{ const p = { ...(profile||{}), ...patch }; setProfile(p); directorySaveProfile(session.userId, p.name || session.name, p); }}
+        />
+        {showAccount && (
+          <AccountModal session={session} profile={profile} onAuth={onAuth} onLogout={onLogout}
+            onOpenDetails={()=>{ setShowAccount(false); setShowProfile(true); }} onClose={()=>setShowAccount(false)} />
+        )}
+        {showProfile && (
+          <ProfileModal initial={profile} onSave={saveProfile} onClose={()=>setShowProfile(false)} />
+        )}
+      </>
+    );
+  }
+
 
   return (
     <div style={{ fontFamily:"var(--font-body)",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0",paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
@@ -2032,6 +2163,9 @@ function MainApp() {
         </div>
         {/* Row 2: action toolbar */}
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 20px 6px" }}>
+            <button onClick={()=>setShowDashboard(true)} aria-label="Dashboard" title="Dashboard" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+            </button>
             <button onClick={()=>setShowSearch(true)} aria-label="Search" title="Search" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
               <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
             </button>
