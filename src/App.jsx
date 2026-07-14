@@ -1316,6 +1316,10 @@ const STATUS_WORD = { todo:'not started', active:'ongoing', done:'complete' };
 
 // Standardised status word for the Status "Sentences" view (coloured via STATUS_META[status].color)
 const STATUS_SENTENCE_WORD = { done:'complete', active:'on-going', todo:'not started' };
+// "A" · "A and B" · "A, B and C"
+const joinNames = (names) => names.length <= 1 ? (names[0] || '')
+  : names.length === 2 ? `${names[0]} and ${names[1]}`
+  : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 
 // Per-traveler marker: the traveler's PHOTO is their identity; a coloured ring shows
 // their status, and a corner ✓ (done) / dot (ongoing) adds a shape cue so status isn't
@@ -1531,11 +1535,23 @@ function StatusTab({ trip, session, update, shareUrl }) {
                       {/* Sentences (one coloured line per traveler) shown above the markers when toggled on */}
                       {sentenceView && it.marks && (
                         <div style={{ marginTop:5 }}>
-                          {it.marks.map(mk => (
-                            <div key={mk.userId} style={{ fontSize:12.5, color:'#4A3B34', lineHeight:1.55 }}>
-                              {it.titleText} is <span style={{ color: STATUS_META[mk.status] ? STATUS_META[mk.status].color : '#8A7A6D', fontWeight:700 }}>{STATUS_SENTENCE_WORD[mk.status] || 'not started'}</span> for {mk.name}
-                            </div>
-                          ))}
+                          {(() => {
+                            // display name = first name, unless two travelers on this item share it
+                            const firsts = it.marks.map(mk => (mk.name || mk.userId || '').trim().split(/\s+/)[0]);
+                            const fCount = {};
+                            firsts.forEach(f => { fCount[f] = (fCount[f] || 0) + 1; });
+                            const disp = it.marks.map((mk, i) => fCount[firsts[i]] > 1 ? (mk.name || mk.userId) : firsts[i]);
+                            // one combined line per status group
+                            return ['active', 'done', 'todo'].map(st => {
+                              const names = it.marks.map((mk, i) => mk.status === st ? disp[i] : null).filter(Boolean);
+                              if (!names.length) return null;
+                              return (
+                                <div key={st} style={{ fontSize:12.5, color:'#4A3B34', lineHeight:1.55 }}>
+                                  {it.titleText} is <span style={{ color: STATUS_META[st].color, fontWeight:700 }}>{STATUS_SENTENCE_WORD[st]}</span> for {joinNames(names)}
+                                </div>
+                              );
+                            });
+                          })()}
                         </div>
                       )}
                       {it.marks
