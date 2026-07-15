@@ -1,5 +1,7 @@
 /node_modules
 /build
-.env.local
+.env
+.env.*
+!.env.example
 .DS_Store
 npm-debug.log*

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import TravelDashboard from "./Dashboard";
 
 const TABS = ["Schedule", "Status", "Budget", "Packing", "Pictures"];
 const CATEGORIES = ["Transport", "Hotel", "Food", "Sightseeing", "Other"];
@@ -1625,10 +1626,12 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
 }
 
 // Supabase cloud sync helpers
-const SUPA_URL = 'https://lafpiwlpjvongtdtzuam.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhZnBpd2xwanZvbmd0ZHR6dWFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyNjUyNDgsImV4cCI6MjA5Njg0MTI0OH0.cdDldzH4xrPYWZgdqeYOCBk7u34CtZWT6L2ldx3qYRk';
+const SUPA_URL = (process.env.REACT_APP_SUPABASE_URL || '').replace(/\/$/, '');
+const SUPA_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
+const SUPABASE_CONFIGURED = Boolean(SUPA_URL && SUPA_KEY);
 const supaHeaders = { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY };
 async function loadFromCloud() {
+  if (!SUPABASE_CONFIGURED) return null;
   try {
     const r = await fetch(SUPA_URL + '/rest/v1/travel_data?id=eq.shared&select=trips,header_note', { headers: supaHeaders });
     if (!r.ok) return null;
@@ -1637,6 +1640,7 @@ async function loadFromCloud() {
   } catch(e) { return null; }
 }
 async function saveToCloud(trips, headerNote) {
+  if (!SUPABASE_CONFIGURED) return;
   try {
     await fetch(SUPA_URL + '/rest/v1/travel_data', {
       method: 'POST',
@@ -1650,6 +1654,7 @@ const SUPA_BUCKET = 'trip-media';
 
 // Upload a File/Blob to Supabase Storage; returns its public URL.
 async function uploadToStorage(file, folder) {
+  if (!SUPABASE_CONFIGURED) throw new Error('Supabase development environment is not configured.');
   const ext = (file.name && file.name.includes('.'))
     ? file.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g,'')
     : 'bin';
@@ -1665,6 +1670,7 @@ async function uploadToStorage(file, folder) {
 
 // Best-effort delete of a stored file given its public URL.
 async function deleteFromStorage(url) {
+  if (!SUPABASE_CONFIGURED) return;
   if (!url || typeof url !== 'string') return;
   const marker = '/object/public/' + SUPA_BUCKET + '/';
   const i = url.indexOf(marker);
@@ -1706,6 +1712,7 @@ const sessionFromResponse = (j, fallbackUserId, fallbackName) => {
 };
 
 async function authSignIn(userId, password, fallbackName) {
+  if (!SUPABASE_CONFIGURED) throw new Error('Supabase development environment is not configured.');
   const res = await fetch(SUPA_URL + '/auth/v1/token?grant_type=password', {
     method: 'POST', headers: { apikey: SUPA_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: userIdToEmail(userId), password })
@@ -1723,6 +1730,7 @@ async function authSignIn(userId, password, fallbackName) {
 }
 
 async function authSignUp(userId, password, name, role) {
+  if (!SUPABASE_CONFIGURED) throw new Error('Supabase development environment is not configured.');
   const res = await fetch(SUPA_URL + '/auth/v1/signup', {
     method: 'POST', headers: { apikey: SUPA_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: userIdToEmail(userId), password, data: { user_id: normUserId(userId), traveler_name: name, role: role || 'captain' } })
@@ -1742,6 +1750,7 @@ async function authSignUp(userId, password, name, role) {
 }
 
 async function authSignOut(session) {
+  if (!SUPABASE_CONFIGURED) return;
   try {
     if (session && session.accessToken) await fetch(SUPA_URL + '/auth/v1/logout', {
       method: 'POST', headers: { apikey: SUPA_KEY, 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.accessToken }
@@ -1753,6 +1762,7 @@ async function authSignOut(session) {
 // A lightweight lookup of User ID -> name so travelers can be found + shown when
 // added to a trip. Populated on signup/login (best-effort, never blocks auth).
 async function directoryUpsert(userId, name) {
+  if (!SUPABASE_CONFIGURED) return;
   try {
     await fetch(SUPA_URL + '/rest/v1/profiles', {
       method: 'POST',
@@ -1763,6 +1773,7 @@ async function directoryUpsert(userId, name) {
 }
 // Look up a traveler by exact User ID; returns { userId, name } or null
 async function directoryLookup(userId) {
+  if (!SUPABASE_CONFIGURED) return null;
   try {
     const r = await fetch(SUPA_URL + '/rest/v1/profiles?user_id=eq.' + encodeURIComponent(normUserId(userId)) + '&select=user_id,name', { headers: supaHeaders });
     if (!r.ok) return null;
@@ -1773,6 +1784,7 @@ async function directoryLookup(userId) {
 }
 // Load a traveler's full profile (photo/age/gender/city) from the directory
 async function directoryGetProfile(userId) {
+  if (!SUPABASE_CONFIGURED) return null;
   try {
     const r = await fetch(SUPA_URL + '/rest/v1/profiles?user_id=eq.' + encodeURIComponent(normUserId(userId)) + '&select=name,profile', { headers: supaHeaders });
     if (!r.ok) return null;
@@ -1783,6 +1795,7 @@ async function directoryGetProfile(userId) {
 }
 // Fetch several travelers' name+photo at once → { userId: { name, pic } }
 async function directoryGetProfiles(userIds) {
+  if (!SUPABASE_CONFIGURED) return {};
   try {
     const ids = (userIds || []).map(u => normUserId(u)).filter(Boolean);
     if (!ids.length) return {};
@@ -1797,6 +1810,7 @@ async function directoryGetProfiles(userIds) {
 }
 // Save a traveler's profile (name + details) to the directory
 async function directorySaveProfile(userId, name, profileObj) {
+  if (!SUPABASE_CONFIGURED) return;
   try {
     await fetch(SUPA_URL + '/rest/v1/profiles', {
       method: 'POST',
@@ -1962,6 +1976,7 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onNewT
 
 function MainApp() {
   const [trips, setTrips] = useState([]);
+  const [loadingTrips, setLoadingTrips] = useState(true);
   const [activeTrip, setActiveTrip] = useState(null);
   const [activeTab, setActiveTab] = useState("Schedule");
   const [showNewTrip, setShowNewTrip] = useState(false);
@@ -2008,7 +2023,7 @@ function MainApp() {
           if (sv) { const { trips: t } = JSON.parse(sv); if (t && t.length) { setTrips(t); setActiveTrip(t[0].id); } }
         } catch(e) {}
       }
-    });
+    }).finally(() => setLoadingTrips(false));
   }, [])
 
   // Auto-save: debounce 2s after any change to trips
@@ -2214,15 +2229,26 @@ function MainApp() {
   if (showDashboard) {
     return (
       <>
-        <Dashboard
+        <TravelDashboard
           session={session}
           profile={profile}
           trips={visibleTrips}
+          loading={loadingTrips}
           canCreate={myRole === 'captain'}
           onOpenTrip={(id)=>{ setActiveTrip(id); setActiveTab('Schedule'); setShowDashboard(false); }}
           onNewTrip={()=>{ setShowDashboard(false); setShowNewTrip(true); }}
           onOpenAccount={()=>setShowAccount(true)}
           onSaveData={(patch)=>{ const p = { ...(profile||{}), ...patch }; setProfile(p); directorySaveProfile(session.userId, p.name || session.name, p); }}
+          onNavigate={(target, id)=>{
+            if (target === 'overview') return;
+            const tripId = id || (visibleTrips[0] && visibleTrips[0].id);
+            if (!tripId) return;
+            setActiveTrip(tripId);
+            if (target === 'calendar') { setShowDashboard(false); setShowToday(true); return; }
+            if (target === 'documents') { setShowDashboard(false); setShowDocs(true); return; }
+            if (target === 'memories') { setActiveTab('Pictures'); setShowDashboard(false); return; }
+            if (target === 'status') { setActiveTab('Status'); setShowDashboard(false); }
+          }}
         />
         {showAccount && (
           <AccountModal session={session} profile={profile} onAuth={onAuth} onLogout={onLogout}
@@ -3137,6 +3163,10 @@ function ViewerApp({ tripId, focusUserId }) {
   const refresh = () => setReload(r => r + 1);
 
   useEffect(() => {
+    if (!SUPABASE_CONFIGURED) {
+      setPhase('error');
+      return undefined;
+    }
     let cancelled = false;
     const fetchTrip = async () => {
       try {
