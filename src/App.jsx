@@ -41,7 +41,7 @@ const tripDateRange = (trip) => {
 const defaultTrip = () => ({
   id: uid(), name: "", destination: "", startDate: "", endDate: "",
   days: [], expenses: [], packItems: [], pictures: [],
-  budget: "", ownerId: "", members: [], status: "todo", currency: "$"
+  budget: "", ownerId: "", members: [], status: "todo", currency: "$", viewers: []
 });
 
 // Currency options + money formatter (symbol prefixes directly; letter-codes get a space)
@@ -273,7 +273,7 @@ function Assignees({ members, value, onChange }) {
 }
 
 // ---- Schedule Tab ----
-function ScheduleTab({ trip, update, session }) {
+function ScheduleTab({ trip, update, session, canEdit=true }) {
   const myId = session ? session.userId : null;
   // The status the current user sees/toggles on an item (per-traveler when logged in, else legacy shared)
   const evStatus = (item) => myId ? memStOf(item, myId) : stOf(item);
@@ -330,7 +330,7 @@ function ScheduleTab({ trip, update, session }) {
   const [editing, setEditing] = useState(null);
   const [editVal, setEditVal] = useState('');
   const editKey = (e) => e ? [e.kind, e.dayId, e.evId||'', e.actId||''].join('|') : '';
-  const startEdit = (kind, ids, current) => { setEditing({ kind, ...ids }); setEditVal(current||''); };
+  const startEdit = (kind, ids, current) => { if (!canEdit) return; setEditing({ kind, ...ids }); setEditVal(current||''); };
   const cancelEdit = () => setEditing(null);
   const commitEdit = () => {
     if (!editing) return;
@@ -636,7 +636,7 @@ function ScheduleTab({ trip, update, session }) {
           <span style={{ fontSize:14 }}>📎</span>
           <span onClick={()=>openPreview(doc)} style={{ fontSize:12,color:'#8B2A14',textDecoration:'underline',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:'pointer' }}>{doc.name}</span>
           <span style={{ fontSize:11,color:'#C05040',flexShrink:0 }}>{fmtSize(doc.size)}</span>
-          <button onClick={()=>onDel(doc.id)} style={{ background:'none',border:'none',cursor:'pointer',color:'#C04428',fontSize:13,padding:'0 2px',lineHeight:1 }}>✕</button>
+          {onDel && <button onClick={()=>onDel(doc.id)} style={{ background:'none',border:'none',cursor:'pointer',color:'#C04428',fontSize:13,padding:'0 2px',lineHeight:1 }}>✕</button>}
         </div>
       ))}
 
@@ -749,8 +749,8 @@ function ScheduleTab({ trip, update, session }) {
           <div style={{ fontSize:10.5,color:'#B0967A',marginTop:3 }}>
             {fmtDate(s.startDate)}{s.startTime?` · ${s.startTime}`:''} → {fmtDate(s.endDate)}{s.endTime?` · ${s.endTime}`:''}
           </div>
-          <Assignees members={members} value={s.assignees} onChange={(list)=>setSpanAssignees(s.id, list)} />
-          <DocList docs={s.docs||[]} onAdd={(file)=>attachSpanDoc(s.id,file)} onDel={(docId)=>delSpanDoc(s.id,docId)} />
+          {canEdit && <Assignees members={members} value={s.assignees} onChange={(list)=>setSpanAssignees(s.id, list)} />}
+          <DocList docs={s.docs||[]} onAdd={(file)=>attachSpanDoc(s.id,file)} onDel={canEdit ? (docId)=>delSpanDoc(s.id,docId) : null} />
           <button onClick={()=>openExpense(s.id)}
             style={{ marginTop:8, background:'none', border:'1px dashed #C8B09A', borderRadius:6, padding:'3px 10px', fontSize:12, color:'#8B2A14', cursor:'pointer', fontWeight:500 }}>
             + Expense
@@ -758,11 +758,13 @@ function ScheduleTab({ trip, update, session }) {
         </div>
         <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
           <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={spStatus(s, day.date)} /></span>
+          {canEdit && (<>
           <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
             <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
             <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachSpanDoc(s.id,e.target.files[0]); e.target.value=''; }} />
           </label>
           <button title="Delete" onClick={()=>delSpan(s.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
+          </>)}
         </div>
       </div>
     </div>
@@ -787,19 +789,21 @@ function ScheduleTab({ trip, update, session }) {
           </div>
           {ev.location && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {ev.location}</div>}
           {ev.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{ev.notes}</div>}
-          <Assignees members={members} value={ev.assignees} onChange={(list)=>setEventAssignees(day.id, ev.id, list)} />
+          {canEdit && <Assignees members={members} value={ev.assignees} onChange={(list)=>setEventAssignees(day.id, ev.id, list)} />}
         </div>
         <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
           <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={evStatus(ev)} /></span>
+          {canEdit && (<>
           <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
             <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
             <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,null,e.target.files[0]); e.target.value=''; }} />
           </label>
           <button title="Delete event" onClick={()=>delEvent(day.id,ev.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
+          </>)}
         </div>
       </div>
 
-      <DocList docs={ev.docs||[]} onAdd={(file)=>attachDoc(day.id,ev.id,null,file)} onDel={(docId)=>delDoc(day.id,ev.id,null,docId)} />
+      <DocList docs={ev.docs||[]} onAdd={(file)=>attachDoc(day.id,ev.id,null,file)} onDel={canEdit ? (docId)=>delDoc(day.id,ev.id,null,docId) : null} />
 
       {(ev.activities||[]).length > 0 && (
         <div style={{ marginTop:10,paddingLeft:12,borderLeft:"2px solid #D4BFB0" }}>
@@ -811,16 +815,18 @@ function ScheduleTab({ trip, update, session }) {
                   <span style={{ display:"inline-block", opacity: evStatus(act)==='done'?0.55:1, textDecoration: evStatus(act)==='done'?"line-through":"none" }}>
                     {Editable({ kind:'activity', ids:{ dayId:day.id, evId:ev.id, actId:act.id }, value:act.text, placeholder:'(empty)', spanStyle:{ fontSize:13, color:'#6E1A10' }, inputWidth:240 })}
                   </span>
-                  <DocList docs={act.docs||[]} onAdd={(file)=>attachDoc(day.id,ev.id,act.id,file)} onDel={(docId)=>delDoc(day.id,ev.id,act.id,docId)} />
-                  <Assignees members={members} value={act.assignees} onChange={(list)=>setTaskAssignees(day.id, ev.id, act.id, list)} />
+                  <DocList docs={act.docs||[]} onAdd={(file)=>attachDoc(day.id,ev.id,act.id,file)} onDel={canEdit ? (docId)=>delDoc(day.id,ev.id,act.id,docId) : null} />
+                  {canEdit && <Assignees members={members} value={act.assignees} onChange={(list)=>setTaskAssignees(day.id, ev.id, act.id, list)} />}
                 </div>
                 <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
                   <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={evStatus(act)} /></span>
+                  {canEdit && (<>
                   <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
                     <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
                     <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,act.id,e.target.files[0]); e.target.value=''; }} />
                   </label>
                   <button title="Delete task" onClick={()=>delActivity(day.id,ev.id,act.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
+                  </>)}
                 </div>
               </div>
             </div>
@@ -839,7 +845,7 @@ function ScheduleTab({ trip, update, session }) {
         </div>
       ) : (
         <div style={{ display:'flex', gap:8, marginTop:8 }}>
-          <button onClick={()=>setAddingActivityFor(ev.id)} style={{ background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}>+ Task</button>
+          {canEdit && <button onClick={()=>setAddingActivityFor(ev.id)} style={{ background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}>+ Task</button>}
           <button onClick={()=>openExpense(ev.id)} style={{ background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}>+ Expense</button>
         </div>
       )}
@@ -850,7 +856,7 @@ function ScheduleTab({ trip, update, session }) {
     <div>
       <div style={{ position:"sticky", top:"calc(env(safe-area-inset-top, 0px) + 51px)", zIndex:15, background:"#F0EBE0", margin:"0 -20px 16px", padding:"6px 20px 10px", borderBottom:"2px solid #C4A882", display:"flex",justifyContent:"space-between",alignItems:"center" }}>
         <h2 style={{ margin:0,fontSize:16,fontWeight:700 }}>Days</h2>
-        <Btn onClick={()=>setShowDay(true)}>+ Add Day</Btn>
+        {canEdit && <Btn onClick={()=>setShowDay(true)}>+ Add Day</Btn>}
       </div>
 
       {(!trip.days||trip.days.length===0) && (
@@ -871,10 +877,12 @@ function ScheduleTab({ trip, update, session }) {
               </span>
               <span>{Editable({ kind:'day', ids:{ dayId:day.id }, value:day.label, placeholder:'+ add label', spanStyle:{ fontSize:13, color:'#8B2A14' }, inputWidth:160 })}</span>
             </div>
+            {canEdit && (
             <div style={{ display:"flex",gap:6 }}>
               <Btn onClick={()=>openAddEvent(day)} style={{ padding:"4px 10px",fontSize:12 }}>+ Event</Btn>
               <Btn variant="danger" style={{ padding:"4px 8px",fontSize:12 }} onClick={()=>delDay(day.id)}>✕</Btn>
             </div>
+            )}
           </div>
 
           {!collapsedDays[day.id] && (<>
@@ -1348,9 +1356,10 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
 }
 
 // ---- Status Tab ----  (per-traveler rollup of event/activity/span statuses per day)
-function StatusTab({ trip, session, update, shareUrl }) {
+function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focusUserId=null }) {
   const days = trip.days || [];
-  const roster = trip.members || [];
+  // focusUserId (from a traveler's share link) narrows the view to that traveler only
+  const roster = focusUserId ? (trip.members || []).filter(m => m.userId === focusUserId) : (trip.members || []);
   const perTraveler = roster.length > 0; // group trips show a marker per traveler; solo/legacy show one status
   const [copied, setCopied] = useState(false);
 
@@ -1482,7 +1491,7 @@ function StatusTab({ trip, session, update, shareUrl }) {
           ))}
         </div>
       )}
-      {perTraveler && update && (
+      {perTraveler && update && canUpdateOthers && (
         <p style={{ fontSize:11.5, color:'#8A7A6D', margin:'-14px 0 22px', lineHeight:1.45 }}>💡 Tap any traveler's photo on an item to update their status — handy when you're travelling together and someone's away from their phone.</p>
       )}
 
@@ -1556,7 +1565,7 @@ function StatusTab({ trip, session, update, shareUrl }) {
                       )}
                       {it.marks
                         ? <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
-                            {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} onClick={update ? ()=>cycleMemberStatus(it.ref, mk.userId) : undefined} />)}
+                            {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} onClick={update && (canUpdateOthers || (session && mk.userId === session.userId)) ? ()=>cycleMemberStatus(it.ref, mk.userId) : undefined} />)}
                           </div>
                         : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
                       {it.travel && it.anyActive && (
@@ -1690,6 +1699,7 @@ const sessionFromResponse = (j, fallbackUserId, fallbackName) => {
     uid: u.id || j.id || '',
     userId: meta.user_id || normUserId(fallbackUserId),
     name: meta.traveler_name || fallbackName || normUserId(fallbackUserId),
+    role: meta.role || 'captain', // profile type: captain | traveler | viewer (legacy accounts default to captain)
     accessToken: j.access_token || '',
     refreshToken: j.refresh_token || '',
   };
@@ -1712,10 +1722,10 @@ async function authSignIn(userId, password, fallbackName) {
   return s;
 }
 
-async function authSignUp(userId, password, name) {
+async function authSignUp(userId, password, name, role) {
   const res = await fetch(SUPA_URL + '/auth/v1/signup', {
     method: 'POST', headers: { apikey: SUPA_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: userIdToEmail(userId), password, data: { user_id: normUserId(userId), traveler_name: name } })
+    body: JSON.stringify({ email: userIdToEmail(userId), password, data: { user_id: normUserId(userId), traveler_name: name, role: role || 'captain' } })
   });
   const j = await res.json().catch(() => ({}));
   const code = j.error_code || '';
@@ -1726,7 +1736,7 @@ async function authSignUp(userId, password, name) {
     throw new Error(m);
   }
   // With email confirmation off, signup returns a session directly; otherwise log in to fetch one
-  if (j.access_token) { const s = sessionFromResponse(j, userId, name); directoryUpsert(s.userId, s.name); return s; }
+  if (j.access_token) { const s = sessionFromResponse(j, userId, name); directorySaveProfile(s.userId, s.name, { role: s.role }); return s; }
   // No session → confirmation is still on
   throw new Error('One-time setup needed: in Supabase → Authentication → Providers → Email, turn OFF "Confirm email", then try again.');
 }
@@ -1796,8 +1806,56 @@ async function directorySaveProfile(userId, name, profileObj) {
   } catch(e) {}
 }
 
+// ---- Viewer home: view-only account sees just the trips shared with them ----
+function ViewerHome({ session, profile, trips, onOpenAccount }) {
+  const firstName = ((session && session.name) || '').trim().split(/\s+/)[0] || 'Viewer';
+  const initial = firstName.charAt(0).toUpperCase() || '?';
+  return (
+    <div style={{ fontFamily:'var(--font-body)', maxWidth:680, margin:'0 auto', minHeight:'100vh', background:'#F0EBE0', paddingBottom:'env(safe-area-inset-bottom, 0px)', color:'#6E1A10' }}>
+      <div style={{ background:'#5C1A1A', boxShadow:'0 2px 12px rgba(0,0,0,0.18)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'calc(env(safe-area-inset-top, 0px) + 16px) 20px 14px' }}>
+          <img src="/logo-travelhub.png" alt="My Travel Hub" width="38" height="38" style={{ borderRadius:9, flexShrink:0, display:'block' }} />
+          <div style={{ flex:1, minWidth:0 }}>
+            <h1 style={{ margin:0, fontSize:18, fontWeight:800, color:'#F5ECD7', letterSpacing:'0.03em', textTransform:'uppercase', lineHeight:1.15 }}>My Travel Hub</h1>
+            <p style={{ margin:'2px 0 0', fontSize:10.5, color:'rgba(245,236,215,0.6)', letterSpacing:'0.08em', textTransform:'uppercase' }}>Viewer</p>
+          </div>
+          <button onClick={onOpenAccount} title={`Signed in as ${(session && session.name) || ''}`} aria-label="Account"
+            style={{ width:42, height:42, borderRadius:'50%', overflow:'hidden', border:'2px solid rgba(245,236,215,0.5)', background:'rgba(245,236,215,0.12)', cursor:'pointer', padding:0, flexShrink:0, color:'#F5ECD7', fontSize:17, fontWeight:800 }}>
+            {profile && profile.pic ? <img src={profile.pic} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initial}
+          </button>
+        </div>
+      </div>
+      <div style={{ padding:'18px 20px' }}>
+        <div style={{ fontSize:19, fontWeight:800, color:'#3D0C02', marginBottom:6 }}>Hi, {firstName} 👋</div>
+        <p style={{ fontSize:13, color:'#8A7A6D', margin:'0 0 18px' }}>Trips shared with you — tap one to follow its live status.</p>
+        {trips.length === 0 && (
+          <div style={{ textAlign:'center', padding:'50px 16px', color:'#B54030' }}>
+            <div style={{ fontSize:44, marginBottom:12 }}>🔭</div>
+            <p style={{ fontSize:14.5, margin:0 }}>No trips shared with you yet.</p>
+            <p style={{ fontSize:12.5, color:'#8A7A6D', marginTop:8 }}>Ask a Trip Captain to add <strong>@{session.userId}</strong> as a viewer on their trip.</p>
+          </div>
+        )}
+        {trips.map(t => { const r = tripDateRange(t); const m = TRIP_STATUS[tripStatusOf(t)]; return (
+          <button key={t.id} onClick={()=>{ window.location.href = '?view=' + t.id; }}
+            style={{ background:'#EDE7D9', border:'1px solid #D4BFB0', borderRadius:12, padding:'14px 16px', width:'100%', textAlign:'left', cursor:'pointer', marginBottom:10, display:'block' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ width:8, height:8, borderRadius:'50%', background:m.dot, flexShrink:0 }} />
+              <span style={{ fontSize:14.5, fontWeight:700, color:'#3D0C02', flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name || 'Trip'}</span>
+              <span style={{ fontSize:11, fontWeight:700, color:'#3C8A3C', background:'#DCEEDC', borderRadius:10, padding:'2px 8px' }}>LIVE ▸</span>
+            </div>
+            <div style={{ fontSize:12, color:'#8B5A3C', marginTop:4, display:'flex', gap:12, flexWrap:'wrap' }}>
+              {t.destination && <span>📍 {t.destination}</span>}
+              {r.start && <span>🗓 {fmtDate(r.start)}{r.end && r.end!==r.start ? ` → ${fmtDate(r.end)}` : ''}</span>}
+            </div>
+          </button>
+        ); })}
+      </div>
+    </div>
+  );
+}
+
 // ---- Dashboard: landing page after sign-in (trip buckets, notes, to-dos) ----
-function Dashboard({ session, profile, trips, onOpenTrip, onNewTrip, onOpenAccount, onSaveData }) {
+function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onNewTrip, onOpenAccount, onSaveData }) {
   const [notes, setNotes] = useState('');
   const [todoInput, setTodoInput] = useState('');
   const savedNotes = (profile && profile.notes) || '';
@@ -1840,7 +1898,7 @@ function Dashboard({ session, profile, trips, onOpenTrip, onNewTrip, onOpenAccou
         {/* Trip buckets */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
           <span style={{ fontSize:15, fontWeight:700 }}>My Trips</span>
-          <Btn onClick={onNewTrip} style={{ padding:'6px 14px', fontSize:12.5 }}>+ New Trip</Btn>
+          {canCreate && <Btn onClick={onNewTrip} style={{ padding:'6px 14px', fontSize:12.5 }}>+ New Trip</Btn>}
         </div>
         {buckets.map(b => (
           <div key={b.key} style={{ marginBottom:14 }}>
@@ -2030,6 +2088,16 @@ function MainApp() {
   const onAuth = (s) => { setSession(s); saveAuth(s); setShowDashboard(true); };
   const onLogout = () => { authSignOut(session); setSession(null); saveAuth(null); setShowAccount(false); };
 
+  // ── Roles & permissions (UI-level) ──
+  // Profile type: captain (create/manage trips) | traveler (limited) | viewer (view only).
+  // A trip's captain = its owner; legacy unowned trips stay editable by any signed-in traveler.
+  const myRole = (session && session.role) || 'captain';
+  const isTripCaptain = (t) => !!t && (!t.ownerId || (session && t.ownerId === session.userId));
+
+  // Trip viewers (viewer accounts a captain has shared the trip with)
+  const addViewer = (tripId, member) => updateTrip(tripId, t => ({ viewers: [...(t.viewers||[]).filter(v => v.userId !== member.userId), member] }));
+  const removeViewer = (tripId, uidv) => updateTrip(tripId, t => ({ viewers: (t.viewers||[]).filter(v => v.userId !== uidv) }));
+
   // ── Trip travelers (members) ──
   // Add a traveler; also stamps ownership/self onto legacy (unowned) trips on first add
   const addMember = (tripId, member) => updateTrip(tripId, t => {
@@ -2121,6 +2189,23 @@ function MainApp() {
     );
   }
 
+  // ── Viewer accounts: view-only home listing trips shared with them ──
+  if (myRole === 'viewer') {
+    const shared = trips.filter(t => (t.viewers || []).some(v => v.userId === session.userId));
+    return (
+      <>
+        <ViewerHome session={session} profile={profile} trips={shared} onOpenAccount={()=>setShowAccount(true)} />
+        {showAccount && (
+          <AccountModal session={session} profile={profile} onAuth={onAuth} onLogout={onLogout}
+            onOpenDetails={()=>{ setShowAccount(false); setShowProfile(true); }} onClose={()=>setShowAccount(false)} />
+        )}
+        {showProfile && (
+          <ProfileModal initial={profile} onSave={saveProfile} onClose={()=>setShowProfile(false)} />
+        )}
+      </>
+    );
+  }
+
   // ── Dashboard: where a signed-in traveler lands ──
   if (showDashboard) {
     return (
@@ -2129,6 +2214,7 @@ function MainApp() {
           session={session}
           profile={profile}
           trips={visibleTrips}
+          canCreate={myRole === 'captain'}
           onOpenTrip={(id)=>{ setActiveTrip(id); setActiveTab('Schedule'); setShowDashboard(false); }}
           onNewTrip={()=>{ setShowDashboard(false); setShowNewTrip(true); }}
           onOpenAccount={()=>setShowAccount(true)}
@@ -2258,7 +2344,8 @@ function MainApp() {
               {t.name||"Unnamed"}
             </button>
           ))}
-          {/* New Trip tab */}
+          {/* New Trip tab — Trip Captains only */}
+          {myRole === 'captain' && (
           <button
             onClick={()=>setShowNewTrip(true)}
             title="New Trip"
@@ -2280,6 +2367,7 @@ function MainApp() {
             }}>
             + Trip
           </button>
+          )}
         </div>
       </div>
 
@@ -2287,8 +2375,14 @@ function MainApp() {
       {!trip ? (
         <div style={{ textAlign:"center",marginTop:80,color:"#D47060" }}>
           <div style={{ fontSize:48,marginBottom:12 }}>🗺️</div>
-          <p style={{ fontSize:15 }}>No trips yet. Create your first one!</p>
-          <Btn onClick={()=>setShowNewTrip(true)} style={{ marginTop:8 }}>+ New Trip</Btn>
+          {myRole === 'captain' ? (
+            <>
+              <p style={{ fontSize:15 }}>No trips yet. Create your first one!</p>
+              <Btn onClick={()=>setShowNewTrip(true)} style={{ marginTop:8 }}>+ New Trip</Btn>
+            </>
+          ) : (
+            <p style={{ fontSize:15 }}>No trips yet — ask a Trip Captain to add you to one.</p>
+          )}
         </div>
       ) : (
         <div style={{ padding:20 }}>
@@ -2339,7 +2433,7 @@ function MainApp() {
                 )}
               </div>
             </div>
-            <Btn variant="danger" style={{ fontSize:12,padding:"4px 10px" }} onClick={()=>deleteTrip(trip.id)}>Delete Trip</Btn>
+            {isTripCaptain(trip) && <Btn variant="danger" style={{ fontSize:12,padding:"4px 10px" }} onClick={()=>deleteTrip(trip.id)}>Delete Trip</Btn>}
           </div>
 
           {/* Inner tabs — sticky so you can switch tabs while scrolled down */}
@@ -2357,10 +2451,11 @@ function MainApp() {
             </div>
           </div>
 
-          {activeTab==="Schedule" && <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />}
+          {activeTab==="Schedule" && <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} canEdit={isTripCaptain(trip)} />}
           {activeTab==="Budget" && <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />}
           {activeTab==="Packing" && <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
-          {activeTab==="Status" && <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}`} />}
+          {activeTab==="Status" && <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)}
+            shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${myRole==='traveler' && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />}
           {activeTab==="Pictures" && <PicturesTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
         </div>
       )}
@@ -2400,6 +2495,8 @@ function MainApp() {
           session={session}
           onAdd={(m)=>addMember(trip.id, m)}
           onRemove={(uid)=>removeMember(trip.id, uid)}
+          onAddViewer={(m)=>addViewer(trip.id, m)}
+          onRemoveViewer={(uid)=>removeViewer(trip.id, uid)}
           onNeedLogin={()=>{ setShowTravelers(false); setShowAccount(true); }}
           onClose={()=>setShowTravelers(false)}
         />
@@ -2476,6 +2573,7 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [role, setRole] = useState('captain'); // profile type chosen at signup
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -2492,6 +2590,9 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
           </div>
           <div style={{ fontSize:18, fontWeight:700, color:'#6E1A10' }}>{session.name}</div>
           <div style={{ fontSize:13, color:'#9A8478', marginTop:2 }}>@{session.userId}</div>
+          <span style={{ marginTop:8, fontSize:10.5, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase', color:'#8B5A3C', background:'#EFE3CC', borderRadius:10, padding:'2px 10px' }}>
+            {(session.role||'captain')==='captain' ? '⭐ Trip Captain' : session.role==='viewer' ? '👁 Viewer' : '🧭 Traveler'}
+          </span>
         </div>
         <Btn variant="soft" style={{ width:'100%', marginBottom:8 }} onClick={onOpenDetails}>Edit profile details</Btn>
         <Btn variant="ghost" style={{ width:'100%' }} onClick={onLogout}>Log out</Btn>
@@ -2511,7 +2612,7 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
     if (mode === 'signup' && !name.trim()) { setErr('Please enter the traveler name.'); return; }
     setBusy(true);
     try {
-      const s = mode === 'signup' ? await authSignUp(uidv, password, name.trim()) : await authSignIn(uidv, password);
+      const s = mode === 'signup' ? await authSignUp(uidv, password, name.trim(), role) : await authSignIn(uidv, password);
       onAuth(s);
     } catch(e) { setErr(e.message || 'Something went wrong.'); }
     setBusy(false);
@@ -2532,7 +2633,12 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
       </div>
 
       {mode === 'signup' && (
-        <Input label="Traveler Name *" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Piyush Bajpai" />
+        <>
+          <Input label="Traveler Name *" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Piyush Bajpai" />
+          <Select label="Profile type *" value={role} onChange={e=>setRole(e.target.value)}
+            options={['captain','traveler','viewer']}
+            renderOption={o => o==='captain' ? 'Trip Captain — plans & manages trips' : o==='traveler' ? 'Traveler — joins a captain’s trips' : 'Viewer — follows shared trips (view only)'} />
+        </>
       )}
       <Input label="User ID *" value={userId}
         autoCapitalize="none" autoCorrect="off" spellCheck={false}
@@ -2557,10 +2663,13 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
 }
 
 // ---- Trip travelers: view the roster, add/remove by User ID ----
-function TravelersModal({ trip, session, onAdd, onRemove, onNeedLogin, onClose }) {
+function TravelersModal({ trip, session, onAdd, onRemove, onAddViewer, onRemoveViewer, onNeedLogin, onClose }) {
   const [userId, setUserId] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [viewerId, setViewerId] = useState('');
+  const [vBusy, setVBusy] = useState(false);
+  const [vErr, setVErr] = useState('');
 
   const owner = trip.ownerId || '';
   const members = trip.members || [];
@@ -2579,6 +2688,20 @@ function TravelersModal({ trip, session, onAdd, onRemove, onNeedLogin, onClose }
     if (!found) { setErr('No traveler found with User ID “' + uidv + '”. Check the spelling — they need to have created an account first.'); return; }
     onAdd(found);
     setUserId('');
+  };
+
+  const viewers = trip.viewers || [];
+  const addV = async () => {
+    setVErr('');
+    const uidv = normUserId(viewerId);
+    if (!uidv) return;
+    if (viewers.some(v => v.userId === uidv)) { setVErr('That viewer is already on this trip.'); return; }
+    setVBusy(true);
+    const found = await directoryLookup(uidv);
+    setVBusy(false);
+    if (!found) { setVErr('No account found with User ID “' + uidv + '”. They need to sign up (as a Viewer) first.'); return; }
+    onAddViewer(found);
+    setViewerId('');
   };
 
   return (
@@ -2622,8 +2745,40 @@ function TravelersModal({ trip, session, onAdd, onRemove, onNeedLogin, onClose }
           <Btn onClick={add} disabled={busy} style={{ opacity: busy?0.6:1 }}>{busy ? 'Checking…' : 'Add traveler'}</Btn>
         </div>
       )}
+
+      {/* Viewers — view-only accounts this trip is shared with */}
+      {(isOwner || viewers.length > 0) && (
+        <div style={{ borderTop:'1px solid #E2D8C8', marginTop:16, paddingTop:14 }}>
+          <div style={{ fontSize:12.5, fontWeight:700, letterSpacing:'0.05em', textTransform:'uppercase', color:'#8B2A14', marginBottom:8 }}>👁 Viewers</div>
+          {viewers.length === 0 && <p style={{ fontSize:12.5, color:'#9A8478', margin:'0 0 10px' }}>No viewers yet — share this trip's live status with a view-only account.</p>}
+          {viewers.map(v => (
+            <div key={v.userId} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 0', borderBottom:'1px solid #E8E2D4' }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <span style={{ fontSize:13.5, fontWeight:600, color:'#6E1A10' }}>{v.name || v.userId}</span>
+                <span style={{ fontSize:12, color:'#9A8478', marginLeft:6 }}>@{v.userId}</span>
+              </div>
+              {isOwner && (
+                <button onClick={()=>onRemoveViewer(v.userId)} title="Remove viewer"
+                  style={{ background:'#F5E0D8', border:'none', borderRadius:6, color:'#8B2A14', cursor:'pointer', fontSize:12, padding:'4px 10px' }}>Remove</button>
+              )}
+            </div>
+          ))}
+          {isOwner && (
+            <div style={{ marginTop:10 }}>
+              <Input label="Add viewer by User ID" value={viewerId}
+                autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                onChange={e=>setViewerId(e.target.value)}
+                onKeyDown={e=>{ if(e.key==='Enter') addV(); }}
+                placeholder="their User ID" />
+              {vErr && <div style={{ fontSize:12.5, color:'#B3261E', background:'#FBEAE7', border:'1px solid #F1C6C0', borderRadius:7, padding:'8px 10px', marginBottom:12 }}>{vErr}</div>}
+              <Btn variant="soft" onClick={addV} disabled={vBusy} style={{ opacity: vBusy?0.6:1 }}>{vBusy ? 'Checking…' : 'Add viewer'}</Btn>
+            </div>
+          )}
+        </div>
+      )}
+
       {session && !isOwner && (
-        <p style={{ fontSize:12, color:'#9A8478', marginTop:4 }}>Only the trip owner can add or remove travelers.</p>
+        <p style={{ fontSize:12, color:'#9A8478', marginTop:12 }}>Only the trip owner can add or remove travelers.</p>
       )}
     </Modal>
   );
@@ -2959,7 +3114,7 @@ const fmtDateTime = (iso) => {
   catch(e){ return ''; }
 };
 
-function ViewerApp({ tripId }) {
+function ViewerApp({ tripId, focusUserId }) {
   const [trip, setTrip] = useState(null);
   const [phase, setPhase] = useState('loading'); // loading | ok | notfound | error
   const [updatedAt, setUpdatedAt] = useState(null);
@@ -3029,13 +3184,15 @@ function ViewerApp({ tripId }) {
         <span>{updatedAt ? `Last updated ${fmtDateTime(updatedAt)}` : 'Live view'} · refreshes automatically</span>
         <button onClick={refresh} style={{ padding:"3px 10px", borderRadius:6, border:"1px solid #C8B09A", background:"transparent", color:"#8B2A14", fontSize:11.5, cursor:"pointer" }}>Refresh now</button>
       </div>
-      <StatusTab trip={trip} />
+      <StatusTab trip={trip} focusUserId={focusUserId} />
       <div style={{ textAlign:"center", fontSize:11, color:"#B0A091", padding:"18px 0 8px" }}>Read-only view · shared by the traveler</div>
     </div>
   );
 }
 
 export default function Root() {
-  const viewId = new URLSearchParams(window.location.search).get('view');
-  return viewId ? <ViewerApp tripId={viewId} /> : <MainApp />;
+  const params = new URLSearchParams(window.location.search);
+  const viewId = params.get('view');
+  const focusUserId = params.get('t'); // a traveler's share link shows only that traveler's status
+  return viewId ? <ViewerApp tripId={viewId} focusUserId={focusUserId} /> : <MainApp />;
 }
