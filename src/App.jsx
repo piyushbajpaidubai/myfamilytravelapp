@@ -2040,7 +2040,7 @@ function MainApp() {
     if (!tripForm.name) return;
     recordHistory();
     const t = { ...defaultTrip(), ...tripForm };
-    if (session) { t.ownerId = session.userId; t.members = [{ userId: session.userId, name: session.name }]; }
+    if (session) { t.ownerId = session.userId; t.members = [{ userId: session.userId, name: session.name, role:'captain' }]; }
     const updated = [...trips, t];
     setTrips(updated);
     setActiveTrip(t.id);
@@ -2089,10 +2089,12 @@ function MainApp() {
   const onLogout = () => { authSignOut(session); setSession(null); saveAuth(null); setShowAccount(false); };
 
   // ── Roles & permissions (UI-level) ──
-  // Profile type: captain (create/manage trips) | traveler (limited) | viewer (view only).
-  // A trip's captain = its owner; legacy unowned trips stay editable by any signed-in traveler.
+  // Profile type: captain (can create trips) | traveler (limited) | viewer (view only).
+  // Per-trip: the CREATOR is that trip's captain by default; added members join as travelers,
+  // and only the creator can promote a member to captain (or demote them back).
   const myRole = (session && session.role) || 'captain';
-  const isTripCaptain = (t) => !!t && (!t.ownerId || (session && t.ownerId === session.userId));
+  const isTripCreator = (t) => !!t && (!t.ownerId || (session && t.ownerId === session.userId)); // legacy unowned trips stay open
+  const isTripCaptain = (t) => !!t && (isTripCreator(t) || (session && (t.members || []).some(m => m.userId === session.userId && m.role === 'captain')));
 
   // Trip viewers (viewer accounts a captain has shared the trip with)
   const addViewer = (tripId, member) => updateTrip(tripId, t => ({ viewers: [...(t.viewers||[]).filter(v => v.userId !== member.userId), member] }));
@@ -2103,11 +2105,13 @@ function MainApp() {
   const addMember = (tripId, member) => updateTrip(tripId, t => {
     const owner = t.ownerId || (session ? session.userId : "");
     let members = Array.isArray(t.members) ? [...t.members] : [];
-    if (session && owner === session.userId && !members.some(m => m.userId === session.userId)) members.push({ userId: session.userId, name: session.name });
-    if (!members.some(m => m.userId === member.userId)) members.push(member);
+    if (session && owner === session.userId && !members.some(m => m.userId === session.userId)) members.push({ userId: session.userId, name: session.name, role:'captain' });
+    if (!members.some(m => m.userId === member.userId)) members.push({ ...member, role:'traveler' }); // everyone added joins as a traveler
     return { ownerId: owner, members };
   });
   const removeMember = (tripId, userId) => updateTrip(tripId, t => ({ members: (t.members || []).filter(m => m.userId !== userId) }));
+  // Promote/demote a member's per-trip role (creator only, gated in the UI)
+  const setMemberRole = (tripId, userId, role) => updateTrip(tripId, t => ({ members: (t.members || []).map(m => m.userId === userId ? { ...m, role } : m) }));
 
   const goToTrip = (id) => { setActiveTrip(id); setActiveTab('Schedule'); setShowSearch(false); setShowDashboard(false); };
 
@@ -2433,7 +2437,7 @@ function MainApp() {
                 )}
               </div>
             </div>
-            {isTripCaptain(trip) && <Btn variant="danger" style={{ fontSize:12,padding:"4px 10px" }} onClick={()=>deleteTrip(trip.id)}>Delete Trip</Btn>}
+            {isTripCreator(trip) && <Btn variant="danger" style={{ fontSize:12,padding:"4px 10px" }} onClick={()=>deleteTrip(trip.id)}>Delete Trip</Btn>}
           </div>
 
           {/* Inner tabs — sticky so you can switch tabs while scrolled down */}
@@ -2455,7 +2459,7 @@ function MainApp() {
           {activeTab==="Budget" && <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />}
           {activeTab==="Packing" && <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
           {activeTab==="Status" && <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)}
-            shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${myRole==='traveler' && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />}
+            shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />}
           {activeTab==="Pictures" && <PicturesTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
         </div>
       )}
@@ -2497,6 +2501,7 @@ function MainApp() {
           onRemove={(uid)=>removeMember(trip.id, uid)}
           onAddViewer={(m)=>addViewer(trip.id, m)}
           onRemoveViewer={(uid)=>removeViewer(trip.id, uid)}
+          onSetRole={(uid, role)=>setMemberRole(trip.id, uid, role)}
           onNeedLogin={()=>{ setShowTravelers(false); setShowAccount(true); }}
           onClose={()=>setShowTravelers(false)}
         />
@@ -2663,7 +2668,7 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
 }
 
 // ---- Trip travelers: view the roster, add/remove by User ID ----
-function TravelersModal({ trip, session, onAdd, onRemove, onAddViewer, onRemoveViewer, onNeedLogin, onClose }) {
+function TravelersModal({ trip, session, onAdd, onRemove, onAddViewer, onRemoveViewer, onSetRole, onNeedLogin, onClose }) {
   const [userId, setUserId] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -2715,23 +2720,33 @@ function TravelersModal({ trip, session, onAdd, onRemove, onAddViewer, onRemoveV
 
       <div style={{ marginBottom: isOwner ? 16 : 0 }}>
         {members.length === 0 && <p style={{ fontSize:13, color:'#9A8478', margin:'4px 0 0' }}>No travelers added yet.</p>}
-        {members.map(m => (
+        {members.map(m => {
+          const isCaptainRole = m.userId === owner || m.role === 'captain';
+          return (
           <div key={m.userId} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid #E8E2D4' }}>
             <div style={{ width:38, height:38, borderRadius:'50%', background:'#E8E2D4', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:16, fontWeight:700, color:'#B7A08F' }}>{initial(m.name || m.userId)}</div>
             <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:14, fontWeight:600, color:'#6E1A10', display:'flex', alignItems:'center', gap:6 }}>
+              <div style={{ fontSize:14, fontWeight:600, color:'#6E1A10', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
                 {m.name || m.userId}
-                {m.userId === owner && <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.04em', color:'#8B5A3C', background:'#EFE3CC', borderRadius:4, padding:'1px 6px' }}>OWNER</span>}
+                <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.04em', color: isCaptainRole ? '#8B5A3C' : '#5A6B7A', background: isCaptainRole ? '#EFE3CC' : '#E2E8ED', borderRadius:4, padding:'1px 6px' }}>{isCaptainRole ? '⭐ CAPTAIN' : '🧭 TRAVELER'}</span>
+                {m.userId === owner && <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.04em', color:'#8B5A3C', background:'#EFE3CC', borderRadius:4, padding:'1px 6px' }}>CREATOR</span>}
                 {m.userId === myId && <span style={{ fontSize:10, fontWeight:700, color:'#3C8A3C', background:'#DCEEDC', borderRadius:4, padding:'1px 6px' }}>YOU</span>}
               </div>
               <div style={{ fontSize:12, color:'#9A8478' }}>@{m.userId}</div>
             </div>
-            {isOwner && m.userId !== owner && m.userId !== myId && (
-              <button onClick={()=>onRemove(m.userId)} title="Remove traveler"
-                style={{ background:'#F5E0D8', border:'none', borderRadius:6, color:'#8B2A14', cursor:'pointer', fontSize:12, padding:'4px 10px' }}>Remove</button>
+            {isOwner && m.userId !== owner && (
+              <div style={{ display:'flex', flexDirection:'column', gap:4, alignItems:'flex-end', flexShrink:0 }}>
+                <button onClick={()=>onSetRole(m.userId, m.role === 'captain' ? 'traveler' : 'captain')}
+                  title={m.role === 'captain' ? 'Demote to traveler' : 'Promote to trip captain'}
+                  style={{ background:'#EFE3CC', border:'none', borderRadius:6, color:'#8B5A3C', cursor:'pointer', fontSize:11.5, fontWeight:600, padding:'4px 10px', whiteSpace:'nowrap' }}>
+                  {m.role === 'captain' ? 'Make Traveler' : 'Make Captain'}
+                </button>
+                <button onClick={()=>onRemove(m.userId)} title="Remove traveler"
+                  style={{ background:'#F5E0D8', border:'none', borderRadius:6, color:'#8B2A14', cursor:'pointer', fontSize:11.5, padding:'4px 10px' }}>Remove</button>
+              </div>
             )}
           </div>
-        ))}
+        ); })}
       </div>
 
       {isOwner && (
