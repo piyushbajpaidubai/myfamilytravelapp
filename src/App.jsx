@@ -7,6 +7,25 @@ const PACK_CATS = ["Documents", "Clothing", "Toiletries", "Electronics", "Other"
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
+// Build read-only links from the deployment the traveler is currently using.
+// This keeps Vercel previews on Vercel instead of sending viewers to the legacy
+// Netlify app, and it also works for local development and future domains.
+const tripShareUrl = (tripId, shareToken='', focusUserId='') => {
+  try {
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.hash = '';
+    url.searchParams.set('view', tripId);
+    if (shareToken) url.searchParams.set('k', shareToken);
+    if (focusUserId) url.searchParams.set('t', focusUserId);
+    return url.toString();
+  } catch (e) {
+    const tokenPart = shareToken ? `&k=${encodeURIComponent(shareToken)}` : '';
+    const focusPart = focusUserId ? `&t=${encodeURIComponent(focusUserId)}` : '';
+    return `${window.location.origin}/?view=${encodeURIComponent(tripId)}${tokenPart}${focusPart}`;
+  }
+};
+
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 // Format an ISO date string (YYYY-MM-DD) as "21 June 2026". Returns input unchanged if unparseable.
 const fmtDate = (iso) => {
@@ -103,6 +122,104 @@ function Btn({ children, variant="primary", ...props }) {
     soft: { ...base, background:"#E8E2D4",color:"#6E1A10" },
   };
   return <button {...props} style={{ ...styles[variant],...props.style }}>{children}</button>;
+}
+
+function ShareTripModal({ trip, session, canShareAll=true, canManageViewers=false, onManageViewers, onClose }) {
+  const members = trip.members || [];
+  const myId = session ? session.userId : '';
+  const availableMembers = canShareAll
+    ? members
+    : members.filter(m => m.userId === myId);
+  if (!canShareAll && myId && !availableMembers.some(m => m.userId === myId)) {
+    availableMembers.push({ userId:myId, name:(session && session.name) || myId });
+  }
+
+  const [audience, setAudience] = useState(canShareAll ? 'all' : (myId || (availableMembers[0] && availableMembers[0].userId) || 'all'));
+  const [feedback, setFeedback] = useState('');
+  const selectedMember = availableMembers.find(m => m.userId === audience);
+  const focusedUserId = audience === 'all' ? '' : audience;
+  const url = tripShareUrl(trip.id, trip.shareToken, focusedUserId);
+  const audienceLabel = selectedMember ? `${selectedMember.name || selectedMember.userId}'s status` : 'everyone on the trip';
+  const shareTitle = `${trip.name || 'Trip'} — live status`;
+  const shareText = selectedMember
+    ? `Follow ${selectedMember.name || selectedMember.userId}'s live progress on ${trip.name || 'this trip'}.`
+    : `Follow the live progress for ${trip.name || 'this trip'}.`;
+
+  const flash = (message) => {
+    setFeedback(message);
+    window.setTimeout(() => setFeedback(''), 2200);
+  };
+  const copyLink = async () => {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(url);
+      flash('Link copied');
+    } catch (e) {
+      window.prompt('Copy this read-only trip link:', url);
+    }
+  };
+  const shareLink = async () => {
+    if (!navigator.share) { await copyLink(); return; }
+    try {
+      await navigator.share({ title:shareTitle, text:shareText, url });
+      flash('Shared');
+    } catch (e) {
+      if (!e || e.name !== 'AbortError') await copyLink();
+    }
+  };
+  return (
+    <Modal title="Share Trip" onClose={onClose}>
+      <div style={{ background:'#FFF4D8', border:'1px solid #E6CB8A', borderRadius:9, padding:'10px 12px', marginBottom:16, color:'#6E1A10', fontSize:12.5, lineHeight:1.5 }}>
+        <strong>Live and read-only.</strong> Anyone with this link can see the selected trip status, but they cannot edit the itinerary.
+      </div>
+
+      <div style={{ fontSize:12, fontWeight:700, letterSpacing:'0.05em', textTransform:'uppercase', color:'#8B2A14', marginBottom:8 }}>Who should this link show?</div>
+      <div style={{ display:'grid', gap:7, marginBottom:16 }}>
+        {canShareAll && (
+          <button type="button" aria-pressed={audience==='all'} onClick={()=>setAudience('all')}
+            style={{ display:'flex', alignItems:'center', gap:10, textAlign:'left', border:audience==='all'?'2px solid #6E1A10':'1px solid #D4BFB0', background:audience==='all'?'#F5E7D4':'#F5EFE2', borderRadius:9, padding:'9px 11px', cursor:'pointer', color:'#6E1A10' }}>
+            <span style={{ fontSize:18 }}>👨‍👩‍👧‍👦</span>
+            <span style={{ flex:1 }}><strong style={{ display:'block', fontSize:13.5 }}>Everyone</strong><span style={{ fontSize:11.5, color:'#8A7A6D' }}>Full group progress</span></span>
+            <span aria-hidden="true" style={{ width:16, height:16, borderRadius:'50%', border:'2px solid #6E1A10', background:audience==='all'?'#6E1A10':'transparent', boxShadow:audience==='all'?'inset 0 0 0 3px #F5E7D4':'none' }} />
+          </button>
+        )}
+        {availableMembers.map(m => {
+          const selected = audience === m.userId;
+          return (
+            <button key={m.userId} type="button" aria-pressed={selected} onClick={()=>setAudience(m.userId)}
+              style={{ display:'flex', alignItems:'center', gap:10, textAlign:'left', border:selected?'2px solid #6E1A10':'1px solid #D4BFB0', background:selected?'#F5E7D4':'#F5EFE2', borderRadius:9, padding:'9px 11px', cursor:'pointer', color:'#6E1A10' }}>
+              <span style={{ width:30, height:30, borderRadius:'50%', background:'#E8E2D4', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'#8A6A50' }}>{((m.name||m.userId||'?').trim().charAt(0)||'?').toUpperCase()}</span>
+              <span style={{ flex:1 }}><strong style={{ display:'block', fontSize:13.5 }}>{m.name || m.userId}{m.userId===myId ? ' (you)' : ''}</strong><span style={{ fontSize:11.5, color:'#8A7A6D' }}>Only this traveler's progress</span></span>
+              <span aria-hidden="true" style={{ width:16, height:16, borderRadius:'50%', border:'2px solid #6E1A10', background:selected?'#6E1A10':'transparent', boxShadow:selected?'inset 0 0 0 3px #F5E7D4':'none' }} />
+            </button>
+          );
+        })}
+      </div>
+
+      <label style={{ display:'block', fontSize:12, color:'#A83020', marginBottom:4 }}>Read-only link for {audienceLabel}</label>
+      <div style={{ display:'flex', gap:7, marginBottom:12 }}>
+        <input aria-label="Read-only trip link" readOnly value={url} onFocus={e=>e.target.select()}
+          style={{ minWidth:0, flex:1, padding:'9px 10px', border:'1px solid #C8B09A', borderRadius:7, background:'#fff', color:'#6E1A10', fontSize:12, boxSizing:'border-box' }} />
+        <a href={url} target="_blank" rel="noopener noreferrer"
+          style={{ padding:'8px 11px', borderRadius:7, fontSize:13, fontWeight:500, background:'transparent', color:'#8B2A14', border:'1px solid #C8B09A', textDecoration:'none', whiteSpace:'nowrap', display:'inline-flex', alignItems:'center' }}>Preview</a>
+      </div>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+        <Btn onClick={shareLink} style={{ flex:'1 1 140px' }}>{navigator.share ? 'Share…' : 'Copy link'}</Btn>
+        {navigator.share && <Btn variant="ghost" onClick={copyLink} style={{ flex:'1 1 120px' }}>Copy link</Btn>}
+      </div>
+      <div aria-live="polite" style={{ minHeight:20, marginTop:7, textAlign:'center', fontSize:12, fontWeight:600, color:'#3C8A3C' }}>{feedback}</div>
+
+      {canManageViewers && (
+        <div style={{ borderTop:'1px solid #E2D8C8', marginTop:8, paddingTop:14, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+          <div style={{ flex:1, minWidth:190 }}>
+            <div style={{ fontSize:12.5, fontWeight:700, color:'#6E1A10' }}>Named viewers: {(trip.viewers||[]).length}</div>
+            <div style={{ fontSize:11.5, color:'#9A8478', marginTop:2 }}>Add viewer accounts so this trip appears on their dashboard.</div>
+          </div>
+          <Btn variant="soft" onClick={onManageViewers} style={{ padding:'7px 11px' }}>Manage viewers</Btn>
+        </div>
+      )}
+    </Modal>
+  );
 }
 
 // ── Per-traveler status (group trips) ──
@@ -1356,13 +1473,11 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
 }
 
 // ---- Status Tab ----  (per-traveler rollup of event/activity/span statuses per day)
-function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focusUserId=null }) {
+function StatusTab({ trip, session, update, onShare, canUpdateOthers=true, focusUserId=null }) {
   const days = trip.days || [];
   // focusUserId (from a traveler's share link) narrows the view to that traveler only
   const roster = focusUserId ? (trip.members || []).filter(m => m.userId === focusUserId) : (trip.members || []);
   const perTraveler = roster.length > 0; // group trips show a marker per traveler; solo/legacy show one status
-  const [copied, setCopied] = useState(false);
-
   // Load each traveler's photo (identity) from the directory
   const [memberPics, setMemberPics] = useState({});
   const memberKey = roster.map(m => m.userId).join(',');
@@ -1373,16 +1488,6 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
     return () => { cancelled = true; };
   }, [memberKey]);
   const picOf = (userId) => (memberPics[userId] || {}).pic || '';
-  const copyShare = async () => {
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      window.prompt('Copy this read-only status link:', shareUrl);
-    }
-  };
-
   const LINE = '#3D0C02';
   const [livePopup, setLivePopup] = useState(null); // { kind:'maps'|'flight', from, to, mode, flightNo, name }
   const [sentenceView, setSentenceView] = useState(false); // Markers ⇄ Sentences
@@ -1461,10 +1566,10 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
 
   return (
     <div>
-      {shareUrl && (
+      {onShare && (
         <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', marginBottom:16, background:'#F5EFE2', border:'1px dashed #D4BFB0', borderRadius:10, padding:'10px 14px' }}>
           <span style={{ fontSize:12.5, color:'#8B5A3C', flex:1, minWidth:150, lineHeight:1.4 }}>Share a live, read-only link so anyone can follow this trip's status.</span>
-          <button onClick={copyShare} style={{ padding:'7px 14px', borderRadius:8, border:'none', background:'#6E1A10', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>{copied ? '✓ Link copied' : 'Share status'}</button>
+          <button onClick={onShare} style={{ padding:'7px 14px', borderRadius:8, border:'none', background:'#6E1A10', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>Share status</button>
         </div>
       )}
 
@@ -1950,7 +2055,7 @@ function ViewerHome({ session, profile, trips, onOpenAccount }) {
           </div>
         )}
         {trips.map(t => { const r = tripDateRange(t); const m = TRIP_STATUS[tripStatusOf(t)]; return (
-          <button key={t.id} onClick={()=>{ window.location.href = '?view=' + t.id + (t.shareToken ? '&k=' + encodeURIComponent(t.shareToken) : ''); }}
+          <button key={t.id} onClick={()=>{ window.location.href = tripShareUrl(t.id, t.shareToken); }}
             style={{ background:'#EDE7D9', border:'1px solid #D4BFB0', borderRadius:12, padding:'14px 16px', width:'100%', textAlign:'left', cursor:'pointer', marginBottom:10, display:'block' }}>
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
               <span style={{ width:8, height:8, borderRadius:'50%', background:m.dot, flexShrink:0 }} />
@@ -2316,6 +2421,7 @@ function MainApp() {
   const [showAccount, setShowAccount] = useState(false);
   const [accountMode, setAccountMode] = useState('login'); // which tab the account modal opens on
   const [showTravelers, setShowTravelers] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const [session, setSession] = useState(loadAuth);
   const [showDashboard, setShowDashboard] = useState(true); // post-login landing page
   const [profile, setProfile] = useState(() => { try { const p = localStorage.getItem('travelerProfile'); return p ? JSON.parse(p) : null; } catch(e){ return null; } });
@@ -2559,7 +2665,7 @@ function MainApp() {
   // Promote/demote a member's per-trip role (creator only, gated in the UI)
   const setMemberRole = (tripId, userId, role) => updateTrip(tripId, t => ({ members: (t.members || []).map(m => m.userId === userId ? { ...m, role } : m) }));
 
-  const goToTrip = (id) => { setActiveTrip(id); setActiveTab('Schedule'); setShowSearch(false); setShowDashboard(false); };
+  const goToTrip = (id) => { setActiveTrip(id); setActiveTab('Schedule'); setShowSearch(false); setShowShare(false); setShowDashboard(false); };
 
   // Trips visible to the signed-in traveler: unowned/legacy, owned by me, or shared with me.
   // Logged out shows everything (unchanged behaviour).
@@ -2870,6 +2976,10 @@ function MainApp() {
                     ? <span><strong>{n}</strong> traveler{n===1?'':'s'}</span>
                     : <span>Add travelers</span>; })()}
                 </button>
+                <button onClick={()=>setShowShare(true)} title="Share this trip"
+                  style={{ display:"inline-flex", alignItems:"center", gap:6, background:"#F5E7D4", border:"1px solid #C89F76", borderRadius:20, padding:"4px 12px", fontSize:12.5, fontWeight:600, color:"#6E1A10", cursor:"pointer" }}>
+                  <span style={{ fontSize:14 }}>🔗</span> Share
+                </button>
                 {(() => { const m = TRIP_STATUS[tripStatusOf(trip)]; return (
                   <span style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:11, fontWeight:700, letterSpacing:"0.03em", color:m.color, background:m.bg, borderRadius:20, padding:"4px 10px" }}>
                     <span style={{ width:7, height:7, borderRadius:"50%", background:m.dot }} />{m.label.toUpperCase()}
@@ -2908,7 +3018,7 @@ function MainApp() {
           {activeTab==="Budget" && <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />}
           {activeTab==="Packing" && <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
           {activeTab==="Status" && <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)}
-            shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${trip.shareToken ? `&k=${encodeURIComponent(trip.shareToken)}` : ''}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />}
+            onShare={()=>setShowShare(true)} />}
           {activeTab==="Pictures" && <PicturesTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
         </div>
       )}
@@ -2955,6 +3065,17 @@ function MainApp() {
           onSetRole={(uid, role)=>setMemberRole(trip.id, uid, role)}
           onNeedLogin={()=>{ setShowTravelers(false); setShowAccount(true); }}
           onClose={()=>setShowTravelers(false)}
+        />
+      )}
+
+      {showShare && trip && (
+        <ShareTripModal
+          trip={trip}
+          session={session}
+          canShareAll={isTripCaptain(trip)}
+          canManageViewers={isTripCreator(trip)}
+          onManageViewers={()=>{ setShowShare(false); setShowTravelers(true); }}
+          onClose={()=>setShowShare(false)}
         />
       )}
 
