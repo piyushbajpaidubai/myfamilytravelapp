@@ -2020,8 +2020,8 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
     spansOnDay(hero, todayISO).forEach(sp => { const st = spanMemStOf(sp, m.userId, todayISO); if (st === 'active' && !active) active = sp.title; else if (st === 'done' && !done) done = sp.title; });
     const day = (hero.days || []).find(d => (d.date || '').slice(0, 10) === todayISO);
     if (day) (day.events || []).forEach(ev => { const st = memStOf(ev, m.userId); if (st === 'active' && !active) active = ev.title; else if (st === 'done' && !done) done = ev.title; });
-    if (active) return { line: `At ${active}`, chip: 'On track', ok: true };
-    if (done) return { line: `Finished ${done}`, chip: 'On track', ok: true };
+    if (active) return { line: `At ${active}`, chip: 'Active', ok: true };
+    if (done) return { line: `Finished ${done}`, chip: 'Active', ok: true };
     return { line: 'No update yet', chip: 'No update', ok: false };
   };
 
@@ -2066,10 +2066,10 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
       {wide && (
         <aside style={{ width: 244, flexShrink: 0, background: '#5C1A1A', color: '#F5ECD7', display: 'flex', flexDirection: 'column', padding: '22px 14px 18px', position: 'sticky', top: 0, height: '100vh', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px 22px' }}>
-            <img src="/logo-travelhub.png" alt="" width="38" height="38" style={{ borderRadius: 10, display: 'block' }} />
-            <div>
-              <div style={{ fontSize: 15.5, fontWeight: 800, lineHeight: 1.1 }}>My Travel Hub</div>
-              <div style={{ fontSize: 10.5, color: 'rgba(245,236,215,0.55)', marginTop: 2 }}>Family journeys, together</div>
+            <img src="/logo-travelhub.png" alt="" width="38" height="38" style={{ borderRadius: 10, flexShrink: 0, display: 'block' }} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 19, fontWeight: 800, lineHeight: 1.15 }}>My Travel Hub</div>
+              <div style={{ fontSize: 10.5, color: 'rgba(245,236,215,0.55)', marginTop: 3, lineHeight: 1.35 }}>Every Trip, Every Document, Everyone</div>
             </div>
           </div>
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', color: 'rgba(245,236,215,0.45)', padding: '0 10px 8px' }}>WORKSPACE</div>
@@ -2108,8 +2108,8 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(env(safe-area-inset-top, 0px) + 14px) 16px 12px' }}>
               <img src="/logo-travelhub.png" alt="" width="34" height="34" style={{ borderRadius: 9, display: 'block', flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14.5, fontWeight: 800, color: '#F5ECD7', lineHeight: 1.1 }}>My Travel Hub</div>
-                <div style={{ fontSize: 9.5, color: 'rgba(245,236,215,0.55)', letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 2 }}>Family journeys, together</div>
+                <div style={{ fontSize: 17.5, fontWeight: 800, color: '#F5ECD7', lineHeight: 1.15 }}>My Travel Hub</div>
+                <div style={{ fontSize: 9.5, color: 'rgba(245,236,215,0.55)', letterSpacing: '0.04em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.35 }}>Every Trip, Every Document, Everyone</div>
               </div>
               {canCreate && (
                 <button onClick={onNewTrip} style={{ background: '#F5ECD7', color: '#5C1A1A', border: 'none', borderRadius: 20, padding: '7px 14px', fontSize: 12, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>+ New trip</button>
@@ -2232,7 +2232,7 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
                         <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#3D0C02' }}>{(m.name || m.userId).split(/\s+/)[0]}</span>
                         <span style={{ display: 'block', fontSize: 11, color: '#9A8478', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.line}</span>
                       </span>
-                      <span style={{ fontSize: 10.5, fontWeight: 700, borderRadius: 6, padding: '2px 8px', flexShrink: 0, color: s.ok ? '#286428' : '#8A7A6D', background: s.ok ? '#DCEEDC' : '#EDE5D4' }}>{s.chip}</span>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, borderRadius: 6, padding: '2px 8px', flexShrink: 0, color: s.ok ? STATUS_META.active.color : '#8A7A6D', background: s.ok ? STATUS_META.active.bg : '#EDE5D4' }}>{s.chip}</span>
                     </div>
                   );
                 })}
