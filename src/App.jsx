@@ -1629,6 +1629,11 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
 const SUPA_URL = (process.env.REACT_APP_SUPABASE_URL || '').replace(/\/$/, '');
 const SUPA_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
 const SUPABASE_CONFIGURED = Boolean(SUPA_URL && SUPA_KEY);
+// Preview deployments use an isolated Supabase project so test changes can never
+// affect the live app. Accounts are isolated too, so live credentials cannot be
+// used until the traveler creates a one-time account in the preview project.
+const AUTH_SCOPE = (process.env.REACT_APP_AUTH_SCOPE || '').trim().toLowerCase();
+const IS_PREVIEW_AUTH = AUTH_SCOPE === 'preview' || SUPA_URL.includes('vzsorbbxqnwgmhzzphha.supabase.co');
 const supaHeaders = { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY };
 async function loadFromCloud() {
   if (!SUPABASE_CONFIGURED) return null;
@@ -1721,7 +1726,9 @@ async function authSignIn(userId, password, fallbackName) {
   if (!res.ok || !j.access_token) {
     const m = j.msg || j.error_description || j.error || 'Login failed';
     if (/not confirmed/i.test(m)) throw new Error('One-time setup needed: in Supabase → Authentication → Providers → Email, turn OFF "Confirm email", then try again.');
-    if (/invalid/i.test(m)) throw new Error('Incorrect User ID or password.');
+    if (/invalid/i.test(m)) throw new Error(IS_PREVIEW_AUTH
+      ? 'This preview uses separate test accounts. Create a preview account once, or check the password for your preview account.'
+      : 'Incorrect User ID or password.');
     throw new Error(m);
   }
   const s = sessionFromResponse(j, userId, fallbackName);
@@ -2663,6 +2670,12 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
         {tabBtn('signup', 'Sign Up')}
       </div>
 
+      {mode === 'login' && IS_PREVIEW_AUTH && (
+        <div style={{ fontSize:12.5, color:'#6E1A10', background:'#FFF4D8', border:'1px solid #E6CB8A', borderRadius:8, padding:'9px 11px', marginBottom:14, lineHeight:1.5 }}>
+          <strong>Preview account:</strong> this test version is separate from the live app. If this is your first visit, use <strong>Sign Up</strong> once with your User ID and a test password.
+        </div>
+      )}
+
       {mode === 'signup' && (
         <>
           <Input label="Traveler Name *" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Piyush Bajpai" />
@@ -2681,7 +2694,7 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
         onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
         placeholder={mode==='signup' ? 'at least 6 characters' : '••••••'} />
 
-      {err && <div style={{ fontSize:12.5, color:'#B3261E', background:'#FBEAE7', border:'1px solid #F1C6C0', borderRadius:7, padding:'8px 10px', marginBottom:12 }}>{err}</div>}
+      {err && <div role="alert" style={{ fontSize:12.5, color:'#B3261E', background:'#FBEAE7', border:'1px solid #F1C6C0', borderRadius:7, padding:'8px 10px', marginBottom:12 }}>{err}</div>}
 
       <Btn onClick={submit} disabled={busy} style={{ width:'100%', opacity: busy?0.6:1 }}>
         {busy ? 'Please wait…' : (mode==='signup' ? 'Create Account' : 'Log In')}
