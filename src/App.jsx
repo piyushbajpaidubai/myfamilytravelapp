@@ -1697,6 +1697,19 @@ async function followerSubscription() {
   try { const reg = await navigator.serviceWorker.getRegistration('/sw.js'); return reg ? await reg.pushManager.getSubscription() : null; }
   catch (e) { return null; }
 }
+// Store (or refresh) this browser's subscription row for the trip. Upserts on
+// the endpoint, so re-subscribing the same browser updates its keys instead of
+// erroring or piling up duplicate rows.
+async function storeFollowerSub(tripId, sub) {
+  const j = sub.toJSON();
+  const r = await fetch(SUPA_URL + '/rest/v1/push_subscriptions?on_conflict=endpoint', {
+    method: 'POST', headers: { ...supaHeaders, Prefer: 'resolution=merge-duplicates' },
+    body: JSON.stringify({ trip_id: tripId, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth })
+  });
+  if (!r.ok && r.status === 404) throw new Error('setup'); // table not created yet
+  if (!r.ok) throw new Error('save');                      // surface real failures, don't fake success
+  return true;
+}
 // Follower taps "Notify me": ask permission, subscribe, store keyed to the trip.
 async function followerSubscribe(tripId) {
   if (!pushSupported()) throw new Error('This browser doesn’t support notifications.');
@@ -1706,12 +1719,7 @@ async function followerSubscribe(tripId) {
   await navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
   if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToU8(VAPID_PUBLIC) });
-  const j = sub.toJSON();
-  const r = await fetch(SUPA_URL + '/rest/v1/push_subscriptions', {
-    method: 'POST', headers: { ...supaHeaders, Prefer: 'resolution=merge-duplicates' },
-    body: JSON.stringify({ trip_id: tripId, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth })
-  });
-  if (!r.ok && r.status === 404) throw new Error('setup'); // table not created yet
+  await storeFollowerSub(tripId, sub);
   return sub;
 }
 async function followerUnsubscribe() {
@@ -3675,9 +3683,17 @@ function FollowerNotify({ tripId }) {
   useEffect(() => {
     let cancelled = false;
     if (!pushSupported() || Notification.permission === 'denied') { setState(pushSupported() ? 'blocked' : 'unsupported'); return; }
-    followerSubscription().then(sub => { if (!cancelled) setState(sub ? 'on' : 'off'); });
+    followerSubscription().then(async sub => {
+      if (cancelled) return;
+      if (sub) {
+        // Self-heal: this browser is subscribed, so make sure its row is in the
+        // DB (an earlier failed insert could have left it subscribed but unsaved).
+        try { await storeFollowerSub(tripId, sub); } catch (e) {}
+        if (!cancelled) setState('on');
+      } else setState('off');
+    });
     return () => { cancelled = true; };
-  }, []);
+  }, [tripId]);
   if (state === 'unsupported') return null; // e.g. iOS Safari not added to home screen
   const turnOn = async () => {
     setState('busy');
