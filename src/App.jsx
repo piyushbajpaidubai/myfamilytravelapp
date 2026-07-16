@@ -1486,14 +1486,35 @@ function StatusTab({ trip, session, update, onShare, canUpdateOthers=true, focus
   const [travelerFilter, setTravelerFilter] = useState('all');
   const [travelerLimit, setTravelerLimit] = useState(30);
   const memberKey = roster.map(m => m.userId).join(',');
+  const eventStackMemberKey = largeGroup ? (() => {
+    const ids = new Set();
+    const collect = (item) => {
+      const assignees = item && item.assignees;
+      const members = (!assignees || assignees.length === 0) ? roster : roster.filter(member => assignees.includes(member.userId));
+      members.slice(0, 4).forEach(member => ids.add(member.userId));
+    };
+    days.forEach(day => {
+      spansOnDay(trip, day.date).forEach(collect);
+      (day.events || []).forEach(event => {
+        collect(event);
+        (event.activities || []).forEach(collect);
+      });
+    });
+    return Array.from(ids).join(',');
+  })() : memberKey;
   useEffect(() => {
     let cancelled = false;
-    // Large rosters initially need only the few photos used in avatar stacks.
-    const ids = memberKey ? (largeGroup ? memberKey.split(',').slice(0, 8) : memberKey.split(',')) : [];
-    if (ids.length) directoryGetProfiles(ids).then(map => { if (!cancelled) setMemberPics(map); });
+    // Large rosters initially need only the photos actually shown in avatar stacks.
+    const ids = (largeGroup ? eventStackMemberKey : memberKey).split(',').filter(Boolean);
+    if (ids.length) directoryGetProfiles(ids).then(map => {
+      if (cancelled) return;
+      const resolved = Object.fromEntries(ids.map(id => [id, map[id] || {}]));
+      setMemberPics(previous => ({ ...previous, ...resolved }));
+    });
     return () => { cancelled = true; };
-  }, [memberKey, largeGroup]);
-  const picOf = (userId) => (memberPics[userId] || {}).pic || '';
+  }, [memberKey, largeGroup, eventStackMemberKey]);
+  const rosterById = Object.fromEntries(roster.map(member => [member.userId, member]));
+  const picOf = (userId) => (memberPics[userId] || {}).pic || (rosterById[userId] || {}).pic || '';
   const LINE = '#3D0C02';
   const [livePopup, setLivePopup] = useState(null); // { kind:'maps'|'flight', from, to, mode, flightNo, name }
   const [sentenceView, setSentenceView] = useState(false); // Markers ⇄ Sentences
@@ -1596,6 +1617,23 @@ function StatusTab({ trip, session, update, onShare, canUpdateOthers=true, focus
     return matchesText && matchesStatus;
   });
   const visibleTravelers = filteredTravelers.slice(0, travelerLimit);
+  const visibleTravelerKey = visibleTravelers.map(traveler => traveler.userId).join(',');
+
+  // In the directory view, fetch only the rows currently on screen. Filtering
+  // or revealing another page requests just those newly visible profiles.
+  useEffect(() => {
+    if (!largeGroup || largeGroupView !== 'travelers' || !visibleTravelerKey) return;
+    let cancelled = false;
+    const visibleIds = visibleTravelerKey.split(',');
+    const missingIds = visibleIds.filter(id => !Object.prototype.hasOwnProperty.call(memberPics, id));
+    if (!missingIds.length) return () => { cancelled = true; };
+    directoryGetProfiles(missingIds).then(map => {
+      if (cancelled) return;
+      const resolved = Object.fromEntries(missingIds.map(id => [id, map[id] || {}]));
+      setMemberPics(previous => ({ ...previous, ...resolved }));
+    });
+    return () => { cancelled = true; };
+  }, [largeGroup, largeGroupView, visibleTravelerKey, memberPics]);
 
   return (
     <div>
@@ -1670,7 +1708,7 @@ function StatusTab({ trip, session, update, onShare, canUpdateOthers=true, focus
               return (
                 <div key={traveler.userId} style={{ display:'grid', gridTemplateColumns:'38px minmax(0, 1fr) auto', gap:10, alignItems:'center', padding:'11px 2px', borderBottom:'1px solid #E8DED2', contentVisibility:'auto', containIntrinsicSize:'54px' }}>
                   <span style={{ width:34, height:34, borderRadius:'50%', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'#8A6A50' }}>
-                    {picOf(traveler.userId) ? <img src={picOf(traveler.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : ((traveler.name||traveler.userId||'?').trim().charAt(0)||'?').toUpperCase()}
+                    {picOf(traveler.userId) ? <img data-profile-photo="traveler-row" src={picOf(traveler.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : ((traveler.name||traveler.userId||'?').trim().charAt(0)||'?').toUpperCase()}
                   </span>
                   <span style={{ minWidth:0 }}>
                     <strong style={{ display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'#2E2320' }}>{traveler.name || traveler.userId}</strong>
@@ -1791,8 +1829,10 @@ function StatusTab({ trip, session, update, onShare, canUpdateOthers=true, focus
                                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:9, flexWrap:'wrap' }}>
                                     <div style={{ display:'flex', alignItems:'center', minWidth:0 }}>
                                       {it.marks.slice(0, 4).map((mark, markIndex) => (
-                                        <span key={mark.userId} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}`} style={{ width:23, height:23, marginLeft:markIndex===0?0:-6, borderRadius:'50%', border:'2px solid #F0EBE0', background:'#E8E2D4', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:9.5, fontWeight:700, color:'#7B675A', zIndex:5-markIndex }}>
-                                          {((mark.name||mark.userId||'?').trim().charAt(0)||'?').toUpperCase()}
+                                        <span key={mark.userId} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}`} style={{ width:23, height:23, marginLeft:markIndex===0?0:-6, borderRadius:'50%', border:'2px solid #F0EBE0', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:9.5, fontWeight:700, color:'#7B675A', zIndex:5-markIndex }}>
+                                          {picOf(mark.userId)
+                                            ? <img data-profile-photo="event-stack" src={picOf(mark.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                                            : ((mark.name||mark.userId||'?').trim().charAt(0)||'?').toUpperCase()}
                                         </span>
                                       ))}
                                       {it.marks.length>4 && <span style={{ marginLeft:6, color:'#8A7A6D', fontSize:10.5, fontWeight:650 }}>+{it.marks.length-4}</span>}
@@ -4029,13 +4069,24 @@ function TravelerTimelinePreview() {
   );
 }
 
+const LARGE_GROUP_DEMO_AVATAR_COLORS = ['#7D5E4C','#55746B','#6E668A','#AD6F5A','#486B83','#8B6E45'];
+const largeGroupDemoAvatar = (index) => {
+  const color = LARGE_GROUP_DEMO_AVATAR_COLORS[index % LARGE_GROUP_DEMO_AVATAR_COLORS.length];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="${color}"/><circle cx="32" cy="24" r="12" fill="#F6E8D7"/><path d="M11 64c2-17 10-26 21-26s19 9 21 26" fill="#F6E8D7"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+};
+
 const LARGE_GROUP_DEMO_MEMBERS = (() => {
   const firstNames = ['Aisha','Alex','Amara','Ben','Chloe','Daniel','Elena','Fatima','Hugo','Isla','James','Kavya','Leo','Maya','Noah','Sofia'];
   const lastNames = ['Ahmed','Bennett','Chen','Davis','Garcia','Kim','Patel','Silva'];
-  return firstNames.flatMap((first, firstIndex) => lastNames.map((last, lastIndex) => ({
-    userId:`${first.toLowerCase()}_${last.toLowerCase()}_${firstIndex*lastNames.length+lastIndex+1}`,
-    name:`${first} ${last}`,
-  })));
+  return firstNames.flatMap((first, firstIndex) => lastNames.map((last, lastIndex) => {
+    const index = firstIndex * lastNames.length + lastIndex;
+    return {
+      userId:`${first.toLowerCase()}_${last.toLowerCase()}_${index+1}`,
+      name:`${first} ${last}`,
+      pic:index < 6 ? largeGroupDemoAvatar(index) : '',
+    };
+  }));
 })();
 
 const largeGroupDemoStatuses = (doneCount, activeCount) => Object.fromEntries(
