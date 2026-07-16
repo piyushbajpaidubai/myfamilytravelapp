@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const TABS = ["Schedule", "Status", "Budget", "Packing", "Pictures"];
 const CATEGORIES = ["Transport", "Hotel", "Food", "Sightseeing", "Other"];
