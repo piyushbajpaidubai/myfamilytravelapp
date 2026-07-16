@@ -1393,18 +1393,32 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
   };
 
   // Advance a given traveler's status on any item (lets one traveler update another's — e.g. a family travelling together)
-  const cycleMemberStatus = (ref, userId) => {
+  const cycleMemberStatus = (ref, userId, itemTitle, travelerName) => {
     if (!update || !userId || !ref) return;
+    let newStatus = null;
     if (ref.kind === 'span') {
+      const s0 = (trip.spans || []).find(s => s.id === ref.spanId);
+      newStatus = nextStatus(spanMemStOf(s0 || {}, userId, ref.dayISO));
       update(t => ({ spans:(t.spans||[]).map(s => s.id===ref.spanId
-        ? { ...s, memberDayStatus:{ ...(s.memberDayStatus||{}), [userId]:{ ...((s.memberDayStatus||{})[userId]||{}), [ref.dayISO]: nextStatus(spanMemStOf(s, userId, ref.dayISO)) } } } : s) }));
+        ? { ...s, memberDayStatus:{ ...(s.memberDayStatus||{}), [userId]:{ ...((s.memberDayStatus||{})[userId]||{}), [ref.dayISO]: newStatus } } } : s) }));
     } else if (ref.kind === 'event') {
+      const e0 = ((trip.days || []).find(d => d.id === ref.dayId) || {}).events || [];
+      newStatus = nextStatus(memStOf(e0.find(e => e.id === ref.evId) || {}, userId));
       update(t => ({ days:(t.days||[]).map(d => d.id===ref.dayId
-        ? { ...d, events:(d.events||[]).map(e => e.id===ref.evId ? { ...e, memberStatus:{ ...(e.memberStatus||{}), [userId]: nextStatus(memStOf(e, userId)) } } : e) } : d) }));
+        ? { ...d, events:(d.events||[]).map(e => e.id===ref.evId ? { ...e, memberStatus:{ ...(e.memberStatus||{}), [userId]: newStatus } } : e) } : d) }));
     } else if (ref.kind === 'activity') {
+      const d0 = (trip.days || []).find(d => d.id === ref.dayId) || {};
+      const e0 = (d0.events || []).find(e => e.id === ref.evId) || {};
+      const a0 = (e0.activities || []).find(a => a.id === ref.actId) || {};
+      newStatus = memStOf(a0, userId) === 'done' ? 'todo' : 'done';
       update(t => ({ days:(t.days||[]).map(d => d.id===ref.dayId
         ? { ...d, events:(d.events||[]).map(e => e.id===ref.evId
-            ? { ...e, activities:(e.activities||[]).map(a => a.id===ref.actId ? { ...a, memberStatus:{ ...(a.memberStatus||{}), [userId]: (memStOf(a, userId)==='done' ? 'todo' : 'done') } } : a) } : e) } : d) }));
+            ? { ...e, activities:(e.activities||[]).map(a => a.id===ref.actId ? { ...a, memberStatus:{ ...(a.memberStatus||{}), [userId]: newStatus } } : a) } : e) } : d) }));
+    }
+    // Tell the trip's followers, if this trip has notifications switched on.
+    if (newStatus && itemTitle) {
+      const word = STATUS_SENTENCE_WORD[newStatus] || newStatus;
+      sendFollowerPush(session, trip, `${trip.name || 'Trip'} · status update`, `${itemTitle} is ${word} for ${travelerName || 'a traveler'}`);
     }
   };
 
@@ -1462,9 +1476,24 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
   return (
     <div>
       {shareUrl && (
-        <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', marginBottom:16, background:'#F5EFE2', border:'1px dashed #D4BFB0', borderRadius:10, padding:'10px 14px' }}>
-          <span style={{ fontSize:12.5, color:'#8B5A3C', flex:1, minWidth:150, lineHeight:1.4 }}>Share a live, read-only link so anyone can follow this trip's status.</span>
-          <button onClick={copyShare} style={{ padding:'7px 14px', borderRadius:8, border:'none', background:'#6E1A10', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>{copied ? '✓ Link copied' : 'Share status'}</button>
+        <div style={{ marginBottom:16, background:'#F5EFE2', border:'1px dashed #D4BFB0', borderRadius:10, padding:'10px 14px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+            <span style={{ fontSize:12.5, color:'#8B5A3C', flex:1, minWidth:150, lineHeight:1.4 }}>Share a live, read-only link so anyone can follow this trip's status.</span>
+            <button onClick={copyShare} style={{ padding:'7px 14px', borderRadius:8, border:'none', background:'#6E1A10', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>{copied ? '✓ Link copied' : 'Share status'}</button>
+          </div>
+          {/* Traveler's opt-in: push a notification to followers on each status update */}
+          {update && (
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:10, paddingTop:10, borderTop:'1px solid #E4D8C4' }}>
+              <span style={{ fontSize:12.5, color:'#8B5A3C', flex:1, minWidth:150, lineHeight:1.4 }}>
+                🔔 Notify followers when status changes
+                <span style={{ display:'block', fontSize:11, color:'#B0967A', marginTop:2 }}>{trip.notifyEnabled ? 'On — followers who tapped “Notify me” get a push.' : 'Off — followers can still open the link to check.'}</span>
+              </span>
+              <button onClick={()=>update({ notifyEnabled: !trip.notifyEnabled })}
+                style={{ padding:'6px 14px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12.5, fontWeight:700, whiteSpace:'nowrap', color: trip.notifyEnabled ? '#fff' : '#8B5A3C', background: trip.notifyEnabled ? '#3C8A3C' : '#E4D3B4' }}>
+                {trip.notifyEnabled ? '✓ On' : 'Off'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1565,7 +1594,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                       )}
                       {it.marks
                         ? <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
-                            {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} onClick={update && (canUpdateOthers || (session && mk.userId === session.userId)) ? ()=>cycleMemberStatus(it.ref, mk.userId) : undefined} />)}
+                            {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} onClick={update && (canUpdateOthers || (session && mk.userId === session.userId)) ? ()=>cycleMemberStatus(it.ref, mk.userId, it.titleText, mk.name) : undefined} />)}
                           </div>
                         : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
                       {it.travel && it.anyActive && (
@@ -1647,6 +1676,63 @@ async function saveToCloud(trips, headerNote) {
 }
 
 const SUPA_BUCKET = 'trip-media';
+
+// ---- Follower push notifications --------------------------------------
+// Public VAPID key (safe to ship). The matching private key lives only in
+// the notify() Netlify function's env. The send-function lives at the public
+// Netlify domain (works when the traveler is on the phone app too).
+const VAPID_PUBLIC = 'BAa-b04xoM_bBMoDI5swB7prW9uWkVr1AchqETMVemZC0u-SP_BCooth8VYx00K_dsBn5WiTklpT3ERzjoj4_gc';
+const NOTIFY_FN = 'https://mytravelhub.netlify.app/.netlify/functions/notify';
+const pushSupported = () => typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const urlB64ToU8 = (b64) => {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const s = (b64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(s); const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+};
+// Is this browser already following this trip? → the PushSubscription or null
+async function followerSubscription() {
+  if (!pushSupported()) return null;
+  try { const reg = await navigator.serviceWorker.getRegistration('/sw.js'); return reg ? await reg.pushManager.getSubscription() : null; }
+  catch (e) { return null; }
+}
+// Follower taps "Notify me": ask permission, subscribe, store keyed to the trip.
+async function followerSubscribe(tripId) {
+  if (!pushSupported()) throw new Error('This browser doesn’t support notifications.');
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') throw new Error('blocked');
+  const reg = await navigator.serviceWorker.register('/sw.js');
+  await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToU8(VAPID_PUBLIC) });
+  const j = sub.toJSON();
+  const r = await fetch(SUPA_URL + '/rest/v1/push_subscriptions', {
+    method: 'POST', headers: { ...supaHeaders, Prefer: 'resolution=merge-duplicates' },
+    body: JSON.stringify({ trip_id: tripId, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth })
+  });
+  if (!r.ok && r.status === 404) throw new Error('setup'); // table not created yet
+  return sub;
+}
+async function followerUnsubscribe() {
+  const sub = await followerSubscription();
+  if (!sub) return;
+  const endpoint = sub.endpoint;
+  try { await sub.unsubscribe(); } catch (e) {}
+  try { await fetch(SUPA_URL + '/rest/v1/push_subscriptions?endpoint=eq.' + encodeURIComponent(endpoint), { method: 'DELETE', headers: supaHeaders }); } catch (e) {}
+}
+// Traveler side: after a status change, ping the send-function (which fans out
+// to followers). No-op unless the trip has notifications switched on.
+async function sendFollowerPush(session, trip, title, body) {
+  try {
+    if (!trip || !trip.notifyEnabled || !session) return;
+    const s = await freshSession(session);
+    await fetch(NOTIFY_FN, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ((s && s.accessToken) || '') },
+      body: JSON.stringify({ tripId: trip.id, title, body })
+    });
+  } catch (e) {}
+}
 
 // Upload a File/Blob to Supabase Storage; returns its public URL.
 async function uploadToStorage(file, folder) {
@@ -3582,6 +3668,45 @@ const fmtDateTime = (iso) => {
   catch(e){ return ''; }
 };
 
+// A follower's opt-in control on the shared status page: subscribe this
+// browser to push notifications for the trip (or turn them back off).
+function FollowerNotify({ tripId }) {
+  const [state, setState] = useState('checking'); // checking | off | on | busy | unsupported | blocked | setup
+  useEffect(() => {
+    let cancelled = false;
+    if (!pushSupported() || Notification.permission === 'denied') { setState(pushSupported() ? 'blocked' : 'unsupported'); return; }
+    followerSubscription().then(sub => { if (!cancelled) setState(sub ? 'on' : 'off'); });
+    return () => { cancelled = true; };
+  }, []);
+  if (state === 'unsupported') return null; // e.g. iOS Safari not added to home screen
+  const turnOn = async () => {
+    setState('busy');
+    try { await followerSubscribe(tripId); setState('on'); }
+    catch (e) { setState(e.message === 'blocked' ? 'blocked' : e.message === 'setup' ? 'setup' : 'off'); }
+  };
+  const turnOff = async () => { setState('busy'); try { await followerUnsubscribe(); } catch (e) {} setState('off'); };
+
+  const box = { display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', background:'#F5EFE2', border:'1px solid #E4D8C4', borderRadius:10, padding:'10px 14px', margin:'0 0 18px' };
+  if (state === 'on') return (
+    <div style={box}>
+      <span style={{ fontSize:12.5, color:'#2F7A2F', fontWeight:600, flex:1, minWidth:150 }}>🔔 Notifications on — you'll be alerted when a traveler updates status.</span>
+      <button onClick={turnOff} style={{ padding:'6px 14px', borderRadius:8, border:'1px solid #C8B09A', background:'transparent', color:'#8B2A14', fontSize:12.5, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>Turn off</button>
+    </div>
+  );
+  if (state === 'blocked') return (
+    <div style={box}><span style={{ fontSize:12, color:'#B54030', lineHeight:1.45 }}>🔔 Notifications are blocked for this site. Allow them in your browser's site settings, then reload to follow this trip's updates.</span></div>
+  );
+  if (state === 'setup') return (
+    <div style={box}><span style={{ fontSize:12, color:'#B54030', lineHeight:1.45 }}>Notifications aren't switched on for this trip yet.</span></div>
+  );
+  return (
+    <div style={box}>
+      <span style={{ fontSize:12.5, color:'#8B5A3C', flex:1, minWidth:150, lineHeight:1.4 }}>Get a notification whenever a traveler updates their status on this trip.</span>
+      <button onClick={turnOn} disabled={state==='busy'||state==='checking'} style={{ padding:'7px 14px', borderRadius:8, border:'none', background:'#6E1A10', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', opacity:(state==='busy'||state==='checking')?0.6:1 }}>{state==='busy'?'…':'🔔 Notify me'}</button>
+    </div>
+  );
+}
+
 function ViewerApp({ tripId, token, focusUserId }) {
   const [trip, setTrip] = useState(null);
   const [phase, setPhase] = useState('loading'); // loading | ok | notfound | error
@@ -3663,6 +3788,7 @@ function ViewerApp({ tripId, token, focusUserId }) {
         <span>{updatedAt ? `Last updated ${fmtDateTime(updatedAt)}` : 'Live view'} · refreshes automatically</span>
         <button onClick={refresh} style={{ padding:"3px 10px", borderRadius:6, border:"1px solid #C8B09A", background:"transparent", color:"#8B2A14", fontSize:11.5, cursor:"pointer" }}>Refresh now</button>
       </div>
+      <FollowerNotify tripId={tripId} />
       <StatusTab trip={trip} focusUserId={focusUserId} />
       <div style={{ textAlign:"center", fontSize:11, color:"#B0A091", padding:"18px 0 8px" }}>Read-only view · shared by the traveler</div>
     </div>
