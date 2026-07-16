@@ -1854,106 +1854,336 @@ function ViewerHome({ session, profile, trips, onOpenAccount }) {
   );
 }
 
-// ---- Dashboard: landing page after sign-in (trip buckets, notes, to-dos) ----
-function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onNewTrip, onOpenAccount, onSaveData }) {
+// ---- Dashboard: landing page after sign-in (hero trip, journeys, family status, to-dos, note) ----
+function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpenStatus, onNewTrip, onOpenAccount, onMyTrips, onCalendar, onSaveData }) {
   const [notes, setNotes] = useState('');
+  const [editingNote, setEditingNote] = useState(false);
   const [todoInput, setTodoInput] = useState('');
+  const [addingTodo, setAddingTodo] = useState(false);
   const savedNotes = (profile && profile.notes) || '';
   useEffect(() => { setNotes(savedNotes); }, [savedNotes]);
   const todos = (profile && profile.todos) || [];
-  const saveNotes = () => { if (notes !== savedNotes) onSaveData({ notes }); };
+  const saveNotes = () => { if (notes !== savedNotes) onSaveData({ notes }); setEditingNote(false); };
   const addTodo = () => { const t = todoInput.trim(); if (!t) return; onSaveData({ todos:[...todos, { id:uid(), text:t, done:false }] }); setTodoInput(''); };
   const toggleTodo = (id) => onSaveData({ todos: todos.map(t => t.id===id ? { ...t, done:!t.done } : t) });
   const delTodo = (id) => onSaveData({ todos: todos.filter(t => t.id!==id) });
 
+  // Responsive: full sidebar layout on wide screens, stacked on phones
+  const [wide, setWide] = useState(typeof window !== 'undefined' && window.innerWidth >= 1000);
+  useEffect(() => { const on = () => setWide(window.innerWidth >= 1000); window.addEventListener('resize', on); return () => window.removeEventListener('resize', on); }, []);
+
   const firstName = ((session && session.name) || '').trim().split(/\s+/)[0] || 'Traveler';
   const initial = firstName.charAt(0).toUpperCase() || '?';
-  const buckets = [
-    { key:'active', icon:'🧭', title:'Active Trips',   list:trips.filter(t=>tripStatusOf(t)==='active'), empty:'No trip underway right now.' },
-    { key:'todo',   icon:'🗓️', title:'Future Trips',   list:trips.filter(t=>tripStatusOf(t)==='todo'),   empty:'Nothing planned yet — start one!' },
-    { key:'done',   icon:'📦', title:'Archived Trips', list:trips.filter(t=>tripStatusOf(t)==='done'),   empty:'No completed trips yet.' },
+  const roleLabel = ((session && session.role) || 'captain') === 'captain' ? 'Trip captain' : (session && session.role === 'viewer' ? 'Viewer' : 'Traveler');
+
+  // Today / greeting
+  const pad = n => String(n).padStart(2, '0');
+  const nowD = new Date();
+  const todayISO = `${nowD.getFullYear()}-${pad(nowD.getMonth()+1)}-${pad(nowD.getDate())}`;
+  const nowHM = `${pad(nowD.getHours())}:${pad(nowD.getMinutes())}`;
+  const greet = nowD.getHours() < 12 ? 'morning' : nowD.getHours() < 17 ? 'afternoon' : 'evening';
+  const dateLine = `${weekdayOf(todayISO)}, ${fmtDate(todayISO).replace(/ \d{4}$/, '')}`.toUpperCase();
+
+  // Hero = the trip in progress
+  const hero = trips.find(t => tripStatusOf(t) === 'active') || null;
+  const msOf = s => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ''); return m ? Date.UTC(+m[1], +m[2]-1, +m[3]) : null; };
+  let heroX = null;
+  if (hero) {
+    const r = tripDateRange(hero);
+    const s = msOf(r.start), e = msOf(r.end), t0 = msOf(todayISO);
+    const total = (s != null && e != null) ? Math.round((e - s) / 86400000) + 1 : null;
+    const dayN = (s != null && t0 != null) ? Math.round((t0 - s) / 86400000) + 1 : null;
+    const day = (hero.days || []).find(d => (d.date || '').slice(0, 10) === todayISO);
+    let next = null;
+    if (day) { const evs = (day.events || []).filter(ev => ev.time).sort((a, b) => a.time > b.time ? 1 : -1); next = evs.find(ev => ev.time >= nowHM) || null; }
+    const pct = (total && dayN != null) ? Math.max(0, Math.min(100, Math.round((Math.min(dayN, total) / total) * 100))) : 0;
+    heroX = { r, total, dayN, next, pct };
+  }
+
+  // What each family member is up to right now (hero trip, today)
+  const memberNow = (m) => {
+    let active = null, done = null;
+    spansOnDay(hero, todayISO).forEach(sp => { const st = spanMemStOf(sp, m.userId, todayISO); if (st === 'active' && !active) active = sp.title; else if (st === 'done' && !done) done = sp.title; });
+    const day = (hero.days || []).find(d => (d.date || '').slice(0, 10) === todayISO);
+    if (day) (day.events || []).forEach(ev => { const st = memStOf(ev, m.userId); if (st === 'active' && !active) active = ev.title; else if (st === 'done' && !done) done = ev.title; });
+    if (active) return { line: `At ${active}`, chip: 'On track', ok: true };
+    if (done) return { line: `Finished ${done}`, chip: 'On track', ok: true };
+    return { line: 'No update yet', chip: 'No update', ok: false };
+  };
+
+  const chipFor = (t) => {
+    const st = tripStatusOf(t);
+    if (st === 'active') return { label: 'ACTIVE', color: '#2F7A2F', dot: '#3C8A3C' };
+    if (st === 'done') return { label: 'COMPLETE', color: '#8A7A6D', dot: '#B0A091' };
+    return tripDateRange(t).start ? { label: 'UPCOMING', color: '#2E6FB2', dot: '#2E86C8' } : { label: 'PLANNING', color: '#B07A2A', dot: '#C89040' };
+  };
+  const TripArt = ({ status }) => {
+    const pal = status === 'active' ? ['#A8442A', '#7E2415', '#E8C9A8'] : status === 'done' ? ['#8F8578', '#6E655B', '#D8CFC2'] : ['#B08A54', '#8A6A3E', '#E4D3B4'];
+    return (
+      <svg width="76" height="76" viewBox="0 0 84 84" style={{ borderRadius: 12, flexShrink: 0, display: 'block' }}>
+        <rect width="84" height="84" fill={pal[2]} />
+        <circle cx="58" cy="26" r="12" fill="#F5EFE2" opacity="0.85" />
+        <path d="M0 84 L34 38 L58 84 Z" fill={pal[0]} />
+        <path d="M30 84 L60 48 L84 84 Z" fill={pal[1]} />
+        <path d="M36 28 l10 -6 -3 8 z" fill="#F5EFE2" opacity="0.9" />
+      </svg>
+    );
+  };
+
+  const panel = { background: '#FDF7EC', border: '1px solid #E4D8C4', borderRadius: 17, padding: '18px 18px' };
+  const capsLabel = { fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#B07A4A' };
+  const avatarBtn = (
+    <button onClick={onOpenAccount} title={`Signed in as ${(session && session.name) || ''}`} aria-label="Account"
+      style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(92,26,26,0.35)', background: '#EFE3CC', cursor: 'pointer', padding: 0, flexShrink: 0, color: '#8B5A3C', fontSize: 16, fontWeight: 800 }}>
+      {profile && profile.pic ? <img src={profile.pic} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
+    </button>
+  );
+
+  const navItems = [
+    { icon: '⌂', label: 'Overview', active: true, go: () => {} },
+    { icon: '🧳', label: 'My trips', go: onMyTrips },
+    { icon: '🗓', label: 'Calendar', go: onCalendar },
+    { icon: '⚙', label: 'Settings', go: onOpenAccount },
   ];
-  const card = { background:'#EDE7D9', border:'1px solid #D4BFB0', borderRadius:12, padding:'14px 16px' };
 
   return (
-    <div style={{ fontFamily:'var(--font-body)', maxWidth:680, margin:'0 auto', minHeight:'100vh', background:'#F0EBE0', paddingBottom:'calc(env(safe-area-inset-bottom, 0px) + 24px)', color:'#6E1A10' }}>
-      {/* Header with the user's profile image */}
-      <div style={{ background:'#5C1A1A', boxShadow:'0 2px 12px rgba(0,0,0,0.18)' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'calc(env(safe-area-inset-top, 0px) + 16px) 20px 14px' }}>
-          <img src="/logo-travelhub.png" alt="My Travel Hub" width="38" height="38" style={{ borderRadius:9, flexShrink:0, display:'block' }} />
-          <div style={{ flex:1, minWidth:0 }}>
-            <h1 style={{ margin:0, fontSize:18, fontWeight:800, color:'#F5ECD7', letterSpacing:'0.03em', textTransform:'uppercase', lineHeight:1.15 }}>My Travel Hub</h1>
-            <p style={{ margin:'2px 0 0', fontSize:10.5, color:'rgba(245,236,215,0.6)', letterSpacing:'0.08em', textTransform:'uppercase' }}>Dashboard</p>
-          </div>
-          <button onClick={onOpenAccount} title={`Signed in as ${(session && session.name) || ''}`} aria-label="Account"
-            style={{ width:42, height:42, borderRadius:'50%', overflow:'hidden', border:'2px solid rgba(245,236,215,0.5)', background:'rgba(245,236,215,0.12)', cursor:'pointer', padding:0, flexShrink:0, color:'#F5ECD7', fontSize:17, fontWeight:800 }}>
-            {profile && profile.pic ? <img src={profile.pic} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initial}
-          </button>
-        </div>
-      </div>
-
-      <div style={{ padding:'18px 20px' }}>
-        <div style={{ fontSize:19, fontWeight:800, color:'#3D0C02', marginBottom:16 }}>Hi, {firstName} 👋</div>
-
-        {/* Trip buckets */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-          <span style={{ fontSize:15, fontWeight:700 }}>My Trips</span>
-          {canCreate && <Btn onClick={onNewTrip} style={{ padding:'6px 14px', fontSize:12.5 }}>+ New Trip</Btn>}
-        </div>
-        {buckets.map(b => (
-          <div key={b.key} style={{ marginBottom:14 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:6, margin:'0 0 6px' }}>
-              <span style={{ fontSize:13 }}>{b.icon}</span>
-              <span style={{ fontSize:12.5, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase', color:'#8B2A14' }}>{b.title}</span>
-              <span style={{ fontSize:11, fontWeight:700, background:'#E4D3B4', color:'#7A4A1A', borderRadius:10, padding:'1px 8px' }}>{b.list.length}</span>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#F5EFE2', fontFamily: 'var(--font-body)', color: '#6E1A10' }}>
+      {/* Sidebar (desktop) */}
+      {wide && (
+        <aside style={{ width: 244, flexShrink: 0, background: '#5C1A1A', color: '#F5ECD7', display: 'flex', flexDirection: 'column', padding: '22px 14px 18px', position: 'sticky', top: 0, height: '100vh', boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px 22px' }}>
+            <img src="/logo-travelhub.png" alt="" width="38" height="38" style={{ borderRadius: 10, display: 'block' }} />
+            <div>
+              <div style={{ fontSize: 15.5, fontWeight: 800, lineHeight: 1.1 }}>My Travel Hub</div>
+              <div style={{ fontSize: 10.5, color: 'rgba(245,236,215,0.55)', marginTop: 2 }}>Family journeys, together</div>
             </div>
-            {b.list.length === 0
-              ? <div style={{ ...card, padding:'10px 14px', fontSize:12.5, color:'#9A8478' }}>{b.empty}</div>
-              : b.list.map(t => { const r = tripDateRange(t); const m = TRIP_STATUS[tripStatusOf(t)]; return (
-                  <button key={t.id} onClick={()=>onOpenTrip(t.id)}
-                    style={{ ...card, width:'100%', textAlign:'left', cursor:'pointer', marginBottom:8, display:'block' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                      <span style={{ width:8, height:8, borderRadius:'50%', background:m.dot, flexShrink:0 }} />
-                      <span style={{ fontSize:14.5, fontWeight:700, color:'#3D0C02', flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name || 'Unnamed trip'}</span>
-                      <span style={{ fontSize:14, color:'#B0967A' }}>›</span>
-                    </div>
-                    <div style={{ fontSize:12, color:'#8B5A3C', marginTop:4, display:'flex', gap:12, flexWrap:'wrap' }}>
-                      {t.destination && <span>📍 {t.destination}</span>}
-                      {r.start && <span>🗓 {fmtDate(r.start)}{r.end && r.end!==r.start ? ` → ${fmtDate(r.end)}` : ''}</span>}
-                      {(t.members||[]).length > 0 && <span>👥 {(t.members||[]).length}</span>}
-                    </div>
-                  </button>
-                ); })}
           </div>
-        ))}
-
-        {/* My Notes — personal, synced to the account */}
-        <div style={{ ...card, marginTop:20 }}>
-          <div style={{ fontSize:13.5, fontWeight:700, marginBottom:8 }}>📝 My Notes</div>
-          <textarea value={notes} onChange={e=>setNotes(e.target.value)} onBlur={saveNotes} rows={4}
-            placeholder="Jot down ideas, reminders, packing thoughts…"
-            style={{ width:'100%', boxSizing:'border-box', resize:'vertical', padding:'9px 11px', border:'1px solid #C8B09A', borderRadius:8, background:'#F5EFE2', color:'#3D0C02', fontSize:13, fontFamily:'inherit', lineHeight:1.5, outline:'none' }} />
-          <div style={{ fontSize:10.5, color:'#B0967A', marginTop:4 }}>Saves automatically · synced to your account</div>
-        </div>
-
-        {/* To-do list — personal, synced to the account */}
-        <div style={{ ...card, marginTop:14 }}>
-          <div style={{ fontSize:13.5, fontWeight:700, marginBottom:10 }}>✅ To-Do</div>
-          <div style={{ display:'flex', gap:6, marginBottom:10 }}>
-            <input value={todoInput} onChange={e=>setTodoInput(e.target.value)}
-              onKeyDown={e=>{ if(e.key==='Enter') addTodo(); }}
-              placeholder="Add a to-do…"
-              style={{ flex:1, minWidth:0, padding:'7px 10px', border:'1px solid #C8B09A', borderRadius:7, fontSize:13, background:'#F5EFE2', color:'#3D0C02', outline:'none' }} />
-            <Btn onClick={addTodo} style={{ padding:'6px 14px', fontSize:12.5 }}>Add</Btn>
-          </div>
-          {todos.length === 0 && <div style={{ fontSize:12.5, color:'#9A8478' }}>Nothing on the list.</div>}
-          {todos.map(t => (
-            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderTop:'1px solid #E2D8C8' }}>
-              <input type="checkbox" checked={!!t.done} onChange={()=>toggleTodo(t.id)} style={{ cursor:'pointer' }} />
-              <span style={{ flex:1, fontSize:13, color:'#3D0C02', textDecoration:t.done?'line-through':'none', opacity:t.done?0.55:1, wordBreak:'break-word' }}>{t.text}</span>
-              <button onClick={()=>delTodo(t.id)} style={{ background:'none', border:'none', color:'#C04428', cursor:'pointer', fontSize:13, padding:'0 2px', lineHeight:1 }}>✕</button>
-            </div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', color: 'rgba(245,236,215,0.45)', padding: '0 10px 8px' }}>WORKSPACE</div>
+          {navItems.map(n => (
+            <button key={n.label} onClick={n.go}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', marginBottom: 4, border: 'none', borderRadius: 11, cursor: 'pointer', fontSize: 13.5, fontWeight: 600, textAlign: 'left',
+                background: n.active ? '#F5ECD7' : 'transparent', color: n.active ? '#5C1A1A' : 'rgba(245,236,215,0.82)' }}>
+              <span style={{ fontSize: 15, width: 18, textAlign: 'center' }}>{n.icon}</span> {n.label}
+              {n.active && <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: '#C04428' }} />}
+            </button>
           ))}
+          <div style={{ flex: 1 }} />
+          <button onClick={onOpenAccount} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 8px', border: 'none', borderRadius: 12, cursor: 'pointer', background: 'rgba(245,236,215,0.06)', color: '#F5ECD7', textAlign: 'left' }}>
+            <span style={{ width: 34, height: 34, borderRadius: '50%', overflow: 'hidden', background: 'rgba(245,236,215,0.15)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, flexShrink: 0 }}>
+              {profile && profile.pic ? <img src={profile.pic} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
+            </span>
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(session && session.name) || ''}</span>
+              <span style={{ display: 'block', fontSize: 10.5, color: 'rgba(245,236,215,0.55)' }}>{roleLabel}</span>
+            </span>
+          </button>
+        </aside>
+      )}
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Top bar */}
+        {wide ? (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, padding: '18px 32px 0' }}>
+            {canCreate && (
+              <button onClick={onNewTrip} style={{ background: '#5C1A1A', color: '#F5ECD7', border: 'none', borderRadius: 24, padding: '10px 20px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(92,26,26,0.25)' }}>+ New trip</button>
+            )}
+            {avatarBtn}
+          </div>
+        ) : (
+          <div style={{ background: '#5C1A1A', boxShadow: '0 2px 12px rgba(0,0,0,0.18)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(env(safe-area-inset-top, 0px) + 14px) 16px 12px' }}>
+              <img src="/logo-travelhub.png" alt="" width="34" height="34" style={{ borderRadius: 9, display: 'block', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14.5, fontWeight: 800, color: '#F5ECD7', lineHeight: 1.1 }}>My Travel Hub</div>
+                <div style={{ fontSize: 9.5, color: 'rgba(245,236,215,0.55)', letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 2 }}>Family journeys, together</div>
+              </div>
+              {canCreate && (
+                <button onClick={onNewTrip} style={{ background: '#F5ECD7', color: '#5C1A1A', border: 'none', borderRadius: 20, padding: '7px 14px', fontSize: 12, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>+ New trip</button>
+              )}
+              <button onClick={onOpenAccount} aria-label="Account"
+                style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(245,236,215,0.5)', background: 'rgba(245,236,215,0.12)', cursor: 'pointer', padding: 0, flexShrink: 0, color: '#F5ECD7', fontSize: 14, fontWeight: 800 }}>
+                {profile && profile.pic ? <img src={profile.pic} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ maxWidth: 1180, margin: '0 auto', padding: wide ? '14px 32px 48px' : '18px 16px 40px', display: 'flex', gap: 24, alignItems: 'flex-start', flexDirection: wide ? 'row' : 'column' }}>
+          {/* Main column */}
+          <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
+            <div style={{ ...capsLabel, color: '#B54030' }}>{dateLine}</div>
+            <h2 style={{ margin: '6px 0 4px', fontSize: wide ? 38 : 27, fontWeight: 800, color: '#6E1A10', letterSpacing: '-0.01em', lineHeight: 1.1 }}>Good {greet}, {firstName}.</h2>
+            <p style={{ margin: 0, fontSize: 14, color: '#8A7A6D' }}>Here's what's happening across your family's journeys.</p>
+
+            {/* Hero: trip in progress */}
+            {hero && heroX && (
+              <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, marginTop: 22, padding: wide ? '26px 28px' : '20px 18px', color: '#F5ECD7', background: 'linear-gradient(115deg, #7E2415 0%, #5C150C 55%, #46100A 100%)', boxShadow: '0 14px 34px rgba(70,16,10,0.3)' }}>
+                <div style={{ position: 'absolute', right: -60, bottom: -90, width: 260, height: 260, borderRadius: '50%', background: 'rgba(245,236,215,0.10)' }} />
+                <div style={{ position: 'absolute', right: 70, top: -40, width: 130, height: 130, borderRadius: '50%', background: 'rgba(245,236,215,0.07)' }} />
+                <div style={{ position: 'relative' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10.5, fontWeight: 800, letterSpacing: '0.12em' }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#7DB87A' }} /> TRIP IN PROGRESS
+                  </div>
+                  <div style={{ fontSize: wide ? 34 : 24, fontWeight: 800, margin: '10px 0 6px', lineHeight: 1.1 }}>{hero.name || 'Current trip'}</div>
+                  <div style={{ fontSize: 12.5, color: 'rgba(245,236,215,0.75)' }}>
+                    {hero.destination && <span>📍 {hero.destination}</span>}
+                    {heroX.total && heroX.dayN != null && heroX.dayN >= 1 && heroX.dayN <= heroX.total && <span style={{ marginLeft: hero.destination ? 10 : 0 }}>· Day {heroX.dayN} of {heroX.total}</span>}
+                  </div>
+                  {heroX.next && (
+                    <button onClick={() => onOpenTrip(hero.id)} style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 16, background: 'rgba(0,0,0,0.28)', border: 'none', borderRadius: 13, padding: '10px 14px', color: '#F5ECD7', cursor: 'pointer', textAlign: 'left', maxWidth: 430, width: wide ? 'auto' : '100%' }}>
+                      <span style={{ flexShrink: 0 }}>
+                        <span style={{ display: 'block', fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', color: 'rgba(245,236,215,0.6)' }}>NEXT</span>
+                        <span style={{ display: 'block', fontSize: 17, fontWeight: 800 }}>{heroX.next.time}</span>
+                      </span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{heroX.next.title || '(untitled)'}</span>
+                        {heroX.next.location && <span style={{ display: 'block', fontSize: 11.5, color: 'rgba(245,236,215,0.65)' }}>{heroX.next.location}</span>}
+                      </span>
+                      <span style={{ width: 32, height: 32, borderRadius: '50%', background: '#F5ECD7', color: '#5C1A1A', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>→</span>
+                    </button>
+                  )}
+                  {!heroX.next && (
+                    <button onClick={() => onOpenTrip(hero.id)} style={{ marginTop: 16, background: 'rgba(0,0,0,0.28)', border: 'none', borderRadius: 13, padding: '10px 16px', color: '#F5ECD7', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>Open itinerary →</button>
+                  )}
+                  {heroX.total && (
+                    <div style={{ marginTop: 20 }}>
+                      <div style={{ height: 5, borderRadius: 3, background: 'rgba(245,236,215,0.22)', overflow: 'hidden' }}>
+                        <div style={{ width: `${heroX.pct}%`, height: '100%', background: '#F5ECD7', borderRadius: 3 }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'rgba(245,236,215,0.6)', marginTop: 6 }}>
+                        <span>{Math.max(0, Math.min(heroX.dayN != null ? heroX.dayN : 0, heroX.total))} day{heroX.dayN === 1 ? '' : 's'} in</span>
+                        <span>{Math.max(0, heroX.total - (heroX.dayN != null ? heroX.dayN : 0))} days to go</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* My trips */}
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '30px 0 12px' }}>
+              <div>
+                <div style={capsLabel}>YOUR JOURNEYS</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#6E1A10', marginTop: 3 }}>My trips</div>
+              </div>
+              <button onClick={onMyTrips} style={{ background: 'none', border: 'none', color: '#8B2A14', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>View all →</button>
+            </div>
+            {trips.length === 0 && (
+              <div style={{ ...panel, textAlign: 'center', color: '#9A8478', fontSize: 13.5 }}>
+                {canCreate ? 'No trips yet — tap “+ New trip” to plan your first journey.' : 'No trips yet — ask a Trip Captain to add you to one.'}
+              </div>
+            )}
+            {[...trips.filter(t => tripStatusOf(t) === 'active'), ...trips.filter(t => tripStatusOf(t) === 'todo'), ...trips.filter(t => tripStatusOf(t) === 'done')].map(t => {
+              const r = tripDateRange(t); const c = chipFor(t);
+              return (
+                <button key={t.id} onClick={() => onOpenTrip(t.id)}
+                  style={{ ...panel, background: 'rgba(255,250,240,0.85)', width: '100%', display: 'flex', gap: 16, alignItems: 'center', textAlign: 'left', cursor: 'pointer', marginBottom: 12, padding: 14 }}>
+                  <TripArt status={tripStatusOf(t)} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', color: c.color }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.dot }} /> {c.label}
+                    </span>
+                    <span style={{ display: 'block', fontSize: 16.5, fontWeight: 800, color: '#3D0C02', margin: '4px 0 5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name || 'Unnamed trip'}</span>
+                    {t.destination && <span style={{ display: 'block', fontSize: 12, color: '#8B5A3C', marginBottom: 3 }}>📍 {t.destination}</span>}
+                    <span style={{ display: 'flex', gap: 14, fontSize: 11.5, color: '#9A8478', flexWrap: 'wrap' }}>
+                      <span>🕒 {r.start ? `${fmtDate(r.start).replace(/ \d{4}$/, '')}${r.end && r.end !== r.start ? ` – ${fmtDate(r.end)}` : ` ${r.start.slice(0, 4)}`}` : 'Dates not set'}</span>
+                      <span>👥 {(t.members || []).length || 1} traveler{((t.members || []).length || 1) === 1 ? '' : 's'}</span>
+                    </span>
+                  </span>
+                  <span style={{ width: 34, height: 34, borderRadius: '50%', border: '1.5px solid #D4BFB0', color: '#8B2A14', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>→</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Right rail */}
+          <div style={{ width: wide ? 330 : '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Family status (hero trip) */}
+            {hero && (hero.members || []).length > 0 && (
+              <div style={panel}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ ...capsLabel }}>{(hero.name || 'TRIP').toUpperCase()}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 800, color: '#2F7A2F' }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3C8A3C' }} /> LIVE
+                  </span>
+                </div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: '#3D0C02', marginBottom: 10 }}>Family status</div>
+                {(hero.members || []).map(m => {
+                  const s = memberNow(m);
+                  const ini = ((m.name || m.userId || '?').trim().charAt(0) || '?').toUpperCase();
+                  return (
+                    <div key={m.userId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: '1px solid #EFE6D6' }}>
+                      <span style={{ width: 34, height: 34, borderRadius: '50%', background: '#EFE3CC', color: '#8B5A3C', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 800, flexShrink: 0 }}>{ini}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#3D0C02' }}>{(m.name || m.userId).split(/\s+/)[0]}</span>
+                        <span style={{ display: 'block', fontSize: 11, color: '#9A8478', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.line}</span>
+                      </span>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, borderRadius: 6, padding: '2px 8px', flexShrink: 0, color: s.ok ? '#286428' : '#8A7A6D', background: s.ok ? '#DCEEDC' : '#EDE5D4' }}>{s.chip}</span>
+                    </div>
+                  );
+                })}
+                <button onClick={() => onOpenStatus(hero.id)}
+                  style={{ width: '100%', marginTop: 12, background: 'transparent', border: '1.5px solid #D4BFB0', borderRadius: 12, padding: '10px 0', color: '#6E1A10', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  Open live trip status →
+                </button>
+              </div>
+            )}
+
+            {/* Personal to-do */}
+            <div style={panel}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={capsLabel}>PERSONAL</div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: '#3D0C02', marginTop: 2 }}>To-do</div>
+                </div>
+                <button onClick={() => setAddingTodo(a => !a)} aria-label="Add to-do"
+                  style={{ width: 32, height: 32, borderRadius: 10, border: '1.5px solid #D4BFB0', background: 'transparent', color: '#8B2A14', fontSize: 17, fontWeight: 700, cursor: 'pointer', lineHeight: 1 }}>+</button>
+              </div>
+              {addingTodo && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+                  <input autoFocus value={todoInput} onChange={e => setTodoInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') addTodo(); if (e.key === 'Escape') setAddingTodo(false); }}
+                    placeholder="Add a to-do…"
+                    style={{ flex: 1, minWidth: 0, padding: '7px 10px', border: '1px solid #D4BFB0', borderRadius: 8, fontSize: 13, background: '#FFFDF7', color: '#3D0C02', outline: 'none' }} />
+                  <Btn onClick={addTodo} style={{ padding: '6px 14px', fontSize: 12.5 }}>Add</Btn>
+                </div>
+              )}
+              <div style={{ marginTop: 8 }}>
+                {todos.length === 0 && !addingTodo && <div style={{ fontSize: 12.5, color: '#9A8478', paddingTop: 6 }}>Nothing on the list — tap + to add one.</div>}
+                {todos.map(t => (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderTop: '1px solid #EFE6D6' }}>
+                    <button onClick={() => toggleTodo(t.id)} aria-label="Toggle"
+                      style={{ width: 19, height: 19, borderRadius: 6, flexShrink: 0, cursor: 'pointer', border: t.done ? 'none' : '1.5px solid #C8B09A', background: t.done ? '#3C8A3C' : 'transparent', color: '#fff', fontSize: 12, fontWeight: 800, lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                      {t.done ? '✓' : ''}
+                    </button>
+                    <span style={{ flex: 1, fontSize: 13, color: '#3D0C02', textDecoration: t.done ? 'line-through' : 'none', opacity: t.done ? 0.5 : 1, wordBreak: 'break-word' }}>{t.text}</span>
+                    <button onClick={() => delTodo(t.id)} style={{ background: 'none', border: 'none', color: '#C04428', cursor: 'pointer', fontSize: 13, padding: '0 2px', lineHeight: 1 }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick note */}
+            <div style={{ ...panel, background: '#DFCA9F', border: '1px solid #CBB27E', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', right: -24, bottom: -34, width: 110, height: 110, borderRadius: '50%', border: '10px solid rgba(255,250,240,0.35)' }} />
+              <div style={{ ...capsLabel, color: '#7A5A24' }}>QUICK NOTE</div>
+              {editingNote ? (
+                <>
+                  <textarea autoFocus value={notes} onChange={e => setNotes(e.target.value)} rows={4}
+                    placeholder="Jot down ideas, reminders, packing thoughts…"
+                    style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', marginTop: 10, padding: '9px 11px', border: '1px solid #B99F63', borderRadius: 10, background: '#F2E7CB', color: '#3D2A08', fontSize: 13.5, fontFamily: 'Georgia, serif', lineHeight: 1.5, outline: 'none' }} />
+                  <button onClick={saveNotes} style={{ marginTop: 8, background: '#7A5A24', color: '#F5ECD7', border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Save</button>
+                </>
+              ) : (
+                <>
+                  <p style={{ margin: '10px 0 0', fontSize: 14.5, lineHeight: 1.5, color: '#3D2A08', fontFamily: 'Georgia, serif', whiteSpace: 'pre-wrap', position: 'relative' }}>
+                    {savedNotes || <span style={{ opacity: 0.55 }}>Jot down ideas, reminders, packing thoughts…</span>}
+                  </p>
+                  <button onClick={() => setEditingNote(true)} style={{ marginTop: 10, background: 'none', border: 'none', color: '#7A5A24', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0, position: 'relative' }}>Edit note</button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -2220,6 +2450,9 @@ function MainApp() {
           trips={visibleTrips}
           canCreate={myRole === 'captain'}
           onOpenTrip={(id)=>{ setActiveTrip(id); setActiveTab('Schedule'); setShowDashboard(false); }}
+          onOpenStatus={(id)=>{ setActiveTrip(id); setActiveTab('Status'); setShowDashboard(false); }}
+          onMyTrips={()=>setShowDashboard(false)}
+          onCalendar={()=>{ setShowDashboard(false); setShowToday(true); }}
           onNewTrip={()=>{ setShowDashboard(false); setShowNewTrip(true); }}
           onOpenAccount={()=>setShowAccount(true)}
           onSaveData={(patch)=>{ const p = { ...(profile||{}), ...patch }; setProfile(p); directorySaveProfile(session.userId, p.name || session.name, p); }}
