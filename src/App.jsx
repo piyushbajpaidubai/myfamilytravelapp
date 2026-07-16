@@ -2361,7 +2361,10 @@ function MainApp() {
       }
     };
     (async () => {
-      if (!session) { cloudMode.current = 'legacy'; await loadLegacy(); return; }
+      // Signed out shows only the landing page, so load nothing: the old shared
+      // blob would otherwise hand this browser somebody else's trips and header
+      // note, and the note would then follow whoever logs in next.
+      if (!session) { cloudMode.current = 'legacy'; setTrips([]); setHeaderNote(''); return; }
       const s = await freshSession(session, setSession);
       const res = await tripsFetch(s);
       if (cancelled) return;
@@ -2626,7 +2629,7 @@ function MainApp() {
           <div style={{ marginTop:16, fontSize:13, color:"#8A7A6D" }}>
             Already travelling with us? <span onClick={()=>openAccount('login')} style={{ color:"#8B2A14", fontWeight:700, cursor:"pointer", textDecoration:"underline" }}>Log in</span>
           </div>
-          <div style={{ marginTop:22, fontSize:11.5, color:"#B0A091", letterSpacing:"0.04em" }}>🏔️  Made for families &amp; groups on the move</div>
+          <div style={{ marginTop:22, fontSize:11.5, color:"#B0A091", letterSpacing:"0.04em" }}>🏔️  Made for families & groups on the move</div>
         </div>
 
         {showAccount && (
@@ -3050,7 +3053,7 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
         <Btn variant="soft" style={{ width:'100%', marginBottom:8 }} onClick={onOpenDetails}>Edit profile details</Btn>
         <Btn variant="ghost" style={{ width:'100%' }} onClick={onLogout}>Log out</Btn>
         <p style={{ fontSize:11.5, color:'#9A8478', textAlign:'center', marginTop:14, lineHeight:1.5 }}>
-          Coming soon: add travelers to a trip and follow everyone's live status. Gmail sign-in &amp; more profile details arrive in a later update.
+          Coming soon: add travelers to a trip and follow everyone's live status. Gmail sign-in & more profile details arrive in a later update.
         </p>
       </Modal>
     );
@@ -3109,7 +3112,7 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
         {busy ? 'Please wait…' : (mode==='signup' ? 'Create Account' : 'Log In')}
       </Btn>
       <p style={{ fontSize:11.5, color:'#9A8478', textAlign:'center', marginTop:12, lineHeight:1.5 }}>
-        {mode==='signup' ? 'Just a User ID &amp; password for now — no email needed.' : 'New here? Tap “Sign Up”.'}
+        {mode==='signup' ? 'Just a User ID & password for now — no email needed.' : 'New here? Tap “Sign Up”.'}
       </p>
     </Modal>
   );
