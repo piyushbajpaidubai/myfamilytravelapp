@@ -3703,6 +3703,194 @@ const fmtDateTime = (iso) => {
   catch(e){ return ''; }
 };
 
+const fmtTimelineTime = (value) => {
+  const m = /^(\d{1,2}):(\d{2})/.exec(value || '');
+  if (!m) return value || 'All day';
+  const hour = Number(m[1]);
+  return `${hour % 12 || 12}:${m[2]} ${hour < 12 ? 'AM' : 'PM'}`;
+};
+
+const TIMELINE_STATE = {
+  done:   { label:'Complete', dot:'#3C8A3C', text:'#39723A', bg:'#E8F3E7' },
+  active: { label:'In progress', dot:'#1F6FB2', text:'#1F6FB2', bg:'#E3EFF7' },
+  todo:   { label:'Upcoming', dot:'#B4A69B', text:'#81746B', bg:'#EEE9E1' },
+};
+
+// A focused share link gets a quieter, mobile-first view of one traveler's day.
+// It uses the trip itinerary as the timeline source today; a future update-log
+// table can feed the same entry shape without changing this interface.
+function TravelerTimeline({ trip, focusUserId, updatedAt, profileOverride=null }) {
+  const member = (trip.members || []).find(m => m.userId === focusUserId) || { userId:focusUserId, name:focusUserId };
+  const [travelerProfile, setTravelerProfile] = useState(profileOverride);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (profileOverride || !focusUserId) return () => { cancelled = true; };
+    directoryGetProfiles([focusUserId]).then(map => {
+      if (!cancelled) setTravelerProfile(map[focusUserId] || null);
+    });
+    return () => { cancelled = true; };
+  }, [focusUserId, profileOverride]);
+
+  const appliesToTraveler = (item) => {
+    const assignees = (item && item.assignees) || [];
+    return assignees.length === 0 || assignees.includes(focusUserId);
+  };
+  const itemStatus = (item) => focusUserId ? memStOf(item, focusUserId) : stOf(item);
+  const spanStatus = (span, date) => focusUserId ? spanMemStOf(span, focusUserId, date) : spanStOf(span, date);
+
+  const dayGroups = (trip.days || []).map(day => {
+    const entries = [];
+    let order = 0;
+    spansOnDay(trip, day.date).filter(appliesToTraveler).forEach(span => {
+      const segmentTime = day.date === span.startDate ? span.startTime : day.date === span.endDate ? span.endTime : '';
+      entries.push({
+        id:`span-${span.id}-${day.id}`,
+        title:span.title || 'Travel update',
+        detail:(SPAN_TYPES[span.type] || {}).kind === 'travel' && (span.from || span.to) ? `${span.from || 'Departure'} → ${span.to || 'Destination'}` : '',
+        kind:span.type || 'Plan',
+        time:fmtTimelineTime(segmentTime),
+        sortTime:segmentTime || '00:00',
+        status:spanStatus(span, day.date),
+        order:order++,
+      });
+    });
+    (day.events || []).forEach(event => {
+      if (appliesToTraveler(event)) {
+        entries.push({
+          id:`event-${event.id}`,
+          title:event.title || 'Trip event',
+          detail:event.location || event.notes || '',
+          kind:event.category || 'Event',
+          time:fmtTimelineTime(event.time),
+          sortTime:event.time || '00:00',
+          status:itemStatus(event),
+          order:order++,
+        });
+      }
+      (event.activities || []).filter(appliesToTraveler).forEach(activity => {
+        entries.push({
+          id:`activity-${activity.id}`,
+          title:activity.text || 'Traveler update',
+          detail:event.title || '',
+          kind:'Task',
+          time:fmtTimelineTime(event.time),
+          sortTime:event.time || '00:00',
+          status:itemStatus(activity),
+          order:order++,
+        });
+      });
+    });
+    entries.sort((a, b) => a.sortTime === b.sortTime ? a.order - b.order : a.sortTime.localeCompare(b.sortTime));
+    return { day, entries };
+  });
+
+  const displayName = (member.name || member.userId || 'Traveler').trim();
+  const firstName = displayName.split(/\s+/)[0];
+  const pic = (travelerProfile && travelerProfile.pic) || member.pic || '';
+  const initial = (displayName.charAt(0) || '?').toUpperCase();
+
+  return (
+    <section aria-label={`${displayName}'s timeline`} style={{ maxWidth:520, margin:'0 auto' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:12, padding:'2px 0 20px', borderBottom:'1px solid #E2D8C8', marginBottom:24 }}>
+        <span style={{ width:44, height:44, borderRadius:'50%', flexShrink:0, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', color:'#7B675A', fontSize:16, fontWeight:700 }}>
+          {pic ? <img src={pic} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initial}
+        </span>
+        <div style={{ minWidth:0, flex:1 }}>
+          <div style={{ fontSize:17, lineHeight:1.25, fontWeight:750, color:'#2E2320' }}>{firstName}'s timeline</div>
+          <div style={{ fontSize:11.5, color:'#8A7A6D', marginTop:3 }}>{updatedAt ? `Updated ${fmtDateTime(updatedAt)}` : 'Live itinerary progress'}</div>
+        </div>
+        <span style={{ display:'inline-flex', alignItems:'center', gap:5, borderRadius:20, padding:'4px 9px', background:'#E8F3E7', color:'#39723A', fontSize:10.5, fontWeight:800, letterSpacing:'0.06em' }}>
+          <span aria-hidden="true" style={{ width:6, height:6, borderRadius:'50%', background:'#3C8A3C' }} /> LIVE
+        </span>
+      </div>
+
+      {dayGroups.length === 0 && (
+        <div style={{ padding:'38px 14px', textAlign:'center', color:'#8A7A6D', fontSize:13, lineHeight:1.55 }}>
+          This traveler does not have any timeline events yet.
+        </div>
+      )}
+
+      {dayGroups.map(({ day, entries }, dayIndex) => (
+        <section key={day.id} aria-labelledby={`timeline-date-${day.id}`} style={{ marginBottom:dayIndex === dayGroups.length - 1 ? 8 : 34 }}>
+          <div style={{ display:'flex', alignItems:'baseline', gap:9, marginBottom:18 }}>
+            <span style={{ fontSize:9.5, fontWeight:800, letterSpacing:'0.14em', color:'#9A8478' }}>DATE</span>
+            <h3 id={`timeline-date-${day.id}`} style={{ margin:0, fontSize:14, fontWeight:700, color:'#3B302B' }}>
+              {weekdayOf(day.date)}, {fmtDate(day.date)}
+            </h3>
+          </div>
+
+          {entries.length === 0 ? (
+            <div style={{ marginLeft:65, padding:'0 0 4px 24px', borderLeft:'1px solid #DDD2C8', color:'#9A8478', fontSize:12.5 }}>No events for this date</div>
+          ) : entries.map((entry, index) => {
+            const state = TIMELINE_STATE[entry.status] || TIMELINE_STATE.todo;
+            const first = index === 0;
+            const last = index === entries.length - 1;
+            return (
+              <div key={entry.id} style={{ display:'grid', gridTemplateColumns:'54px 18px minmax(0, 1fr)', columnGap:10, minHeight:last ? 58 : 74 }}>
+                <time style={{ paddingTop:1, textAlign:'right', whiteSpace:'nowrap', fontSize:10.5, lineHeight:1.35, fontWeight:650, color:'#81746B', letterSpacing:'0.015em' }}>{entry.time}</time>
+                <div aria-label={state.label} style={{ position:'relative' }}>
+                  {!first && <span aria-hidden="true" style={{ position:'absolute', left:8, top:0, width:1, height:8, background:'#D8CCC0' }} />}
+                  {!last && <span aria-hidden="true" style={{ position:'absolute', left:8, top:8, bottom:0, width:1, background:'#D8CCC0' }} />}
+                  <span aria-hidden="true" style={{ position:'absolute', left:4.5, top:4, width:8, height:8, borderRadius:'50%', boxSizing:'border-box', background:entry.status === 'todo' ? '#F0EBE0' : state.dot, border:`1.5px solid ${state.dot}`, boxShadow:entry.status === 'active' ? '0 0 0 4px #E3EFF7' : 'none' }} />
+                </div>
+                <div style={{ minWidth:0, paddingBottom:last ? 4 : 20 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap', marginBottom:3 }}>
+                    <span style={{ fontSize:9.5, lineHeight:1, fontWeight:800, letterSpacing:'0.09em', textTransform:'uppercase', color:'#9A8478' }}>{entry.kind}</span>
+                    <span style={{ borderRadius:20, padding:'3px 7px', background:state.bg, color:state.text, fontSize:9.5, lineHeight:1, fontWeight:750 }}>{state.label}</span>
+                  </div>
+                  <div style={{ fontSize:13.5, lineHeight:1.4, fontWeight:650, color:'#2E2320' }}>{entry.title}</div>
+                  {entry.detail && <div style={{ marginTop:3, fontSize:11.5, lineHeight:1.4, color:'#8A7A6D', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{entry.detail}</div>}
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      ))}
+    </section>
+  );
+}
+
+const TIMELINE_DEMO_TRIP = {
+  id:'timeline-demo',
+  name:'Summer Escape',
+  destination:'Dubai → Lisbon',
+  members:[{ userId:'alex_traveler', name:'Alex Morgan' }],
+  days:[
+    { id:'demo-day-1', date:'2026-07-16', events:[
+      { id:'demo-1', time:'07:40', title:'Checked out of the hotel', category:'Stay', location:'Downtown Dubai', memberStatus:{ alex_traveler:'done' } },
+      { id:'demo-2', time:'08:15', title:'On the way to the airport', category:'Transport', location:'Dubai International Airport', memberStatus:{ alex_traveler:'done' } },
+      { id:'demo-3', time:'09:05', title:'Security check', category:'Airport', notes:'Terminal 3', memberStatus:{ alex_traveler:'active' } },
+      { id:'demo-4', time:'11:30', title:'Flight to Lisbon', category:'Flight', location:'Gate B18', memberStatus:{ alex_traveler:'todo' } },
+    ]},
+    { id:'demo-day-2', date:'2026-07-17', events:[
+      { id:'demo-5', time:'16:20', title:'Arrive in Lisbon', category:'Arrival', location:'Humberto Delgado Airport', memberStatus:{ alex_traveler:'todo' } },
+      { id:'demo-6', time:'18:00', title:'Hotel check-in', category:'Stay', location:'Baixa, Lisbon', memberStatus:{ alex_traveler:'todo' } },
+    ]},
+  ],
+};
+
+function TravelerTimelinePreview() {
+  return (
+    <div style={{ fontFamily:'var(--font-body)', maxWidth:520, margin:'0 auto', minHeight:'100vh', background:'#F0EBE0' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'18px 20px 14px', background:'#5C1A1A' }}>
+        <img src="/logo-travelhub.png" alt="My Travel Hub" width="34" height="34" style={{ borderRadius:8 }} />
+        <div>
+          <div style={{ color:'#F5ECD7', fontSize:15, lineHeight:1.1, fontWeight:800, letterSpacing:'0.04em', textTransform:'uppercase' }}>My Travel Hub</div>
+          <div style={{ color:'rgba(245,236,215,0.62)', fontSize:10, marginTop:3, letterSpacing:'0.11em', textTransform:'uppercase' }}>Traveler timeline preview</div>
+        </div>
+      </div>
+      <main style={{ padding:'22px 20px 30px' }}>
+        <div style={{ marginBottom:22 }}>
+          <h1 style={{ margin:'0 0 4px', color:'#2E2320', fontSize:19, lineHeight:1.25 }}>{TIMELINE_DEMO_TRIP.name}</h1>
+          <div style={{ color:'#A83020', fontSize:12.5 }}>📍 {TIMELINE_DEMO_TRIP.destination}</div>
+        </div>
+        <TravelerTimeline trip={TIMELINE_DEMO_TRIP} focusUserId="alex_traveler" updatedAt="2026-07-16T09:05:00Z" profileOverride={{}} />
+      </main>
+    </div>
+  );
+}
+
 function ViewerApp({ tripId, token, focusUserId }) {
   const [trip, setTrip] = useState(null);
   const [phase, setPhase] = useState('loading'); // loading | ok | notfound | error
@@ -3784,7 +3972,9 @@ function ViewerApp({ tripId, token, focusUserId }) {
         <span>{updatedAt ? `Last updated ${fmtDateTime(updatedAt)}` : 'Live view'} · refreshes automatically</span>
         <button onClick={refresh} style={{ padding:"3px 10px", borderRadius:6, border:"1px solid #C8B09A", background:"transparent", color:"#8B2A14", fontSize:11.5, cursor:"pointer" }}>Refresh now</button>
       </div>
-      <StatusTab trip={trip} focusUserId={focusUserId} />
+      {focusUserId
+        ? <TravelerTimeline trip={trip} focusUserId={focusUserId} updatedAt={updatedAt} />
+        : <StatusTab trip={trip} />}
       <div style={{ textAlign:"center", fontSize:11, color:"#B0A091", padding:"18px 0 8px" }}>Read-only view · shared by the traveler</div>
     </div>
   );
@@ -3792,8 +3982,10 @@ function ViewerApp({ tripId, token, focusUserId }) {
 
 export default function Root() {
   const params = new URLSearchParams(window.location.search);
+  const timelineDemo = params.get('demo') === 'timeline';
   const viewId = params.get('view');
   const focusUserId = params.get('t'); // a traveler's share link shows only that traveler's status
   const token = params.get('k');       // the trip's secret — this is what unlocks a share link
+  if (timelineDemo) return <TravelerTimelinePreview />;
   return viewId ? <ViewerApp tripId={viewId} token={token} focusUserId={focusUserId} /> : <MainApp />;
 }
