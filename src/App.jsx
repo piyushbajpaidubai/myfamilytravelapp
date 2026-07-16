@@ -1478,15 +1478,21 @@ function StatusTab({ trip, session, update, onShare, canUpdateOthers=true, focus
   // focusUserId (from a traveler's share link) narrows the view to that traveler only
   const roster = focusUserId ? (trip.members || []).filter(m => m.userId === focusUserId) : (trip.members || []);
   const perTraveler = roster.length > 0; // group trips show a marker per traveler; solo/legacy show one status
+  const largeGroup = roster.length >= 40;
   // Load each traveler's photo (identity) from the directory
   const [memberPics, setMemberPics] = useState({});
+  const [largeGroupView, setLargeGroupView] = useState('events');
+  const [travelerQuery, setTravelerQuery] = useState('');
+  const [travelerFilter, setTravelerFilter] = useState('all');
+  const [travelerLimit, setTravelerLimit] = useState(30);
   const memberKey = roster.map(m => m.userId).join(',');
   useEffect(() => {
     let cancelled = false;
-    const ids = memberKey ? memberKey.split(',') : [];
+    // Large rosters initially need only the few photos used in avatar stacks.
+    const ids = memberKey ? (largeGroup ? memberKey.split(',').slice(0, 8) : memberKey.split(',')) : [];
     if (ids.length) directoryGetProfiles(ids).then(map => { if (!cancelled) setMemberPics(map); });
     return () => { cancelled = true; };
-  }, [memberKey]);
+  }, [memberKey, largeGroup]);
   const picOf = (userId) => (memberPics[userId] || {}).pic || '';
   const LINE = '#3D0C02';
   const [livePopup, setLivePopup] = useState(null); // { kind:'maps'|'flight', from, to, mode, flightNo, name }
@@ -1564,6 +1570,33 @@ function StatusTab({ trip, session, update, onShare, canUpdateOthers=true, focus
   const parseDay = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s||''); return m ? Date.UTC(+m[1], +m[2]-1, +m[3]) : null; };
   const baseMs = days.reduce((min, d) => { const t = parseDay(d.date); return (t != null && (min == null || t < min)) ? t : min; }, null);
 
+  const travelerSummaries = largeGroup ? roster.map(member => {
+    const counts = { todo:0, active:0, done:0 };
+    const applies = (item) => !item || !(item.assignees || []).length || item.assignees.includes(member.userId);
+    days.forEach(day => {
+      spansOnDay(trip, day.date).filter(applies).forEach(span => { counts[spanMemStOf(span, member.userId, day.date)]++; });
+      (day.events || []).forEach(event => {
+        if (applies(event)) counts[memStOf(event, member.userId)]++;
+        (event.activities || []).filter(applies).forEach(activity => { counts[memStOf(activity, member.userId)]++; });
+      });
+    });
+    const total = counts.todo + counts.active + counts.done;
+    const status = counts.active > 0 || (counts.done > 0 && counts.todo > 0) ? 'active'
+      : total > 0 && counts.done === total ? 'done' : 'todo';
+    return { ...member, counts, total, status };
+  }) : [];
+  const travelerStatusTotals = travelerSummaries.reduce((acc, traveler) => {
+    acc[traveler.status]++;
+    return acc;
+  }, { todo:0, active:0, done:0 });
+  const normalizedQuery = travelerQuery.trim().toLowerCase();
+  const filteredTravelers = travelerSummaries.filter(traveler => {
+    const matchesText = !normalizedQuery || `${traveler.name || ''} ${traveler.userId || ''}`.toLowerCase().includes(normalizedQuery);
+    const matchesStatus = travelerFilter === 'all' || traveler.status === travelerFilter;
+    return matchesText && matchesStatus;
+  });
+  const visibleTravelers = filteredTravelers.slice(0, travelerLimit);
+
   return (
     <div>
       {onShare && (
@@ -1574,15 +1607,90 @@ function StatusTab({ trip, session, update, onShare, canUpdateOthers=true, focus
       )}
 
       {/* Overall counts (aggregated across travelers) */}
-      {totalItems>0 && (
+      {!largeGroup && totalItems>0 && (
         <div style={{ fontSize:12.5, display:'flex', gap:12, flexWrap:'wrap', marginBottom: perTraveler?12:26 }}>
           <span style={{ color: STATUS_META.done.color, fontWeight:600 }}>{total.done} complete</span>
           <span style={{ color: STATUS_META.active.color, fontWeight:600 }}>{total.active} ongoing</span>
           <span style={{ color: STATUS_META.todo.color, fontWeight:600 }}>{total.todo} not started</span>
         </div>
       )}
+
+      {largeGroup && (
+        <div style={{ marginBottom:24 }}>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:14, flexWrap:'wrap', marginBottom:14 }}>
+            <div>
+              <div style={{ fontSize:18, fontWeight:700, color:'#2E2320' }}>{roster.length} travelers</div>
+              <div style={{ fontSize:11.5, color:'#8A7A6D', marginTop:3 }}>A clear view of the group without showing every avatar at once.</div>
+            </div>
+            <div role="group" aria-label="Status view" style={{ display:'inline-flex', background:'#E8E2D4', borderRadius:9, padding:3 }}>
+              {[['events','Events'],['travelers','Travelers']].map(([value, label]) => (
+                <button key={value} type="button" aria-pressed={largeGroupView===value} onClick={()=>setLargeGroupView(value)}
+                  style={{ border:'none', borderRadius:7, padding:'7px 12px', background:largeGroupView===value?'#6E1A10':'transparent', color:largeGroupView===value?'#fff':'#8B2A14', fontSize:12.5, fontWeight:650, cursor:'pointer' }}>{label}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(105px, 1fr))', gap:8 }}>
+            {[
+              ['done','Complete',travelerStatusTotals.done],
+              ['active','Ongoing',travelerStatusTotals.active],
+              ['todo','Not started',travelerStatusTotals.todo],
+            ].map(([status, label, count]) => (
+              <button key={status} type="button" onClick={()=>{ setLargeGroupView('travelers'); setTravelerFilter(status); setTravelerLimit(30); }}
+                style={{ display:'flex', alignItems:'center', gap:8, textAlign:'left', border:'1px solid #DED3C7', background:'#F5EFE2', borderRadius:9, padding:'9px 11px', color:'#2E2320', cursor:'pointer' }}>
+                <span aria-hidden="true" style={{ width:8, height:8, borderRadius:'50%', flexShrink:0, background:STATUS_META[status].ring }} />
+                <span style={{ minWidth:0 }}><strong style={{ display:'block', fontSize:14 }}>{count}</strong><span style={{ fontSize:10.5, color:'#8A7A6D' }}>{label}</span></span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {largeGroup && largeGroupView === 'travelers' && (
+        <section aria-label="Traveler status directory">
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:10 }}>
+            <input aria-label="Search travelers" value={travelerQuery} onChange={e=>{ setTravelerQuery(e.target.value); setTravelerLimit(30); }} placeholder="Search travelers…"
+              style={{ flex:'1 1 210px', minWidth:0, padding:'9px 11px', border:'1px solid #C8B09A', borderRadius:8, background:'#fff', color:'#2E2320', fontSize:13, boxSizing:'border-box' }} />
+            <div role="group" aria-label="Filter travelers" style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
+              {[
+                ['all',`All ${travelerSummaries.length}`],
+                ['active',`Ongoing ${travelerStatusTotals.active}`],
+                ['done',`Complete ${travelerStatusTotals.done}`],
+                ['todo',`Not started ${travelerStatusTotals.todo}`],
+              ].map(([value, label]) => (
+                <button key={value} type="button" aria-pressed={travelerFilter===value} onClick={()=>{ setTravelerFilter(value); setTravelerLimit(30); }}
+                  style={{ padding:'7px 9px', borderRadius:20, border:travelerFilter===value?'1px solid #6E1A10':'1px solid #D4BFB0', background:travelerFilter===value?'#6E1A10':'transparent', color:travelerFilter===value?'#fff':'#8B2A14', fontSize:11, fontWeight:650, cursor:'pointer' }}>{label}</button>
+              ))}
+            </div>
+          </div>
+          <div aria-live="polite" style={{ fontSize:11.5, color:'#8A7A6D', marginBottom:9 }}>Showing {Math.min(visibleTravelers.length, filteredTravelers.length)} of {filteredTravelers.length}</div>
+          <div style={{ borderTop:'1px solid #E2D8C8' }}>
+            {visibleTravelers.map(traveler => {
+              const state = STATUS_META[traveler.status];
+              const label = traveler.status === 'done' ? 'Complete' : traveler.status === 'active' ? 'Ongoing' : 'Not started';
+              return (
+                <div key={traveler.userId} style={{ display:'grid', gridTemplateColumns:'38px minmax(0, 1fr) auto', gap:10, alignItems:'center', padding:'11px 2px', borderBottom:'1px solid #E8DED2', contentVisibility:'auto', containIntrinsicSize:'54px' }}>
+                  <span style={{ width:34, height:34, borderRadius:'50%', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'#8A6A50' }}>
+                    {picOf(traveler.userId) ? <img src={picOf(traveler.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : ((traveler.name||traveler.userId||'?').trim().charAt(0)||'?').toUpperCase()}
+                  </span>
+                  <span style={{ minWidth:0 }}>
+                    <strong style={{ display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'#2E2320' }}>{traveler.name || traveler.userId}</strong>
+                    <span style={{ display:'block', marginTop:2, fontSize:10.5, color:'#8A7A6D' }}>{traveler.counts.done} complete · {traveler.counts.active} ongoing · {traveler.counts.todo} pending</span>
+                  </span>
+                  <span style={{ display:'inline-flex', alignItems:'center', gap:5, borderRadius:20, padding:'4px 8px', background:state.bg, color:state.color, fontSize:10.5, fontWeight:700, whiteSpace:'nowrap' }}>
+                    <span aria-hidden="true" style={{ width:6, height:6, borderRadius:'50%', background:state.ring }} />{label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {visibleTravelers.length === 0 && <div style={{ padding:'28px 12px', textAlign:'center', color:'#8A7A6D', fontSize:13 }}>No travelers match this search.</div>}
+          {filteredTravelers.length > travelerLimit && (
+            <div style={{ textAlign:'center', paddingTop:14 }}><Btn variant="ghost" onClick={()=>setTravelerLimit(limit=>limit+30)}>Show 30 more</Btn></div>
+          )}
+        </section>
+      )}
       {/* Traveler legend — which initial is who */}
-      {perTraveler && (
+      {perTraveler && !largeGroup && (
         <div style={{ display:'flex', gap:14, flexWrap:'wrap', alignItems:'center', marginBottom:24, paddingBottom:14, borderBottom:'1px solid #E2D8C8' }}>
           {roster.map(m => (
             <span key={m.userId} style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:12, color:'#6E1A10' }}>
@@ -1596,12 +1704,12 @@ function StatusTab({ trip, session, update, onShare, canUpdateOthers=true, focus
           ))}
         </div>
       )}
-      {perTraveler && update && canUpdateOthers && (
+      {perTraveler && !largeGroup && update && canUpdateOthers && (
         <p style={{ fontSize:11.5, color:'#8A7A6D', margin:'-14px 0 22px', lineHeight:1.45 }}>💡 Tap any traveler's photo on an item to update their status — handy when you're travelling together and someone's away from their phone.</p>
       )}
 
       {/* Toggle: show status sentences above the markers */}
-      {perTraveler && totalItems > 0 && (
+      {perTraveler && !largeGroup && totalItems > 0 && (
         <div style={{ display:'inline-flex', alignItems:'center', gap:8, marginBottom:18 }}>
           <span style={{ fontSize:12.5, color:'#8B2A14', fontWeight:600 }}>Status sentences</span>
           <button onClick={()=>setSentenceView(v=>!v)}
@@ -1611,11 +1719,11 @@ function StatusTab({ trip, session, update, onShare, canUpdateOthers=true, focus
         </div>
       )}
 
-      {days.length===0 && (
+      {(!largeGroup || largeGroupView === 'events') && days.length===0 && (
         <p style={{ color:'#C05040', fontSize:13, textAlign:'center', padding:'24px 0' }}>No days added yet.</p>
       )}
 
-      {days.map((day, di) => {
+      {(!largeGroup || largeGroupView === 'events') && days.map((day, di) => {
         const items = dayItems(day);
         const t = parseDay(day.date);
         const dayNum = (baseMs != null && t != null) ? Math.round((t - baseMs) / 86400000) + 1 : (di + 1);
@@ -1647,7 +1755,7 @@ function StatusTab({ trip, session, update, onShare, canUpdateOthers=true, focus
                     <div style={{ flex:1, minWidth:0, paddingBottom: last?0:28, fontSize:13.5, color:'#2E2320', lineHeight:1.4 }}>
                       <div>{it.name}</div>
                       {/* Sentences (one coloured line per traveler) shown above the markers when toggled on */}
-                      {sentenceView && it.marks && (
+                      {!largeGroup && sentenceView && it.marks && (
                         <div style={{ marginTop:5 }}>
                           {(() => {
                             // display name = first name, unless two travelers on this item share it
@@ -1669,9 +1777,39 @@ function StatusTab({ trip, session, update, onShare, canUpdateOthers=true, focus
                         </div>
                       )}
                       {it.marks
-                        ? <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
-                            {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} onClick={update && (canUpdateOthers || (session && mk.userId === session.userId)) ? ()=>cycleMemberStatus(it.ref, mk.userId) : undefined} />)}
-                          </div>
+                        ? largeGroup
+                          ? (() => {
+                              const counts = it.marks.reduce((acc, mark) => { acc[mark.status]++; return acc; }, { todo:0, active:0, done:0 });
+                              const markTotal = Math.max(1, it.marks.length);
+                              return (
+                                <div style={{ marginTop:7 }}>
+                                  <div aria-label={`${counts.done} complete, ${counts.active} ongoing, ${counts.todo} not started`} style={{ display:'flex', height:5, overflow:'hidden', borderRadius:5, background:'#E5DFD8', marginBottom:8 }}>
+                                    {counts.done>0 && <span style={{ width:`${counts.done/markTotal*100}%`, background:STATUS_META.done.ring }} />}
+                                    {counts.active>0 && <span style={{ width:`${counts.active/markTotal*100}%`, background:STATUS_META.active.ring }} />}
+                                    {counts.todo>0 && <span style={{ width:`${counts.todo/markTotal*100}%`, background:STATUS_META.todo.ring }} />}
+                                  </div>
+                                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:9, flexWrap:'wrap' }}>
+                                    <div style={{ display:'flex', alignItems:'center', minWidth:0 }}>
+                                      {it.marks.slice(0, 4).map((mark, markIndex) => (
+                                        <span key={mark.userId} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}`} style={{ width:23, height:23, marginLeft:markIndex===0?0:-6, borderRadius:'50%', border:'2px solid #F0EBE0', background:'#E8E2D4', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:9.5, fontWeight:700, color:'#7B675A', zIndex:5-markIndex }}>
+                                          {((mark.name||mark.userId||'?').trim().charAt(0)||'?').toUpperCase()}
+                                        </span>
+                                      ))}
+                                      {it.marks.length>4 && <span style={{ marginLeft:6, color:'#8A7A6D', fontSize:10.5, fontWeight:650 }}>+{it.marks.length-4}</span>}
+                                    </div>
+                                    <div style={{ display:'flex', gap:7, alignItems:'center', flexWrap:'wrap', fontSize:10.5 }}>
+                                      <span style={{ color:STATUS_META.done.color }}>{counts.done} complete</span>
+                                      <span style={{ color:STATUS_META.active.color }}>{counts.active} ongoing</span>
+                                      <span style={{ color:STATUS_META.todo.color }}>{counts.todo} pending</span>
+                                      <button type="button" onClick={()=>setLargeGroupView('travelers')} style={{ border:'none', background:'transparent', color:'#8B2A14', padding:0, fontSize:10.5, fontWeight:700, textDecoration:'underline', cursor:'pointer' }}>View list</button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()
+                          : <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
+                              {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} onClick={update && (canUpdateOthers || (session && mk.userId === session.userId)) ? ()=>cycleMemberStatus(it.ref, mk.userId) : undefined} />)}
+                            </div>
                         : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
                       {it.travel && it.anyActive && (
                         <div style={{ marginTop:8 }}>
@@ -3891,6 +4029,59 @@ function TravelerTimelinePreview() {
   );
 }
 
+const LARGE_GROUP_DEMO_MEMBERS = (() => {
+  const firstNames = ['Aisha','Alex','Amara','Ben','Chloe','Daniel','Elena','Fatima','Hugo','Isla','James','Kavya','Leo','Maya','Noah','Sofia'];
+  const lastNames = ['Ahmed','Bennett','Chen','Davis','Garcia','Kim','Patel','Silva'];
+  return firstNames.flatMap((first, firstIndex) => lastNames.map((last, lastIndex) => ({
+    userId:`${first.toLowerCase()}_${last.toLowerCase()}_${firstIndex*lastNames.length+lastIndex+1}`,
+    name:`${first} ${last}`,
+  })));
+})();
+
+const largeGroupDemoStatuses = (doneCount, activeCount) => Object.fromEntries(
+  LARGE_GROUP_DEMO_MEMBERS.map((member, index) => [member.userId, index < doneCount ? 'done' : index < doneCount + activeCount ? 'active' : 'todo'])
+);
+
+const LARGE_GROUP_DEMO_TRIP = {
+  id:'large-group-demo',
+  name:'Global Youth Travel Summit',
+  destination:'Dubai, United Arab Emirates',
+  members:LARGE_GROUP_DEMO_MEMBERS,
+  days:[
+    { id:'large-demo-day-1', date:'2026-07-16', label:'Arrival and orientation', events:[
+      { id:'large-demo-1', time:'07:40', endTime:'09:00', title:'Hotel checkout and luggage drop', category:'Hotel', location:'Downtown Dubai', memberStatus:largeGroupDemoStatuses(100, 15) },
+      { id:'large-demo-2', time:'09:15', endTime:'10:30', title:'Transfer to the summit venue', category:'Transport', location:'Dubai World Trade Centre', memberStatus:largeGroupDemoStatuses(80, 30) },
+      { id:'large-demo-3', time:'11:00', endTime:'12:15', title:'Registration and welcome briefing', category:'Activity', location:'Hall 4', memberStatus:largeGroupDemoStatuses(45, 50) },
+      { id:'large-demo-4', time:'13:30', endTime:'15:00', title:'Opening session', category:'Activity', location:'Main auditorium', memberStatus:largeGroupDemoStatuses(18, 22) },
+    ]},
+    { id:'large-demo-day-2', date:'2026-07-17', label:'City programme', events:[
+      { id:'large-demo-5', time:'08:30', endTime:'09:15', title:'Group breakfast', category:'Food', location:'Hotel restaurant', memberStatus:largeGroupDemoStatuses(18, 0) },
+      { id:'large-demo-6', time:'10:00', endTime:'12:30', title:'Museum of the Future visit', category:'Sightseeing', location:'Sheikh Zayed Road', memberStatus:largeGroupDemoStatuses(18, 0) },
+    ]},
+  ],
+};
+
+function LargeGroupStatusPreview() {
+  return (
+    <div style={{ fontFamily:'var(--font-body)', maxWidth:760, margin:'0 auto', minHeight:'100vh', background:'#F0EBE0' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'18px 20px 14px', background:'#5C1A1A' }}>
+        <img src="/logo-travelhub.png" alt="My Travel Hub" width="34" height="34" style={{ borderRadius:8 }} />
+        <div style={{ minWidth:0 }}>
+          <div style={{ color:'#F5ECD7', fontSize:15, lineHeight:1.1, fontWeight:800, letterSpacing:'0.04em', textTransform:'uppercase' }}>My Travel Hub</div>
+          <div style={{ color:'rgba(245,236,215,0.62)', fontSize:10, marginTop:3, letterSpacing:'0.11em', textTransform:'uppercase' }}>Large group status preview</div>
+        </div>
+      </div>
+      <main style={{ padding:'22px 20px 32px' }}>
+        <div style={{ marginBottom:18 }}>
+          <h1 style={{ margin:'0 0 4px', color:'#2E2320', fontSize:19, lineHeight:1.25 }}>{LARGE_GROUP_DEMO_TRIP.name}</h1>
+          <div style={{ color:'#A83020', fontSize:12.5 }}>📍 {LARGE_GROUP_DEMO_TRIP.destination}</div>
+        </div>
+        <StatusTab trip={LARGE_GROUP_DEMO_TRIP} canUpdateOthers={false} />
+      </main>
+    </div>
+  );
+}
+
 function ViewerApp({ tripId, token, focusUserId }) {
   const [trip, setTrip] = useState(null);
   const [phase, setPhase] = useState('loading'); // loading | ok | notfound | error
@@ -3982,10 +4173,11 @@ function ViewerApp({ tripId, token, focusUserId }) {
 
 export default function Root() {
   const params = new URLSearchParams(window.location.search);
-  const timelineDemo = params.get('demo') === 'timeline';
+  const demo = params.get('demo');
   const viewId = params.get('view');
   const focusUserId = params.get('t'); // a traveler's share link shows only that traveler's status
   const token = params.get('k');       // the trip's secret — this is what unlocks a share link
-  if (timelineDemo) return <TravelerTimelinePreview />;
+  if (demo === 'timeline') return <TravelerTimelinePreview />;
+  if (demo === 'group-status') return <LargeGroupStatusPreview />;
   return viewId ? <ViewerApp tripId={viewId} token={token} focusUserId={focusUserId} /> : <MainApp />;
 }
