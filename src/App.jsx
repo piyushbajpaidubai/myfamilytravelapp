@@ -1718,7 +1718,7 @@ async function authSignIn(userId, password, fallbackName) {
     throw new Error(m);
   }
   const s = sessionFromResponse(j, userId, fallbackName);
-  directoryUpsert(s.userId, s.name); // keep the traveler directory fresh
+  directoryUpsert(s); // keep the traveler directory fresh
   return s;
 }
 
@@ -1736,7 +1736,7 @@ async function authSignUp(userId, password, name, role) {
     throw new Error(m);
   }
   // With email confirmation off, signup returns a session directly; otherwise log in to fetch one
-  if (j.access_token) { const s = sessionFromResponse(j, userId, name); directorySaveProfile(s.userId, s.name, { role: s.role }); return s; }
+  if (j.access_token) { const s = sessionFromResponse(j, userId, name); directorySaveProfile(s, s.name, { role: s.role }); return s; }
   // No session → confirmation is still on
   throw new Error('One-time setup needed: in Supabase → Authentication → Providers → Email, turn OFF "Confirm email", then try again.');
 }
@@ -1750,33 +1750,143 @@ async function authSignOut(session) {
 }
 
 // ── Traveler directory (public `profiles` table) ──
-// A lightweight lookup of User ID -> name so travelers can be found + shown when
-// added to a trip. Populated on signup/login (best-effort, never blocks auth).
-async function directoryUpsert(userId, name) {
+// ---- Session freshness -------------------------------------------------
+// Supabase access tokens expire (~1h). Every request that relies on RLS must
+// carry a live one, so refresh just before it lapses.
+const jwtExpMs = (tok) => { try { return (JSON.parse(atob(String(tok).split('.')[1])).exp || 0) * 1000; } catch(e) { return 0; } };
+async function authRefresh(session) {
   try {
-    await fetch(SUPA_URL + '/rest/v1/profiles', {
-      method: 'POST',
-      headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates' },
-      body: JSON.stringify({ user_id: normUserId(userId), name: name || normUserId(userId) })
+    if (!session || !session.refreshToken) return null;
+    const res = await fetch(SUPA_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST', headers: { apikey: SUPA_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: session.refreshToken })
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    if (!j.access_token) return null;
+    return { ...session, ...sessionFromResponse(j, session.userId, session.name) };
+  } catch(e) { return null; }
+}
+// Hand back a session whose token is good for at least another minute.
+async function freshSession(session, onSession) {
+  if (!session || !session.accessToken) return session;
+  if (jwtExpMs(session.accessToken) - Date.now() > 60000) return session;
+  const s = await authRefresh(session);
+  if (s) { if (onSession) onSession(s); saveAuth(s); return s; }
+  return session;
+}
+// Requests made AS the signed-in traveler — this is what RLS reads.
+const authHeaders = (session) => ({
+  'Content-Type': 'application/json',
+  apikey: SUPA_KEY,
+  Authorization: 'Bearer ' + ((session && session.accessToken) || SUPA_KEY),
+});
+
+// ---- Trips storage (row-level security) --------------------------------
+// One row per trip. Postgres decides what you may read/write: owner + members
+// can edit, invited viewers can only read, everyone else sees nothing. The
+// owner_uid/member_uids/viewer_uids/share_token columns drive those policies,
+// so they're mirrored onto the trip object but kept out of the JSON blob.
+const TRIP_ROW_FIELDS = ['shareToken', 'ownerUid', 'memberUids', 'viewerUids'];
+const rowToTrip = (row) => ({
+  ...(row.data || {}),
+  id: row.id,
+  shareToken: row.share_token || '',
+  ownerUid: row.owner_uid || '',
+  memberUids: row.member_uids || [],
+  viewerUids: row.viewer_uids || [],
+});
+const tripData = (trip) => { const d = { ...trip }; TRIP_ROW_FIELDS.forEach(k => delete d[k]); return d; };
+
+// → {mode:'rls', trips} | {mode:'legacy'} (migration not run yet) | {mode:'error'}
+async function tripsFetch(session) {
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/trips?select=id,data,share_token,owner_uid,member_uids,viewer_uids', { headers: authHeaders(session) });
+    if (r.status === 404) return { mode: 'legacy' };
+    if (r.status === 401) return { mode: 'unauthorized' }; // token dead and refresh failed
+    if (!r.ok) return { mode: 'error' };
+    const rows = await r.json();
+    return { mode: 'rls', trips: (rows || []).map(rowToTrip) };
+  } catch(e) { return { mode: 'error' }; }
+}
+async function tripCreate(session, trip) {
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/trips', {
+      method: 'POST', headers: { ...authHeaders(session), 'Prefer': 'return=representation' },
+      body: JSON.stringify({ id: trip.id, owner_uid: session.uid, member_uids: [session.uid], data: tripData(trip) })
+    });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return rows && rows[0] ? rowToTrip(rows[0]) : null;
+  } catch(e) { return null; }
+}
+async function tripPatch(session, id, fields) {
+  try {
+    await fetch(SUPA_URL + '/rest/v1/trips?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH', headers: authHeaders(session), body: JSON.stringify(fields)
     });
   } catch(e) {}
 }
-// Look up a traveler by exact User ID; returns { userId, name } or null
-async function directoryLookup(userId) {
+async function tripDelete(session, id) {
   try {
-    const r = await fetch(SUPA_URL + '/rest/v1/profiles?user_id=eq.' + encodeURIComponent(normUserId(userId)) + '&select=user_id,name', { headers: supaHeaders });
+    await fetch(SUPA_URL + '/rest/v1/trips?id=eq.' + encodeURIComponent(id), {
+      method: 'DELETE', headers: authHeaders(session)
+    });
+  } catch(e) {}
+}
+// Public read-only share link: returns ONE trip, and only for the right token.
+// → {ok:true, trip, updatedAt} | {ok:false, missing:true} (pre-migration) | {ok:false}
+async function sharedTripFetch(tripId, token) {
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/rpc/shared_trip', {
+      method: 'POST', headers: supaHeaders,
+      body: JSON.stringify({ p_id: tripId, p_token: token || '' })
+    });
+    if (r.status === 404) return { ok: false, missing: true };
+    if (!r.ok) return { ok: false };
+    const j = await r.json();
+    return { ok: true, trip: (j && j.trip) || null, updatedAt: (j && j.updated_at) || null };
+  } catch(e) { return { ok: false }; }
+}
+
+// ---- Traveler directory ------------------------------------------------
+// Reads go through profiles_public, which exposes only User ID / name / avatar
+// — a profile's private side (notes, to-dos, age…) is never world-readable.
+// Each call falls back to the old open table until the migration has been run.
+async function directoryUpsert(session) {
+  if (!session) return;
+  const base = { user_id: normUserId(session.userId), name: session.name || normUserId(session.userId) };
+  const post = (headers, body) => fetch(SUPA_URL + '/rest/v1/profiles', {
+    method: 'POST', headers: { ...headers, 'Prefer': 'resolution=merge-duplicates' }, body: JSON.stringify(body)
+  });
+  try {
+    const r = await post(authHeaders(session), { ...base, auth_uid: session.uid });
+    if (!r.ok) await post(supaHeaders, base); // pre-migration
+  } catch(e) {}
+}
+// Look up a traveler by exact User ID; returns { userId, name, uid } or null
+async function directoryLookup(userId) {
+  const id = normUserId(userId);
+  try {
+    let r = await fetch(SUPA_URL + '/rest/v1/profiles_public?user_id=eq.' + encodeURIComponent(id) + '&select=user_id,name,auth_uid', { headers: supaHeaders });
+    if (r.status === 404) r = await fetch(SUPA_URL + '/rest/v1/profiles?user_id=eq.' + encodeURIComponent(id) + '&select=user_id,name', { headers: supaHeaders });
     if (!r.ok) return null;
     const rows = await r.json();
-    if (rows && rows[0]) return { userId: rows[0].user_id, name: rows[0].name || rows[0].user_id };
+    if (rows && rows[0]) return { userId: rows[0].user_id, name: rows[0].name || rows[0].user_id, uid: rows[0].auth_uid || '' };
     return null;
   } catch(e) { return null; }
 }
-// Load a traveler's full profile (photo/age/gender/city) from the directory
-async function directoryGetProfile(userId) {
+// Load MY OWN full profile (photo/age/city/notes/to-dos) — RLS: own row only
+async function directoryGetProfile(session) {
+  if (!session) return null;
+  const q = '/rest/v1/profiles?user_id=eq.' + encodeURIComponent(normUserId(session.userId)) + '&select=name,profile';
   try {
-    const r = await fetch(SUPA_URL + '/rest/v1/profiles?user_id=eq.' + encodeURIComponent(normUserId(userId)) + '&select=name,profile', { headers: supaHeaders });
-    if (!r.ok) return null;
-    const rows = await r.json();
+    let r = await fetch(SUPA_URL + q, { headers: authHeaders(session) });
+    let rows = r.ok ? await r.json() : null;
+    if (!rows || !rows[0]) { // pre-migration the row may only be visible to anon
+      r = await fetch(SUPA_URL + q, { headers: supaHeaders });
+      rows = r.ok ? await r.json() : null;
+    }
     if (rows && rows[0]) return { name: rows[0].name, profile: rows[0].profile || {} };
     return null;
   } catch(e) { return null; }
@@ -1787,22 +1897,26 @@ async function directoryGetProfiles(userIds) {
     const ids = (userIds || []).map(u => normUserId(u)).filter(Boolean);
     if (!ids.length) return {};
     const list = ids.map(u => encodeURIComponent(u)).join(',');
-    const r = await fetch(SUPA_URL + '/rest/v1/profiles?user_id=in.(' + list + ')&select=user_id,name,profile', { headers: supaHeaders });
+    let legacy = false;
+    let r = await fetch(SUPA_URL + '/rest/v1/profiles_public?user_id=in.(' + list + ')&select=user_id,name,pic', { headers: supaHeaders });
+    if (r.status === 404) { legacy = true; r = await fetch(SUPA_URL + '/rest/v1/profiles?user_id=in.(' + list + ')&select=user_id,name,profile', { headers: supaHeaders }); }
     if (!r.ok) return {};
     const rows = await r.json();
     const map = {};
-    (rows || []).forEach(row => { map[row.user_id] = { name: row.name, pic: (row.profile && row.profile.pic) || '' }; });
+    (rows || []).forEach(row => { map[row.user_id] = { name: row.name, pic: (legacy ? (row.profile && row.profile.pic) : row.pic) || '' }; });
     return map;
   } catch(e) { return {}; }
 }
-// Save a traveler's profile (name + details) to the directory
-async function directorySaveProfile(userId, name, profileObj) {
+// Save my profile (name + details) to the directory
+async function directorySaveProfile(session, name, profileObj) {
+  if (!session) return;
+  const base = { user_id: normUserId(session.userId), name: name || normUserId(session.userId), profile: profileObj || {} };
+  const post = (headers, body) => fetch(SUPA_URL + '/rest/v1/profiles', {
+    method: 'POST', headers: { ...headers, 'Prefer': 'resolution=merge-duplicates' }, body: JSON.stringify(body)
+  });
   try {
-    await fetch(SUPA_URL + '/rest/v1/profiles', {
-      method: 'POST',
-      headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates' },
-      body: JSON.stringify({ user_id: normUserId(userId), name: name || normUserId(userId), profile: profileObj || {} })
-    });
+    const r = await post(authHeaders(session), { ...base, auth_uid: session.uid });
+    if (!r.ok) await post(supaHeaders, base); // pre-migration
   } catch(e) {}
 }
 
@@ -1836,7 +1950,7 @@ function ViewerHome({ session, profile, trips, onOpenAccount }) {
           </div>
         )}
         {trips.map(t => { const r = tripDateRange(t); const m = TRIP_STATUS[tripStatusOf(t)]; return (
-          <button key={t.id} onClick={()=>{ window.location.href = '?view=' + t.id; }}
+          <button key={t.id} onClick={()=>{ window.location.href = '?view=' + t.id + (t.shareToken ? '&k=' + encodeURIComponent(t.shareToken) : ''); }}
             style={{ background:'#EDE7D9', border:'1px solid #D4BFB0', borderRadius:12, padding:'14px 16px', width:'100%', textAlign:'left', cursor:'pointer', marginBottom:10, display:'block' }}>
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
               <span style={{ width:8, height:8, borderRadius:'50%', background:m.dot, flexShrink:0 }} />
@@ -2221,68 +2335,141 @@ function MainApp() {
     setActiveTrip(a => snapshot.some(t => t.id === a) ? a : (snapshot[0] ? snapshot[0].id : null));
   };
 
-  // Load from online store on mount
+  // Where trips live: 'rls' = the per-trip table Postgres protects (each traveler
+  // only ever receives their own trips); 'legacy' = the old shared blob, used
+  // while signed out and until the RLS migration has been run.
+  const cloudMode = useRef('unknown');
+  const savedRef = useRef({}); // tripId -> last JSON persisted, so we only write changes
+  const sessionKey = session ? session.userId : '';
+
+  // Load trips whenever the signed-in traveler changes
   useEffect(() => {
-    // Try cloud first, fallback to localStorage
-    loadFromCloud().then(cloudData => {
+    let cancelled = false;
+    const loadLegacy = async () => {
+      const cloudData = await loadFromCloud();
+      if (cancelled) return;
       if (cloudData && cloudData.trips && cloudData.trips.length > 0) {
         setTrips(cloudData.trips);
-        setActiveTrip(cloudData.trips[0].id);
+        setActiveTrip(a => a || cloudData.trips[0].id);
         if (cloudData.header_note) setHeaderNote(cloudData.header_note);
-        // Also update localStorage cache
         try { localStorage.setItem('travelPlannerData', JSON.stringify({ trips: cloudData.trips })); } catch(e) {}
       } else {
-        // Fallback to localStorage
         try {
           const sv = localStorage.getItem('travelPlannerData');
-          if (sv) { const { trips: t } = JSON.parse(sv); if (t && t.length) { setTrips(t); setActiveTrip(t[0].id); } }
+          if (sv) { const { trips: t } = JSON.parse(sv); if (t && t.length) { setTrips(t); setActiveTrip(a => a || t[0].id); } }
         } catch(e) {}
       }
-    });
-  }, [])
+    };
+    (async () => {
+      if (!session) { cloudMode.current = 'legacy'; await loadLegacy(); return; }
+      const s = await freshSession(session, setSession);
+      const res = await tripsFetch(s);
+      if (cancelled) return;
+      if (res.mode === 'rls') {
+        cloudMode.current = 'rls';
+        const list = res.trips || [];
+        savedRef.current = {};
+        list.forEach(t => { savedRef.current[t.id] = JSON.stringify(tripData(t)); });
+        setTrips(list);
+        setActiveTrip(a => list.some(t => t.id === a) ? a : (list[0] ? list[0].id : null));
+        try { localStorage.setItem('travelPlannerData', JSON.stringify({ trips: list })); } catch(e) {}
+      } else if (res.mode === 'legacy') {
+        cloudMode.current = 'legacy';
+        await loadLegacy();
+      } else if (res.mode === 'unauthorized') {
+        setSession(null); saveAuth(null); // signed-in state is stale — ask for a fresh login
+      }
+      // on a network error keep whatever is already on screen
+    })();
+    return () => { cancelled = true; };
+  }, [sessionKey]);
+
+  // The header note used to live in the one shared row. With trips isolated per
+  // traveler it becomes personal, and rides along in the account's profile.
+  useEffect(() => {
+    if (cloudMode.current !== 'rls' || !session || !profile) return;
+    if ((profile.headerNote || '') === headerNote) return;
+    const timer = setTimeout(() => {
+      const p = { ...profile, headerNote };
+      setProfile(p);
+      directorySaveProfile(session, p.name || session.name, p);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [headerNote, profile, session]);
 
   // Auto-save: debounce 2s after any change to trips
   useEffect(() => {
     if (trips.length === 0) return;
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       try { localStorage.setItem('travelPlannerData', JSON.stringify({ trips })); } catch(e) {}
-      saveToCloud(trips, headerNote);
+      if (cloudMode.current !== 'rls') { saveToCloud(trips, headerNote); return; }
+      if (!session) return;
+      const s = await freshSession(session, setSession);
+      trips.forEach(t => { // one row per trip → only the edited ones are written
+        const body = JSON.stringify(tripData(t));
+        if (savedRef.current[t.id] === body) return;
+        savedRef.current[t.id] = body;
+        tripPatch(s, t.id, { data: JSON.parse(body) });
+      });
     }, 2000);
     return () => clearTimeout(timer);
-  }, [trips, headerNote]);
+  }, [trips, headerNote, session]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSavedStatus('saving');
     // Save to localStorage immediately
     try { localStorage.setItem('travelPlannerData', JSON.stringify({ trips })); } catch(e) {}
     // Save to cloud
-    saveToCloud(trips, headerNote).then(() => {
-      setSavedStatus('saved');
-      setTimeout(() => setSavedStatus(''), 2500);
-    }).catch(() => {
-      setSavedStatus('saved');
-      setTimeout(() => setSavedStatus(''), 2500);
-    });
+    try {
+      if (cloudMode.current === 'rls' && session) {
+        const s = await freshSession(session, setSession);
+        await Promise.all(trips.map(t => {
+          const body = JSON.stringify(tripData(t));
+          savedRef.current[t.id] = body;
+          return tripPatch(s, t.id, { data: JSON.parse(body) });
+        }));
+      } else {
+        await saveToCloud(trips, headerNote);
+      }
+    } catch(e) {}
+    setSavedStatus('saved');
+    setTimeout(() => setSavedStatus(''), 2500);
   };
   const [tripForm, setTripForm] = useState({ name:"", destination:"", startDate:"", endDate:"" });
+  const [createErr, setCreateErr] = useState('');
 
-  const createTrip = () => {
+  const createTrip = async () => {
     if (!tripForm.name) return;
     recordHistory();
     const t = { ...defaultTrip(), ...tripForm };
     if (session) { t.ownerId = session.userId; t.members = [{ userId: session.userId, name: session.name, role:'captain' }]; }
-    const updated = [...trips, t];
-    setTrips(updated);
-    setActiveTrip(t.id);
+    if (cloudMode.current === 'rls' && session) {
+      // The row must exist before the auto-save can patch it
+      const s = await freshSession(session, setSession);
+      const row = await tripCreate(s, t);
+      if (!row) { setCreateErr("Couldn't create the trip — check your connection and try again."); return; }
+      savedRef.current[row.id] = JSON.stringify(tripData(row));
+      setTrips(prev => [...prev, row]);
+      setActiveTrip(row.id);
+    } else {
+      setTrips(prev => [...prev, t]);
+      setActiveTrip(t.id);
+    }
+    setCreateErr('');
     setShowNewTrip(false);
     setTripForm({ name:"", destination:"", startDate:"", endDate:"" });
   };
 
-  const deleteTrip = (id) => {
+  const deleteTrip = async (id) => {
     recordHistory();
     const updated = trips.filter(t=>t.id!==id);
     setTrips(updated);
     setActiveTrip(updated.length>0 ? updated[0].id : null);
+    delete savedRef.current[id];
+    if (cloudMode.current === 'rls' && session) {
+      const s = await freshSession(session, setSession);
+      tripDelete(s, id);
+    }
   };
 
   const updateTrip = (id, patch) => {
@@ -2297,10 +2484,11 @@ function MainApp() {
   useEffect(() => {
     let cancelled = false;
     if (session) {
-      directoryGetProfile(session.userId).then(res => {
+      directoryGetProfile(session).then(res => {
         if (cancelled) return;
         const prof = (res && res.profile) ? res.profile : {};
         setProfile({ name: (res && res.name) || session.name, ...prof });
+        if (typeof prof.headerNote === 'string') setHeaderNote(prof.headerNote);
       });
     } else {
       try { const p = localStorage.getItem('travelerProfile'); setProfile(p ? JSON.parse(p) : null); } catch(e){ setProfile(null); }
@@ -2310,7 +2498,7 @@ function MainApp() {
 
   const saveProfile = (p) => {
     setProfile(p);
-    if (session) directorySaveProfile(session.userId, p.name || session.name, p);
+    if (session) directorySaveProfile(session, p.name || session.name, p);
     else { try { localStorage.setItem('travelerProfile', JSON.stringify(p)); } catch(e){} }
     setShowProfile(false);
   };
@@ -2327,19 +2515,44 @@ function MainApp() {
   const isTripCaptain = (t) => !!t && (isTripCreator(t) || (session && (t.members || []).some(m => m.userId === session.userId && m.role === 'captain')));
 
   // Trip viewers (viewer accounts a captain has shared the trip with)
-  const addViewer = (tripId, member) => updateTrip(tripId, t => ({ viewers: [...(t.viewers||[]).filter(v => v.userId !== member.userId), member] }));
-  const removeViewer = (tripId, uidv) => updateTrip(tripId, t => ({ viewers: (t.viewers||[]).filter(v => v.userId !== uidv) }));
+  const addViewer = (tripId, member) => {
+    updateTrip(tripId, t => ({ viewers: [...(t.viewers||[]).filter(v => v.userId !== member.userId), { userId: member.userId, name: member.name }] }));
+    syncRoster(tripId, 'viewer_uids', member.uid, true);
+  };
+  const removeViewer = async (tripId, userId) => {
+    updateTrip(tripId, t => ({ viewers: (t.viewers||[]).filter(v => v.userId !== userId) }));
+    syncRoster(tripId, 'viewer_uids', await uidOf(userId), false);
+  };
 
   // ── Trip travelers (members) ──
   // Add a traveler; also stamps ownership/self onto legacy (unowned) trips on first add
-  const addMember = (tripId, member) => updateTrip(tripId, t => {
-    const owner = t.ownerId || (session ? session.userId : "");
-    let members = Array.isArray(t.members) ? [...t.members] : [];
-    if (session && owner === session.userId && !members.some(m => m.userId === session.userId)) members.push({ userId: session.userId, name: session.name, role:'captain' });
-    if (!members.some(m => m.userId === member.userId)) members.push({ ...member, role:'traveler' }); // everyone added joins as a traveler
-    return { ownerId: owner, members };
-  });
-  const removeMember = (tripId, userId) => updateTrip(tripId, t => ({ members: (t.members || []).filter(m => m.userId !== userId) }));
+  // Grant/revoke real access: member_uids and viewer_uids are what the database
+  // policies read, so they must track the trip's rosters.
+  const syncRoster = async (tripId, column, uid, add) => {
+    if (cloudMode.current !== 'rls' || !session || !uid) return;
+    const key = column === 'member_uids' ? 'memberUids' : 'viewerUids';
+    const cur = ((trips.find(x => x.id === tripId) || {})[key]) || [];
+    const next = add ? (cur.includes(uid) ? cur : [...cur, uid]) : cur.filter(x => x !== uid);
+    const s = await freshSession(session, setSession);
+    await tripPatch(s, tripId, { [column]: next });
+    setTrips(prev => prev.map(x => x.id === tripId ? { ...x, [key]: next } : x));
+  };
+  const uidOf = async (userId) => { const f = await directoryLookup(userId); return f ? f.uid : ''; };
+
+  const addMember = (tripId, member) => {
+    updateTrip(tripId, t => {
+      const owner = t.ownerId || (session ? session.userId : "");
+      let members = Array.isArray(t.members) ? [...t.members] : [];
+      if (session && owner === session.userId && !members.some(m => m.userId === session.userId)) members.push({ userId: session.userId, name: session.name, role:'captain' });
+      if (!members.some(m => m.userId === member.userId)) members.push({ userId: member.userId, name: member.name, role:'traveler' }); // everyone added joins as a traveler
+      return { ownerId: owner, members };
+    });
+    syncRoster(tripId, 'member_uids', member.uid, true);
+  };
+  const removeMember = async (tripId, userId) => {
+    updateTrip(tripId, t => ({ members: (t.members || []).filter(m => m.userId !== userId) }));
+    syncRoster(tripId, 'member_uids', await uidOf(userId), false);
+  };
   // Promote/demote a member's per-trip role (creator only, gated in the UI)
   const setMemberRole = (tripId, userId, role) => updateTrip(tripId, t => ({ members: (t.members || []).map(m => m.userId === userId ? { ...m, role } : m) }));
 
@@ -2455,7 +2668,7 @@ function MainApp() {
           onCalendar={()=>{ setShowDashboard(false); setShowToday(true); }}
           onNewTrip={()=>{ setShowDashboard(false); setShowNewTrip(true); }}
           onOpenAccount={()=>setShowAccount(true)}
-          onSaveData={(patch)=>{ const p = { ...(profile||{}), ...patch }; setProfile(p); directorySaveProfile(session.userId, p.name || session.name, p); }}
+          onSaveData={(patch)=>{ const p = { ...(profile||{}), ...patch }; setProfile(p); directorySaveProfile(session, p.name || session.name, p); }}
         />
         {showAccount && (
           <AccountModal session={session} profile={profile} onAuth={onAuth} onLogout={onLogout}
@@ -2692,7 +2905,7 @@ function MainApp() {
           {activeTab==="Budget" && <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />}
           {activeTab==="Packing" && <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
           {activeTab==="Status" && <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)}
-            shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />}
+            shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${trip.shareToken ? `&k=${encodeURIComponent(trip.shareToken)}` : ''}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />}
           {activeTab==="Pictures" && <PicturesTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
         </div>
       )}
@@ -2704,8 +2917,9 @@ function MainApp() {
           <Input label="Destination" placeholder="e.g. Tokyo, Japan" value={tripForm.destination} onChange={e=>setTripForm({...tripForm,destination:e.target.value})} />
           <Input label="Start Date" type="date" value={tripForm.startDate} onChange={e=>setTripForm({...tripForm,startDate:e.target.value})} />
           <Input label="End Date" type="date" value={tripForm.endDate} onChange={e=>setTripForm({...tripForm,endDate:e.target.value})} />
+          {createErr && <div style={{ fontSize:12.5, color:'#B3261E', background:'#FBEAE7', border:'1px solid #F1C6C0', borderRadius:7, padding:'8px 10px', marginBottom:12 }}>{createErr}</div>}
           <div style={{ display:"flex",gap:8,justifyContent:"flex-end" }}>
-            <Btn variant="ghost" onClick={()=>setShowNewTrip(false)}>Cancel</Btn>
+            <Btn variant="ghost" onClick={()=>{ setCreateErr(''); setShowNewTrip(false); }}>Cancel</Btn>
             <Btn onClick={createTrip}>Create Trip</Btn>
           </div>
         </Modal>
@@ -2730,6 +2944,7 @@ function MainApp() {
         <TravelersModal
           trip={trip}
           session={session}
+          rlsActive={cloudMode.current === 'rls'}
           onAdd={(m)=>addMember(trip.id, m)}
           onRemove={(uid)=>removeMember(trip.id, uid)}
           onAddViewer={(m)=>addViewer(trip.id, m)}
@@ -2901,7 +3116,7 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
 }
 
 // ---- Trip travelers: view the roster, add/remove by User ID ----
-function TravelersModal({ trip, session, onAdd, onRemove, onAddViewer, onRemoveViewer, onSetRole, onNeedLogin, onClose }) {
+function TravelersModal({ trip, session, rlsActive, onAdd, onRemove, onAddViewer, onRemoveViewer, onSetRole, onNeedLogin, onClose }) {
   const [userId, setUserId] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -2924,6 +3139,7 @@ function TravelersModal({ trip, session, onAdd, onRemove, onAddViewer, onRemoveV
     const found = await directoryLookup(uidv);
     setBusy(false);
     if (!found) { setErr('No traveler found with User ID “' + uidv + '”. Check the spelling — they need to have created an account first.'); return; }
+    if (rlsActive && !found.uid) { setErr('“' + uidv + '” needs to sign in once before they can be given access to a trip.'); return; }
     onAdd(found);
     setUserId('');
   };
@@ -2938,6 +3154,7 @@ function TravelersModal({ trip, session, onAdd, onRemove, onAddViewer, onRemoveV
     const found = await directoryLookup(uidv);
     setVBusy(false);
     if (!found) { setVErr('No account found with User ID “' + uidv + '”. They need to sign up (as a Viewer) first.'); return; }
+    if (rlsActive && !found.uid) { setVErr('“' + uidv + '” needs to sign in once before they can be given access to a trip.'); return; }
     onAddViewer(found);
     setViewerId('');
   };
@@ -3362,7 +3579,7 @@ const fmtDateTime = (iso) => {
   catch(e){ return ''; }
 };
 
-function ViewerApp({ tripId, focusUserId }) {
+function ViewerApp({ tripId, token, focusUserId }) {
   const [trip, setTrip] = useState(null);
   const [phase, setPhase] = useState('loading'); // loading | ok | notfound | error
   const [updatedAt, setUpdatedAt] = useState(null);
@@ -3371,8 +3588,19 @@ function ViewerApp({ tripId, focusUserId }) {
 
   useEffect(() => {
     let cancelled = false;
+    // Read the one trip this link unlocks, via the token-gated database
+    // function — no other trip is reachable from a share link.
     const fetchTrip = async () => {
       try {
+        const res = await sharedTripFetch(tripId, token);
+        if (cancelled) return;
+        if (res.ok) {
+          if (res.trip) { setTrip(res.trip); setUpdatedAt(res.updatedAt); setPhase('ok'); }
+          else { setPhase(prev => prev === 'ok' ? 'ok' : 'notfound'); }
+          return;
+        }
+        if (!res.missing) throw new Error('bad response');
+        // Before the RLS migration has been run: read the old shared blob
         const r = await fetch(SUPA_URL + '/rest/v1/travel_data?id=eq.shared&select=trips,updated_at', { headers: supaHeaders });
         if (!r.ok) throw new Error('bad response');
         const rows = await r.json();
@@ -3388,7 +3616,7 @@ function ViewerApp({ tripId, focusUserId }) {
     fetchTrip();
     const iv = setInterval(fetchTrip, 20000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, [tripId, reload]);
+  }, [tripId, token, reload]);
 
   const shell = (children) => (
     <div style={{ fontFamily:"var(--font-body)", maxWidth:680, margin:"0 auto", minHeight:"100vh", background:"#F0EBE0", paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
@@ -3442,5 +3670,6 @@ export default function Root() {
   const params = new URLSearchParams(window.location.search);
   const viewId = params.get('view');
   const focusUserId = params.get('t'); // a traveler's share link shows only that traveler's status
-  return viewId ? <ViewerApp tripId={viewId} focusUserId={focusUserId} /> : <MainApp />;
+  const token = params.get('k');       // the trip's secret — this is what unlocks a share link
+  return viewId ? <ViewerApp tripId={viewId} token={token} focusUserId={focusUserId} /> : <MainApp />;
 }
