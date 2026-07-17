@@ -3957,10 +3957,57 @@ function ViewerApp({ tripId, token, focusUserId }) {
   );
 }
 
+// ---- Preview route: ?demo=large-group-status — try the 6+ traveler compact Status view ----
+const demoAvatar = (i) => {
+  const c = ['#8B4A3B','#3B6E8B','#6E8B3B','#8B7A3B','#6B3B8B','#3B8B6E','#A8562A','#4A5B8B','#8B3B5E'];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="${c[i%c.length]}"/><circle cx="32" cy="24" r="12" fill="#F6E8D7"/><path d="M11 64c2-17 10-26 21-26s19 9 21 26" fill="#F6E8D7"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+};
+const DEMO_MEMBERS = [['aisha','Aisha Ahmed'],['alex','Alex Bennett'],['maya','Maya Chen'],['daniel','Daniel Davis'],['sofia','Sofia Garcia'],['leo','Leo Kim'],['nina','Nina Patel'],['omar','Omar Farah'],['priya','Priya Rao']]
+  .map(([userId,name])=>({ userId, name, role:'traveler' }));
+const demoSt = (...s) => Object.fromEntries(DEMO_MEMBERS.map((m,i)=>[m.userId, s[i]||'todo']));
+const DEMO_TRIP = {
+  id:'demo', name:'Team Offsite · Lisbon', destination:'Lisbon, Portugal', members:DEMO_MEMBERS,
+  days:[
+    { id:'d1', date:'2026-07-16', label:'Arrival and old town', events:[
+      { id:'e1', time:'08:30', endTime:'09:15', title:'Breakfast at the hotel', memberStatus:demoSt('done','done','done','done','done','done','done','done','done') },
+      { id:'e2', time:'10:00', endTime:'10:35', title:'Tram to Belém', memberStatus:demoSt('done','done','done','active','active','todo','done','active','todo') },
+      { id:'e3', time:'11:00', endTime:'12:30', title:'Jerónimos Monastery', memberStatus:demoSt('done','active','active','active','todo','todo','done','todo','active') },
+      { id:'e4', time:'19:30', endTime:'21:00', title:'Group dinner by the river', memberStatus:demoSt('todo','todo','todo','todo','todo','todo','todo','todo','todo') },
+    ]},
+    { id:'d2', date:'2026-07-17', label:'Sintra day trip', events:[
+      { id:'e5', time:'08:15', endTime:'09:00', title:'Train to Sintra', memberStatus:demoSt() },
+      { id:'e6', time:'10:00', endTime:'12:30', title:'Pena Palace visit', memberStatus:demoSt() },
+    ]},
+  ],
+};
+function DemoStatusPreview() {
+  const [trip, setTrip] = useState(DEMO_TRIP);
+  const update = (patch) => setTrip(t => ({ ...t, ...(typeof patch === 'function' ? patch(t) : patch) }));
+  return (
+    <div style={{ fontFamily:'var(--font-body)', maxWidth:620, margin:'0 auto', minHeight:'100vh', background:'#F0EBE0' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'calc(env(safe-area-inset-top,0px) + 18px) 20px 14px', background:'#5C1A1A' }}>
+        <img src="/logo-travelhub.png" alt="" width="34" height="34" style={{ borderRadius:8 }} />
+        <div><div style={{ color:'#F5ECD7', fontSize:15, fontWeight:800, letterSpacing:'0.04em', textTransform:'uppercase' }}>My Travel Hub</div>
+          <div style={{ color:'rgba(245,236,215,0.62)', fontSize:10, marginTop:3, letterSpacing:'0.11em', textTransform:'uppercase' }}>Large group status · preview</div></div>
+      </div>
+      <div style={{ padding:'20px 18px 40px' }}>
+        <h1 style={{ margin:'0 0 5px', color:'#2E2320', fontSize:19 }}>{DEMO_TRIP.name}</h1>
+        <div style={{ color:'#A83020', fontSize:12.5, marginBottom:14 }}>📍 {DEMO_TRIP.destination} · {DEMO_MEMBERS.length} travelers</div>
+        <div style={{ fontSize:12, color:'#8A7A6D', background:'#F5EFE2', border:'1px dashed #D4BFB0', borderRadius:9, padding:'9px 12px', marginBottom:16, lineHeight:1.5 }}>
+          Preview only — tap <strong>Update</strong> on any event to open the traveler list and tap a person to change their status. Changes reset on reload.
+        </div>
+        <StatusTab trip={trip} session={{ userId:'aisha', name:'Aisha Ahmed' }} update={update} canUpdateOthers={true} />
+      </div>
+    </div>
+  );
+}
+
 export default function Root() {
   const params = new URLSearchParams(window.location.search);
   const viewId = params.get('view');
   const focusUserId = params.get('t'); // a traveler's share link shows only that traveler's status
   const token = params.get('k');       // the trip's secret — this is what unlocks a share link
+  if (params.get('demo') === 'large-group-status') return <DemoStatusPreview />;
   return viewId ? <ViewerApp tripId={viewId} token={token} focusUserId={focusUserId} /> : <MainApp />;
 }
