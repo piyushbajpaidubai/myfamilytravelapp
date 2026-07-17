@@ -1554,7 +1554,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
             </div>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(105px, 1fr))', gap:8 }}>
-            {[['done','Complete',travelerTotals.done],['active','Ongoing',travelerTotals.active],['todo','Not started',travelerTotals.todo]].map(([status, label, count]) => (
+            {[['done','Complete',travelerTotals.done],['active','In progress',travelerTotals.active],['todo','Not started',travelerTotals.todo]].map(([status, label, count]) => (
               <button key={status} type="button" onClick={()=>setLargeGroupView('travelers')}
                 style={{ display:'flex', alignItems:'center', gap:8, textAlign:'left', border:'1px solid #DED3C7', background:'#F5EFE2', borderRadius:9, padding:'9px 11px', color:'#2E2320', cursor:'pointer' }}>
                 <span aria-hidden="true" style={{ width:8, height:8, borderRadius:'50%', flexShrink:0, background:STATUS_META[status].ring }} />
@@ -1571,7 +1571,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
           <div style={{ borderTop:'1px solid #E2D8C8' }}>
             {travelerSummaries.map(tr => {
               const st = STATUS_META[tr.status];
-              const label = tr.status === 'done' ? 'Complete' : tr.status === 'active' ? 'Ongoing' : 'Not started';
+              const label = tr.status === 'done' ? 'Complete' : tr.status === 'active' ? 'In progress' : 'Not started';
               return (
                 <div key={tr.userId} style={{ display:'grid', gridTemplateColumns:'38px minmax(0, 1fr) auto', gap:10, alignItems:'center', padding:'11px 2px', borderBottom:'1px solid #E8DED2' }}>
                   <span style={{ width:34, height:34, borderRadius:'50%', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'#8A6A50' }}>
