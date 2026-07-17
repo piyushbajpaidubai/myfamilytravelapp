@@ -4112,6 +4112,484 @@ const LARGE_GROUP_DEMO_TRIP = {
   ],
 };
 
+const SMALL_GROUP_DEMO_MEMBERS = [
+  ['aisha_ahmed','Aisha Ahmed'],
+  ['alex_bennett','Alex Bennett'],
+  ['maya_chen','Maya Chen'],
+  ['daniel_davis','Daniel Davis'],
+  ['sofia_garcia','Sofia Garcia'],
+  ['leo_kim','Leo Kim'],
+].map(([userId, name], index) => ({ userId, name, pic:largeGroupDemoAvatar(index) }));
+
+const smallGroupDemoStatuses = (...statuses) => Object.fromEntries(
+  SMALL_GROUP_DEMO_MEMBERS.map((member, index) => [member.userId, statuses[index] || 'todo'])
+);
+
+const SMALL_GROUP_DEMO_TRIP = {
+  id:'small-group-demo',
+  name:'Friends’ Lisbon Weekend',
+  destination:'Lisbon, Portugal',
+  members:SMALL_GROUP_DEMO_MEMBERS,
+  days:[
+    { id:'small-demo-day-1', date:'2026-07-16', label:'Arrival and old town', events:[
+      { id:'small-demo-1', time:'08:30', endTime:'09:15', title:'Breakfast at the hotel', category:'Food', location:'Baixa', memberStatus:smallGroupDemoStatuses('done','done','done','done','done','done') },
+      { id:'small-demo-2', time:'10:00', endTime:'10:35', title:'Tram to Belém', category:'Transport', location:'Praça do Comércio', memberStatus:smallGroupDemoStatuses('done','done','done','active','active','todo') },
+      { id:'small-demo-3', time:'11:00', endTime:'12:30', title:'Jerónimos Monastery', category:'Sightseeing', location:'Belém', memberStatus:smallGroupDemoStatuses('done','active','active','active','todo','todo') },
+      { id:'small-demo-4', time:'19:30', endTime:'21:00', title:'Riverside dinner', category:'Food', location:'Cais do Sodré', memberStatus:smallGroupDemoStatuses('todo','todo','todo','todo','todo','todo') },
+    ]},
+    { id:'small-demo-day-2', date:'2026-07-17', label:'Sintra day trip', events:[
+      { id:'small-demo-5', time:'08:15', endTime:'09:00', title:'Train to Sintra', category:'Transport', location:'Rossio Station', memberStatus:smallGroupDemoStatuses('todo','todo','todo','todo','todo','todo') },
+      { id:'small-demo-6', time:'10:00', endTime:'12:30', title:'Pena Palace visit', category:'Sightseeing', location:'Sintra', memberStatus:smallGroupDemoStatuses('todo','todo','todo','todo','todo','todo') },
+    ]},
+  ],
+};
+
+function SmallGroupStatusPreview() {
+  return (
+    <div style={{ fontFamily:'var(--font-body)', maxWidth:620, margin:'0 auto', minHeight:'100vh', background:'#F0EBE0' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'18px 20px 14px', background:'#5C1A1A' }}>
+        <img src="/logo-travelhub.png" alt="My Travel Hub" width="34" height="34" style={{ borderRadius:8 }} />
+        <div style={{ minWidth:0 }}>
+          <div style={{ color:'#F5ECD7', fontSize:15, lineHeight:1.1, fontWeight:800, letterSpacing:'0.04em', textTransform:'uppercase' }}>My Travel Hub</div>
+          <div style={{ color:'rgba(245,236,215,0.62)', fontSize:10, marginTop:3, letterSpacing:'0.11em', textTransform:'uppercase' }}>Small group status preview</div>
+        </div>
+      </div>
+      <main style={{ padding:'22px 18px 32px' }}>
+        <div style={{ marginBottom:18 }}>
+          <h1 style={{ margin:'0 0 5px', color:'#2E2320', fontSize:19, lineHeight:1.25 }}>{SMALL_GROUP_DEMO_TRIP.name}</h1>
+          <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', color:'#A83020', fontSize:12.5 }}>
+            <span>📍 {SMALL_GROUP_DEMO_TRIP.destination}</span>
+            <span style={{ color:'#8A7A6D' }}>6 travelers</span>
+          </div>
+        </div>
+        <StatusTab trip={SMALL_GROUP_DEMO_TRIP} canUpdateOthers={false} />
+      </main>
+    </div>
+  );
+}
+
+function NativeStatusIcon({ name, size=20, stroke='currentColor' }) {
+  const common = { fill:'none', stroke, strokeWidth:1.8, strokeLinecap:'round', strokeLinejoin:'round' };
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" style={{ display:'block' }}>
+      {name === 'back' && <path {...common} d="M15 18l-6-6 6-6" />}
+      {name === 'share' && <><circle {...common} cx="18" cy="5" r="2.2"/><circle {...common} cx="6" cy="12" r="2.2"/><circle {...common} cx="18" cy="19" r="2.2"/><path {...common} d="M8 11l7.8-4.6M8 13l7.8 4.6"/></>}
+      {name === 'home' && <><path {...common} d="M3.5 10.5L12 3l8.5 7.5"/><path {...common} d="M5.5 9.3V21h13V9.3M9.5 21v-6h5v6"/></>}
+      {name === 'plan' && <><rect {...common} x="4" y="5" width="16" height="15" rx="2.5"/><path {...common} d="M8 3v4M16 3v4M4 10h16"/></>}
+      {name === 'status' && <><circle {...common} cx="12" cy="12" r="8.5"/><path {...common} d="M8.5 12.5l2.3 2.3 4.8-5.2"/></>}
+      {name === 'people' && <><circle {...common} cx="9" cy="8" r="3"/><path {...common} d="M3.5 20c.5-4 2.4-6 5.5-6s5 2 5.5 6"/><circle {...common} cx="17.5" cy="9" r="2.2"/><path {...common} d="M15.5 15c2.8-.5 4.7 1.1 5 4"/></>}
+      {name === 'pin' && <><path {...common} d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1114 0z"/><circle {...common} cx="12" cy="10" r="2.2"/></>}
+      {name === 'clock' && <><circle {...common} cx="12" cy="12" r="9"/><path {...common} d="M12 7v5l3 2"/></>}
+      {name === 'plus' && <path {...common} d="M12 5v14M5 12h14" />}
+      {name === 'chevron' && <path {...common} d="M6 9l6 6 6-6" />}
+      {name === 'edit' && <><path {...common} d="M4 20l4.2-1 10-10a2.1 2.1 0 00-3-3l-10 10L4 20z"/><path {...common} d="M13.8 7.4l3 3"/></>}
+      {name === 'clip' && <path {...common} d="M8.5 12.5l6.2-6.2a3.2 3.2 0 114.5 4.5l-8.3 8.3a5 5 0 11-7-7l8-8" />}
+      {name === 'receipt' && <><path {...common} d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path {...common} d="M9 8h6M9 12h6M9 16h3"/></>}
+      {name === 'trash' && <><path {...common} d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></>}
+      {name === 'task' && <><rect {...common} x="4" y="4" width="16" height="16" rx="3"/><path {...common} d="M8 12l2.2 2.2L16 9"/></>}
+      {name === 'more' && <><circle fill={stroke} cx="5" cy="12" r="1.5"/><circle fill={stroke} cx="12" cy="12" r="1.5"/><circle fill={stroke} cx="19" cy="12" r="1.5"/></>}
+    </svg>
+  );
+}
+
+function NativeTripStatusPreview() {
+  const [view, setView] = useState('timeline');
+  const [openEvent, setOpenEvent] = useState(null);
+  const [toast, setToast] = useState('');
+  const days = SMALL_GROUP_DEMO_TRIP.days || [];
+  const events = days.flatMap(day => day.events || []);
+  const members = SMALL_GROUP_DEMO_MEMBERS;
+  const statusLabel = { done:'Complete', active:'Ongoing', todo:'Not started' };
+  const eventStatus = (event) => aggStatus(members.map(member => memStOf(event, member.userId)));
+  const eventCounts = (event) => members.reduce((counts, member) => {
+    counts[memStOf(event, member.userId)]++;
+    return counts;
+  }, { done:0, active:0, todo:0 });
+  const tripCounts = events.reduce((counts, event) => {
+    counts[eventStatus(event)]++;
+    return counts;
+  }, { done:0, active:0, todo:0 });
+  const travelerState = (member) => {
+    const states = events.map(event => memStOf(event, member.userId));
+    if (states.includes('active') || (states.includes('done') && states.includes('todo'))) return 'active';
+    if (states.length && states.every(status => status === 'done')) return 'done';
+    return 'todo';
+  };
+  const travelerNote = (member) => {
+    const current = events.find(event => memStOf(event, member.userId) === 'active');
+    if (current) return `At ${current.title}`;
+    const completed = [...events].reverse().find(event => memStOf(event, member.userId) === 'done');
+    return completed ? `Last completed ${completed.title}` : 'No update yet';
+  };
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = window.setTimeout(() => setToast(''), 1800);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+  useEffect(() => {
+    if (!openEvent) return undefined;
+    const closeOnEscape = (event) => { if (event.key === 'Escape') setOpenEvent(null); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [openEvent]);
+  const showShareToast = () => setToast('Live status link copied');
+
+  return (
+    <div style={{ fontFamily:'var(--font-body)', width:'100%', maxWidth:430, margin:'0 auto', minHeight:'100vh', background:'#F7F5F0', color:'#2D2320', position:'relative', boxShadow:'0 0 32px rgba(62,38,28,0.12)' }}>
+      <header style={{ position:'sticky', top:0, zIndex:30, background:'rgba(247,245,240,0.96)', backdropFilter:'blur(18px)', borderBottom:'1px solid rgba(88,64,52,0.09)', padding:'calc(env(safe-area-inset-top, 0px) + 10px) 16px 10px' }}>
+        <div style={{ height:44, display:'grid', gridTemplateColumns:'44px 1fr 44px', alignItems:'center' }}>
+          <button type="button" aria-label="Back to trip" onClick={()=>window.scrollTo({ top:0, behavior:'smooth' })} style={{ width:40, height:40, border:'none', borderRadius:'50%', background:'#ECE7DE', color:'#4A342D', display:'grid', placeItems:'center', cursor:'pointer' }}><NativeStatusIcon name="back" /></button>
+          <div style={{ textAlign:'center', minWidth:0 }}>
+            <div style={{ fontSize:10, fontWeight:800, letterSpacing:'0.13em', color:'#9B7E70' }}>TRIP STATUS</div>
+            <div style={{ marginTop:2, fontSize:14, fontWeight:750, overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis' }}>Lisbon Weekend</div>
+          </div>
+          <button type="button" aria-label="Share live status" onClick={showShareToast} style={{ width:40, height:40, border:'none', borderRadius:'50%', background:'#ECE7DE', color:'#4A342D', display:'grid', placeItems:'center', cursor:'pointer' }}><NativeStatusIcon name="share" size={18} /></button>
+        </div>
+      </header>
+
+      <main style={{ padding:'18px 16px 104px' }}>
+        <section style={{ background:'linear-gradient(145deg, #6F2118 0%, #4F1714 100%)', color:'#fff', borderRadius:22, padding:'18px', boxShadow:'0 12px 28px rgba(83,29,22,0.2)', overflow:'hidden', position:'relative' }}>
+          <div aria-hidden="true" style={{ position:'absolute', width:160, height:160, borderRadius:'50%', background:'rgba(255,255,255,0.06)', right:-65, top:-70 }} />
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, position:'relative' }}>
+            <span style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:10.5, fontWeight:750, letterSpacing:'0.05em', background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.18)', borderRadius:20, padding:'5px 9px' }}><span style={{ width:7, height:7, borderRadius:'50%', background:'#91D98B', boxShadow:'0 0 0 4px rgba(145,217,139,0.14)' }} /> LIVE</span>
+            <span style={{ fontSize:11, color:'rgba(255,255,255,0.68)' }}>Updated just now</span>
+          </div>
+          <h1 style={{ margin:'18px 0 5px', fontSize:23, lineHeight:1.15, letterSpacing:'-0.025em', position:'relative' }}>{SMALL_GROUP_DEMO_TRIP.name}</h1>
+          <div style={{ display:'flex', alignItems:'center', gap:6, color:'rgba(255,255,255,0.72)', fontSize:12.5, position:'relative' }}><NativeStatusIcon name="pin" size={15} stroke="rgba(255,255,255,0.72)" /> {SMALL_GROUP_DEMO_TRIP.destination}</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:8, marginTop:18, position:'relative' }}>
+            {[['done','Complete'],['active','Ongoing'],['todo','Later']].map(([status,label]) => (
+              <div key={status} style={{ background:'rgba(255,255,255,0.09)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:13, padding:'10px 8px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}><span style={{ width:7, height:7, borderRadius:'50%', background:STATUS_META[status].ring }} /><strong style={{ fontSize:17 }}>{tripCounts[status]}</strong></div>
+                <div style={{ marginTop:2, fontSize:9.5, color:'rgba(255,255,255,0.62)' }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div role="tablist" aria-label="Status content" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4, margin:'18px 0 16px', padding:4, background:'#EAE5DC', borderRadius:13 }}>
+          {[['timeline','Timeline'],['travelers','Travelers']].map(([value,label]) => (
+            <button key={value} type="button" role="tab" aria-selected={view===value} onClick={()=>setView(value)} style={{ height:38, border:'none', borderRadius:10, background:view===value?'#fff':'transparent', boxShadow:view===value?'0 2px 8px rgba(58,42,34,0.1)':'none', color:view===value?'#4D211B':'#87756B', fontSize:12.5, fontWeight:750, cursor:'pointer' }}>{label}</button>
+          ))}
+        </div>
+
+        {view === 'timeline' ? (
+          <div aria-label="All trip days">
+            {days.map((day, dayIndex) => {
+              const dayDate = new Date(`${day.date}T00:00:00`);
+              const dayEvents = day.events || [];
+              return (
+                <section key={day.id} aria-label={`${day.label} timeline`} style={{ marginTop:dayIndex===0?0:30, paddingTop:dayIndex===0?0:26, borderTop:dayIndex===0?'none':'1px dashed #D8CFC4' }}>
+                  <div style={{ marginBottom:15 }}>
+                    <div style={{ fontSize:20, fontWeight:500, letterSpacing:'0.17em', color:'#302521' }}>DAY {dayIndex+1}</div>
+                    <div style={{ marginTop:4, fontSize:10.5, letterSpacing:'0.08em', color:'#9A877D', textTransform:'uppercase' }}>{dayDate.toLocaleDateString('en-GB',{ day:'2-digit', month:'long', year:'numeric' })}</div>
+                    <div style={{ marginTop:5, color:'#A04A3A', fontSize:11, fontStyle:'italic' }}>{day.label}</div>
+                  </div>
+                  <div style={{ position:'relative' }}>
+                    <span aria-hidden="true" style={{ position:'absolute', left:18, top:19, bottom:24, width:1, background:'#D8CFC4' }} />
+                    {dayEvents.map((event, index) => {
+                      const status = eventStatus(event);
+                      const counts = eventCounts(event);
+                      return (
+                        <button key={event.id} type="button" onClick={()=>setOpenEvent(event)} style={{ width:'100%', display:'grid', gridTemplateColumns:'38px minmax(0,1fr)', gap:10, textAlign:'left', border:'none', padding:0, marginBottom:index===dayEvents.length-1?0:12, background:'transparent', cursor:'pointer', position:'relative' }}>
+                          <span style={{ width:13, height:13, margin:'18px 0 0 12px', borderRadius:'50%', background:STATUS_META[status].ring, border:'3px solid #F7F5F0', boxShadow:`0 0 0 1px ${STATUS_META[status].ring}`, zIndex:2 }} />
+                          <span style={{ display:'block', background:'#fff', border:'1px solid #E8E1D8', borderRadius:17, padding:'13px 13px 12px', boxShadow:'0 4px 14px rgba(63,47,40,0.055)' }}>
+                            <span style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:10 }}>
+                              <span style={{ minWidth:0 }}>
+                                <span style={{ display:'flex', alignItems:'center', gap:5, color:'#927F75', fontSize:10.5, fontWeight:650 }}><NativeStatusIcon name="clock" size={13} /> {event.time}{event.endTime ? ` – ${event.endTime}` : ''}</span>
+                                <strong style={{ display:'block', marginTop:5, color:'#302521', fontSize:14, lineHeight:1.25 }}>{event.title}</strong>
+                                <span style={{ display:'flex', alignItems:'center', gap:4, marginTop:4, color:'#9A877D', fontSize:10.5 }}><NativeStatusIcon name="pin" size={12} /> {event.location}</span>
+                              </span>
+                              <span style={{ flexShrink:0, borderRadius:20, padding:'4px 7px', background:STATUS_META[status].bg, color:STATUS_META[status].color, fontSize:9.5, fontWeight:750 }}>{statusLabel[status]}</span>
+                            </span>
+                            <span style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginTop:12, paddingTop:10, borderTop:'1px solid #F0EBE5' }}>
+                              <span style={{ display:'flex', alignItems:'center' }}>
+                                {members.map((member, memberIndex) => {
+                                  const memberStatus = memStOf(event, member.userId);
+                                  return <span key={member.userId} aria-label={`${member.name}: ${statusLabel[memberStatus]}`} style={{ width:26, height:26, marginLeft:memberIndex===0?0:-5, borderRadius:'50%', overflow:'hidden', border:`2px solid ${STATUS_META[memberStatus].ring}`, background:'#E8E2D4', boxShadow:'0 0 0 2px #fff', zIndex:members.length-memberIndex }}><img src={member.pic} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /></span>;
+                                })}
+                              </span>
+                              <span style={{ color:'#8C7A71', fontSize:10, whiteSpace:'nowrap' }}>{counts.done} done · {counts.active} live · {counts.todo} later</span>
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        ) : (
+          <section aria-label="Traveler status list">
+            <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:12 }}><div><h2 style={{ margin:0, fontSize:17 }}>Travelers</h2><div style={{ marginTop:3, color:'#948178', fontSize:11.5 }}>Live updates across the trip</div></div><span style={{ color:'#8A776D', fontSize:11 }}>6 people</span></div>
+            <div style={{ background:'#fff', border:'1px solid #E8E1D8', borderRadius:18, overflow:'hidden', boxShadow:'0 4px 14px rgba(63,47,40,0.045)' }}>
+              {members.map((member, index) => {
+                const status = travelerState(member);
+                return (
+                  <div key={member.userId} style={{ display:'grid', gridTemplateColumns:'43px minmax(0,1fr) auto', alignItems:'center', gap:10, padding:'12px 13px', borderBottom:index===members.length-1?'none':'1px solid #F0EBE5' }}>
+                    <span style={{ width:40, height:40, borderRadius:'50%', overflow:'hidden', border:`2px solid ${STATUS_META[status].ring}`, background:'#E8E2D4' }}><img src={member.pic} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /></span>
+                    <span style={{ minWidth:0 }}><strong style={{ display:'block', fontSize:13.5, color:'#302521' }}>{member.name}</strong><span style={{ display:'block', marginTop:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'#948178', fontSize:10.5 }}>{travelerNote(member)}</span></span>
+                    <span style={{ borderRadius:20, padding:'5px 8px', background:STATUS_META[status].bg, color:STATUS_META[status].color, fontSize:9.5, fontWeight:750, whiteSpace:'nowrap' }}>{statusLabel[status]}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+      </main>
+
+      <nav aria-label="App navigation" style={{ position:'fixed', zIndex:25, left:'50%', bottom:0, width:'min(430px, 100%)', transform:'translateX(-50%)', display:'grid', gridTemplateColumns:'repeat(4,1fr)', background:'rgba(255,255,255,0.97)', backdropFilter:'blur(18px)', borderTop:'1px solid #E3DDD4', padding:'8px 8px calc(env(safe-area-inset-bottom, 0px) + 7px)', boxSizing:'border-box' }}>
+        {[['home','Home'],['plan','Plan'],['status','Status'],['people','People']].map(([icon,label]) => {
+          const active = label === 'Status';
+          return <button key={label} type="button" aria-current={active?'page':undefined} style={{ height:48, border:'none', background:'transparent', color:active?'#6E2118':'#9A8980', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:3, fontSize:9.5, fontWeight:active?800:650, cursor:'pointer' }}><span style={{ position:'relative' }}><NativeStatusIcon name={icon} size={20} />{active && <span style={{ position:'absolute', width:4, height:4, borderRadius:'50%', background:'#6E2118', left:'50%', bottom:-6, transform:'translateX(-50%)' }} />}</span>{label}</button>;
+        })}
+      </nav>
+
+      {openEvent && (
+        <div role="presentation" onClick={()=>setOpenEvent(null)} style={{ position:'fixed', zIndex:60, inset:0, background:'rgba(35,25,21,0.42)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+          <section role="dialog" aria-modal="true" aria-label={`${openEvent.title} details`} onClick={event=>event.stopPropagation()} style={{ width:'min(430px, 100%)', maxHeight:'78vh', overflowY:'auto', background:'#FAF8F4', borderRadius:'24px 24px 0 0', padding:'10px 18px calc(env(safe-area-inset-bottom, 0px) + 22px)', boxSizing:'border-box', boxShadow:'0 -14px 34px rgba(45,30,24,0.18)' }}>
+            <div aria-hidden="true" style={{ width:38, height:4, borderRadius:4, background:'#D4CCC2', margin:'0 auto 18px' }} />
+            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:14 }}>
+              <div><div style={{ color:'#927F75', fontSize:11 }}>{openEvent.time}{openEvent.endTime ? ` – ${openEvent.endTime}` : ''}</div><h2 style={{ margin:'5px 0 4px', fontSize:20, lineHeight:1.2 }}>{openEvent.title}</h2><div style={{ display:'flex', alignItems:'center', gap:5, color:'#927F75', fontSize:11.5 }}><NativeStatusIcon name="pin" size={13} /> {openEvent.location}</div></div>
+              <button type="button" aria-label="Close event details" onClick={()=>setOpenEvent(null)} style={{ width:36, height:36, flexShrink:0, border:'none', borderRadius:'50%', background:'#EDE7DE', color:'#654D43', fontSize:20, cursor:'pointer' }}>×</button>
+            </div>
+            <div style={{ marginTop:20, paddingTop:15, borderTop:'1px solid #E7DFD5' }}>
+              <div style={{ marginBottom:9, fontSize:11, fontWeight:800, letterSpacing:'0.08em', color:'#8D786D' }}>TRAVELER STATUS</div>
+              {members.map((member, index) => {
+                const status = memStOf(openEvent, member.userId);
+                return <div key={member.userId} style={{ display:'grid', gridTemplateColumns:'36px 1fr auto', alignItems:'center', gap:9, padding:'9px 0', borderBottom:index===members.length-1?'none':'1px solid #EEE8E0' }}><span style={{ width:34, height:34, borderRadius:'50%', overflow:'hidden', border:`2px solid ${STATUS_META[status].ring}` }}><img src={member.pic} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /></span><strong style={{ fontSize:12.5 }}>{member.name}</strong><span style={{ borderRadius:20, padding:'5px 8px', background:STATUS_META[status].bg, color:STATUS_META[status].color, fontSize:9.5, fontWeight:750 }}>{statusLabel[status]}</span></div>;
+              })}
+            </div>
+          </section>
+        </div>
+      )}
+      {toast && <div role="status" style={{ position:'fixed', zIndex:80, left:'50%', bottom:'calc(env(safe-area-inset-bottom, 0px) + 76px)', transform:'translateX(-50%)', background:'#2F2926', color:'#fff', borderRadius:24, padding:'10px 16px', fontSize:11.5, fontWeight:700, boxShadow:'0 8px 24px rgba(0,0,0,0.2)', whiteSpace:'nowrap' }}>{toast}</div>}
+    </div>
+  );
+}
+
+const NATIVE_ITINERARY_DEMO = {
+  id:'native-itinerary-demo',
+  name:'Friends’ Lisbon Weekend',
+  destination:'Lisbon, Portugal',
+  members:SMALL_GROUP_DEMO_MEMBERS,
+  expenses:[],
+  spans:[
+    { id:'native-stay-1', type:'Accommodation', title:'Baixa House Hotel', location:'Rua dos Douradores', startDate:'2026-07-16', startTime:'15:00', endDate:'2026-07-18', endTime:'11:00', status:'active', assignees:[], notes:'Booking LSB-2048 · 3 rooms', docs:[{ id:'stay-doc-1', name:'Hotel confirmation.pdf' }] },
+  ],
+  days:[
+    { id:'native-itin-day-1', date:'2026-07-16', label:'Arrival and old town', events:[
+      { id:'native-itin-1', time:'08:30', endTime:'09:15', title:'Breakfast at the hotel', location:'Baixa', category:'Food', status:'done', notes:'Table reserved near the terrace.', assignees:[], docs:[{ id:'breakfast-doc-1', name:'Reservation.pdf' }], activities:[{ id:'native-task-1', text:'Confirm vegetarian options', status:'done', assignees:['maya_chen'], docs:[] }] },
+      { id:'native-itin-2', time:'10:00', endTime:'10:35', title:'Tram to Belém', location:'Praça do Comércio', category:'Transport', status:'active', notes:'Use the 24-hour transit passes.', assignees:[], docs:[{ id:'tram-doc-1', name:'Transit passes.pdf' }], activities:[{ id:'native-task-2', text:'Validate all six passes', status:'todo', assignees:['alex_bennett'], docs:[] }] },
+      { id:'native-itin-3', time:'11:00', endTime:'12:30', title:'Jerónimos Monastery', location:'Belém', category:'Sightseeing', status:'todo', notes:'Entry window starts at 11:00.', assignees:[], docs:[], activities:[] },
+      { id:'native-itin-4', time:'19:30', endTime:'21:00', title:'Riverside dinner', location:'Cais do Sodré', category:'Food', status:'todo', notes:'Outdoor table requested.', assignees:[], docs:[], activities:[] },
+    ]},
+    { id:'native-itin-day-2', date:'2026-07-17', label:'Sintra day trip', events:[
+      { id:'native-itin-5', time:'08:15', endTime:'09:00', title:'Train to Sintra', location:'Rossio Station', category:'Transport', status:'todo', notes:'Meet at the station entrance by 08:00.', assignees:[], docs:[{ id:'train-doc-1', name:'Train tickets.pdf' }], activities:[] },
+      { id:'native-itin-6', time:'10:00', endTime:'12:30', title:'Pena Palace visit', location:'Sintra', category:'Sightseeing', status:'todo', notes:'Timed entry at 10:00.', assignees:[], docs:[{ id:'palace-doc-1', name:'Palace tickets.pdf' }], activities:[{ id:'native-task-3', text:'Download offline map', status:'todo', assignees:[], docs:[] }] },
+    ]},
+  ],
+};
+
+function NativeItineraryPreview() {
+  const [trip, setTrip] = useState(() => JSON.parse(JSON.stringify(NATIVE_ITINERARY_DEMO)));
+  const [collapsedDays, setCollapsedDays] = useState({});
+  const [expandedId, setExpandedId] = useState('native-itin-2');
+  const [sheet, setSheet] = useState(null);
+  const [draft, setDraft] = useState({});
+  const [toast, setToast] = useState('');
+  const members = trip.members || [];
+  const inputStyle = { width:'100%', height:42, boxSizing:'border-box', border:'1px solid #D9D0C6', borderRadius:11, background:'#fff', color:'#342A26', padding:'0 11px', fontSize:12.5, outline:'none' };
+  const labelStyle = { display:'block', marginBottom:5, color:'#8B786E', fontSize:10.5, fontWeight:750 };
+  const itemFormDefaults = { duration:'single', type:'Activity', title:'', time:'', endTime:'', location:'', category:'Sightseeing', notes:'', mode:'By Road', flightNo:'', from:'', to:'', startDate:'2026-07-16', startTime:'', endDate:'2026-07-16', spanEndTime:'', expAmount:'', expCat:'Food', expTraveler:'' };
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = window.setTimeout(() => setToast(''), 1700);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+  useEffect(() => {
+    if (!sheet) return undefined;
+    const closeOnEscape = (event) => { if (event.key === 'Escape') setSheet(null); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [sheet]);
+
+  const setEvent = (dayId, eventId, updater) => setTrip(current => ({ ...current, days:current.days.map(day => day.id===dayId ? { ...day, events:day.events.map(event => event.id===eventId ? updater(event) : event) } : day) }));
+  const setSpan = (spanId, updater) => setTrip(current => ({ ...current, spans:(current.spans||[]).map(span => span.id===spanId ? updater(span) : span) }));
+  const cycleItemStatus = (dayId, eventId) => setEvent(dayId, eventId, event => ({ ...event, status:nextStatus(stOf(event)) }));
+  const cycleSpanStatus = (spanId) => setSpan(spanId, span => ({ ...span, status:nextStatus(stOf(span)) }));
+  const deleteEvent = (dayId, eventId) => setTrip(current => ({ ...current, days:current.days.map(day => day.id===dayId ? { ...day, events:day.events.filter(event => event.id!==eventId) } : day) }));
+  const deleteSpan = (spanId) => setTrip(current => ({ ...current, spans:(current.spans||[]).filter(span => span.id!==spanId) }));
+  const deleteDay = (dayId) => setTrip(current => ({ ...current, days:current.days.filter(day => day.id!==dayId) }));
+  const cycleTask = (dayId, eventId, taskId) => setEvent(dayId, eventId, event => ({ ...event, activities:(event.activities||[]).map(task => task.id===taskId ? { ...task, status:stOf(task)==='done'?'todo':'done' } : task) }));
+  const deleteTask = (dayId, eventId, taskId) => setEvent(dayId, eventId, event => ({ ...event, activities:(event.activities||[]).filter(task => task.id!==taskId) }));
+  const attachDemoFile = (dayId, eventId, file) => {
+    if (!file) return;
+    setEvent(dayId, eventId, event => ({ ...event, docs:[...(event.docs||[]), { id:uid(), name:file.name }] }));
+    setToast('Document attached');
+  };
+  const attachSpanFile = (spanId, file) => {
+    if (!file) return;
+    setSpan(spanId, span => ({ ...span, docs:[...(span.docs||[]), { id:uid(), name:file.name }] }));
+    setToast('Document attached');
+  };
+  const openSheet = (type, context={}) => {
+    setSheet({ type, ...context });
+    if (type === 'add-item') setDraft({ ...itemFormDefaults, startDate:context.date, endDate:context.date });
+    else if (type === 'add-day') setDraft({ date:'', label:'' });
+    else if (type === 'task') setDraft({ text:'' });
+    else if (type === 'expense') setDraft({ amount:'', category:'Food', travelerId:'', desc:'' });
+    else if (type === 'edit-event') setDraft({ title:context.event.title, time:context.event.time, endTime:context.event.endTime, location:context.event.location, notes:context.event.notes||'' });
+    else if (type === 'edit-day') setDraft({ label:context.day.label });
+    else if (type === 'people') setDraft({ selected:[...(context.event.assignees||[])] });
+  };
+  const closeSheet = () => { setSheet(null); setDraft({}); };
+
+  const submitSheet = () => {
+    if (!sheet) return;
+    if (sheet.type === 'add-day' && draft.date) {
+      setTrip(current => ({ ...current, days:[...current.days, { id:uid(), date:draft.date, label:draft.label||'', events:[] }].sort((a,b)=>a.date.localeCompare(b.date)) }));
+      setToast('Day added');
+    } else if (sheet.type === 'add-item' && draft.title) {
+      if (draft.duration === 'multi' || draft.type !== 'Activity') {
+        setTrip(current => ({ ...current, spans:[...(current.spans||[]), { id:uid(), type:draft.type, title:draft.title, location:draft.location, from:draft.from, to:draft.to, mode:draft.mode, flightNo:draft.flightNo, notes:draft.notes, startDate:draft.startDate, startTime:draft.startTime, endDate:draft.duration==='single'?draft.startDate:draft.endDate, endTime:draft.spanEndTime, docs:[], assignees:[], status:'todo' }] }));
+      } else {
+        const event = { id:uid(), time:draft.time, endTime:draft.endTime, title:draft.title, location:draft.location, category:draft.category, notes:draft.notes, docs:[], activities:[], assignees:[], status:'todo' };
+        setTrip(current => ({ ...current, days:current.days.map(day => day.id===sheet.dayId ? { ...day, events:[...day.events,event].sort((a,b)=>a.time.localeCompare(b.time)) } : day) }));
+      }
+      setToast('Itinerary item added');
+    } else if (sheet.type === 'task' && draft.text) {
+      setEvent(sheet.dayId, sheet.eventId, event => ({ ...event, activities:[...(event.activities||[]), { id:uid(), text:draft.text, status:'todo', assignees:[], docs:[] }] }));
+      setToast('Task added');
+    } else if (sheet.type === 'expense' && draft.amount) {
+      setTrip(current => ({ ...current, expenses:[...(current.expenses||[]), { id:uid(), eventId:sheet.eventId, ...draft }] }));
+      setToast('Expense logged');
+    } else if (sheet.type === 'edit-event') {
+      setEvent(sheet.dayId, sheet.eventId, event => ({ ...event, ...draft }));
+      setToast('Event updated');
+    } else if (sheet.type === 'edit-day') {
+      setTrip(current => ({ ...current, days:current.days.map(day => day.id===sheet.dayId ? { ...day, label:draft.label } : day) }));
+      setToast('Day updated');
+    } else if (sheet.type === 'people') {
+      setEvent(sheet.dayId, sheet.eventId, event => ({ ...event, assignees:draft.selected||[] }));
+      setToast('Travelers updated');
+    }
+    closeSheet();
+  };
+
+  const categoryIcon = (category) => ({ Food:'☕', Transport:'↗', Sightseeing:'◇', Accommodation:'⌂', Activity:'○', Other:'•' }[category] || '○');
+  const statusLabel = { todo:'Not started', active:'Ongoing', done:'Complete' };
+  const dateParts = (date) => { const d=new Date(`${date}T00:00:00`); return { day:d.getDate(), month:d.toLocaleDateString('en-GB',{month:'short'}).toUpperCase(), weekday:d.toLocaleDateString('en-GB',{weekday:'long'}), full:d.toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}) }; };
+  const actionButton = (icon, label, onClick, danger=false) => <button type="button" onClick={onClick} style={{ height:48, border:'1px solid #E7E0D7', borderRadius:11, background:danger?'#FFF4F1':'#FAF8F4', color:danger?'#A43828':'#705A50', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:3, fontSize:9.5, fontWeight:700, cursor:'pointer' }}><NativeStatusIcon name={icon} size={16}/>{label}</button>;
+  const dayItems = (day) => [
+    ...(trip.spans||[]).filter(span => day.date>=span.startDate && day.date<=span.endDate).map(span => ({ kind:'span', item:span, time:day.date===span.startDate?(span.startTime||''):'' })),
+    ...(day.events||[]).map(event => ({ kind:'event', item:event, time:event.time||'' })),
+  ].sort((a,b)=>a.time.localeCompare(b.time));
+
+  return (
+    <div style={{ fontFamily:'var(--font-body)', width:'100%', maxWidth:430, margin:'0 auto', minHeight:'100vh', background:'#F7F5F0', color:'#302521', position:'relative', boxShadow:'0 0 32px rgba(62,38,28,0.12)' }}>
+      <header style={{ position:'sticky', top:0, zIndex:30, background:'rgba(247,245,240,0.96)', backdropFilter:'blur(18px)', borderBottom:'1px solid rgba(88,64,52,0.09)', padding:'calc(env(safe-area-inset-top, 0px) + 10px) 16px 10px' }}>
+        <div style={{ height:44, display:'grid', gridTemplateColumns:'44px 1fr 44px', alignItems:'center' }}>
+          <button type="button" aria-label="Back to trip" onClick={()=>window.scrollTo({top:0,behavior:'smooth'})} style={{ width:40,height:40,border:'none',borderRadius:'50%',background:'#ECE7DE',color:'#4A342D',display:'grid',placeItems:'center',cursor:'pointer' }}><NativeStatusIcon name="back"/></button>
+          <div style={{ textAlign:'center' }}><div style={{ fontSize:10,fontWeight:800,letterSpacing:'0.13em',color:'#9B7E70' }}>TRIP PLAN</div><div style={{ marginTop:2,fontSize:14,fontWeight:750 }}>Itinerary</div></div>
+          <button type="button" aria-label="More itinerary options" onClick={()=>setToast('Trip actions ready')} style={{ width:40,height:40,border:'none',borderRadius:'50%',background:'#ECE7DE',color:'#4A342D',display:'grid',placeItems:'center',cursor:'pointer' }}><NativeStatusIcon name="more" size={18}/></button>
+        </div>
+      </header>
+
+      <main style={{ padding:'16px 15px 104px' }}>
+        <section style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,marginBottom:16 }}>
+          <div style={{ minWidth:0 }}><h1 style={{ margin:0,fontSize:21,lineHeight:1.15,letterSpacing:'-0.025em' }}>{trip.name}</h1><div style={{ display:'flex',alignItems:'center',gap:5,marginTop:5,color:'#937F75',fontSize:11.5 }}><NativeStatusIcon name="pin" size={13}/>{trip.destination} · {trip.days.length} days</div></div>
+          <div style={{ display:'flex',alignItems:'center',flexShrink:0 }}>{members.slice(0,4).map((member,index)=><span key={member.userId} style={{ width:29,height:29,marginLeft:index===0?0:-7,borderRadius:'50%',overflow:'hidden',border:'2px solid #F7F5F0',boxShadow:'0 0 0 1px #D8CFC4' }}><img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/></span>)}<span style={{ marginLeft:5,fontSize:10,color:'#8F7D73' }}>+{members.length-4}</span></div>
+        </section>
+
+        <section aria-label="Itinerary actions" style={{ display:'grid',gridTemplateColumns:'1fr auto auto',gap:8,alignItems:'center',marginBottom:22 }}>
+          <div><strong style={{ display:'block',fontSize:13 }}>{trip.days.length} trip days</strong><span style={{ color:'#97847A',fontSize:10.5 }}>{trip.days.reduce((count,day)=>count+(day.events||[]).length,0)+(trip.spans||[]).length} itinerary items</span></div>
+          <button type="button" onClick={()=>openSheet('add-day')} style={{ height:40,border:'1px solid #D9CFC5',borderRadius:12,background:'#fff',color:'#6E2118',padding:'0 12px',fontSize:11.5,fontWeight:750,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5 }}><NativeStatusIcon name="plus" size={15}/> Day</button>
+          <button type="button" onClick={()=>{ const first=trip.days[0]; if(first) openSheet('add-item',{dayId:first.id,date:first.date}); }} style={{ height:40,border:'none',borderRadius:12,background:'#6E2118',color:'#fff',padding:'0 13px',fontSize:11.5,fontWeight:750,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,boxShadow:'0 6px 14px rgba(95,32,24,0.17)' }}><NativeStatusIcon name="plus" size={15}/> Item</button>
+        </section>
+
+        <div aria-label="All itinerary days">
+          {trip.days.map((day,dayIndex) => {
+            const date=dateParts(day.date); const collapsed=!!collapsedDays[day.id]; const items=dayItems(day);
+            return (
+              <section key={day.id} aria-label={`Day ${dayIndex+1}: ${day.label}`} style={{ marginTop:dayIndex===0?0:28,paddingTop:dayIndex===0?0:25,borderTop:dayIndex===0?'none':'1px dashed #D8CFC4' }}>
+                <div style={{ display:'grid',gridTemplateColumns:'48px minmax(0,1fr) auto',alignItems:'center',gap:10,marginBottom:14 }}>
+                  <button type="button" aria-label={collapsed?'Expand day':'Collapse day'} onClick={()=>setCollapsedDays(current=>({...current,[day.id]:!current[day.id]}))} style={{ width:48,height:58,border:'none',borderRadius:15,background:'#6E2118',color:'#fff',cursor:'pointer' }}><strong style={{ display:'block',fontSize:19 }}>{date.day}</strong><span style={{ display:'block',fontSize:9.5,letterSpacing:'0.08em' }}>{date.month}</span></button>
+                  <div style={{ minWidth:0 }}><div style={{ fontSize:10,fontWeight:800,letterSpacing:'0.12em',color:'#9A877D' }}>DAY {dayIndex+1} · {date.weekday.toUpperCase()}</div><h2 style={{ margin:'4px 0 0',fontSize:16,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{day.label||'Untitled day'}</h2><div style={{ marginTop:3,color:'#9A877D',fontSize:10.5 }}>{items.length} items · {date.full}</div></div>
+                  <div style={{ display:'grid',gridTemplateColumns:'repeat(2,32px)',gap:5 }}>
+                    <button type="button" aria-label="Edit day" onClick={()=>openSheet('edit-day',{dayId:day.id,day})} style={{ width:32,height:32,border:'none',borderRadius:9,background:'#ECE7DE',color:'#6D574D',display:'grid',placeItems:'center',cursor:'pointer' }}><NativeStatusIcon name="edit" size={14}/></button>
+                    <button type="button" aria-label="Delete day" onClick={()=>deleteDay(day.id)} style={{ width:32,height:32,border:'none',borderRadius:9,background:'#F7E6E1',color:'#A43828',display:'grid',placeItems:'center',cursor:'pointer' }}><NativeStatusIcon name="trash" size={14}/></button>
+                    <button type="button" aria-label="Add itinerary item" onClick={()=>openSheet('add-item',{dayId:day.id,date:day.date})} style={{ gridColumn:'1 / -1',width:69,height:30,border:'none',borderRadius:9,background:'#E8DDD5',color:'#6E2118',fontSize:10,fontWeight:800,cursor:'pointer' }}>+ ITEM</button>
+                  </div>
+                </div>
+
+                {!collapsed && <div style={{ position:'relative' }}><span aria-hidden="true" style={{ position:'absolute',left:17,top:20,bottom:24,width:1,background:'#D8CFC4' }}/>
+                  {items.map(({kind,item},itemIndex) => {
+                    const isSpan=kind==='span'; const event=item; const status=stOf(event); const expanded=expandedId===event.id;
+                    return <article key={event.id} style={{ display:'grid',gridTemplateColumns:'36px minmax(0,1fr)',gap:10,position:'relative',marginBottom:itemIndex===items.length-1?0:12 }}>
+                      <button type="button" aria-label={`Change ${event.title} status`} onClick={()=>isSpan?cycleSpanStatus(event.id):cycleItemStatus(day.id,event.id)} style={{ width:13,height:13,margin:'19px 0 0 11px',padding:0,borderRadius:'50%',background:STATUS_META[status].ring,border:'3px solid #F7F5F0',boxShadow:`0 0 0 1px ${STATUS_META[status].ring}`,zIndex:2,cursor:'pointer' }}/>
+                      <div style={{ background:isSpan?'#FFF9ED':'#fff',border:`1px solid ${isSpan?'#E8D7AF':'#E8E1D8'}`,borderRadius:18,boxShadow:'0 4px 14px rgba(63,47,40,0.05)',overflow:'hidden' }}>
+                        <button type="button" aria-expanded={expanded} onClick={()=>setExpandedId(expanded?null:event.id)} style={{ width:'100%',border:'none',background:'transparent',padding:'13px',textAlign:'left',cursor:'pointer' }}>
+                          <span style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:10 }}><span style={{ display:'inline-flex',alignItems:'center',gap:5,color:'#8D786E',fontSize:10.5,fontWeight:700 }}>{isSpan?(event.type==='Accommodation'?'⌂':'↗'):categoryIcon(event.category)} {isSpan?`${event.startTime||'All day'} · ${event.type}`:`${event.time} – ${event.endTime}`}</span><span style={{ borderRadius:20,padding:'4px 7px',background:STATUS_META[status].bg,color:STATUS_META[status].color,fontSize:9.5,fontWeight:750 }}>{statusLabel[status]}</span></span>
+                          <strong style={{ display:'block',marginTop:6,fontSize:14.5,lineHeight:1.25 }}>{event.title}</strong>
+                          <span style={{ display:'flex',alignItems:'center',gap:4,marginTop:4,color:'#99867C',fontSize:10.5 }}><NativeStatusIcon name="pin" size={12}/>{event.location||spanLocationText(event)||'Location not set'}</span>
+                          <span style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginTop:11 }}><span style={{ display:'flex',alignItems:'center' }}>{members.slice(0,event.assignees&&event.assignees.length?Math.min(4,event.assignees.length):4).map((member,index)=><span key={member.userId} style={{ width:23,height:23,marginLeft:index===0?0:-5,borderRadius:'50%',overflow:'hidden',border:'2px solid #fff',boxShadow:'0 0 0 1px #D9D0C6' }}><img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/></span>)}<span style={{ marginLeft:6,color:'#907D73',fontSize:9.5 }}>{event.assignees&&event.assignees.length?`${event.assignees.length} assigned`:'Everyone'}</span></span><span style={{ color:'#907D73',transform:expanded?'rotate(180deg)':'none',transition:'transform .15s' }}><NativeStatusIcon name="chevron" size={15}/></span></span>
+                        </button>
+                        {expanded && <div style={{ padding:'0 12px 13px',borderTop:'1px solid #F0EBE5' }}>
+                          {event.notes && <p style={{ margin:'11px 0',color:'#7F6C63',fontSize:11,lineHeight:1.45 }}>{event.notes}</p>}
+                          {(event.docs||[]).length>0 && <div style={{ display:'flex',gap:6,flexWrap:'wrap',marginBottom:10 }}>{event.docs.map(doc=><button key={doc.id} type="button" onClick={()=>setToast(`Previewing ${doc.name}`)} style={{ border:'1px solid #E1D7CD',borderRadius:9,background:'#FAF8F4',padding:'6px 8px',color:'#745D53',fontSize:9.5,cursor:'pointer' }}>▱ {doc.name}</button>)}</div>}
+                          {!isSpan && (event.activities||[]).length>0 && <div style={{ margin:'8px 0 11px',padding:'9px 10px',borderRadius:12,background:'#F7F3ED' }}><div style={{ marginBottom:7,fontSize:9.5,fontWeight:800,letterSpacing:'0.08em',color:'#98847A' }}>TASKS</div>{event.activities.map(task=><div key={task.id} style={{ display:'grid',gridTemplateColumns:'24px minmax(0,1fr) auto',alignItems:'center',gap:6,padding:'5px 0' }}><button type="button" aria-label={`Toggle ${task.text}`} onClick={()=>cycleTask(day.id,event.id,task.id)} style={{ width:20,height:20,borderRadius:7,border:`1px solid ${STATUS_META[stOf(task)].ring}`,background:stOf(task)==='done'?STATUS_META.done.ring:'#fff',color:'#fff',fontSize:12,cursor:'pointer' }}>{stOf(task)==='done'?'✓':''}</button><span style={{ fontSize:11,textDecoration:stOf(task)==='done'?'line-through':'none',color:stOf(task)==='done'?'#A2938B':'#4A3B35' }}>{task.text}</span><span style={{ display:'flex',gap:3 }}><button type="button" title="Edit task" onClick={()=>setToast('Task editing retained')} style={{ width:25,height:25,border:'none',borderRadius:7,background:'#EAE4DB',color:'#735D53',display:'grid',placeItems:'center',cursor:'pointer' }}><NativeStatusIcon name="edit" size={13}/></button><button type="button" title="Assign travelers" onClick={()=>setToast('Task traveler controls retained')} style={{ width:25,height:25,border:'none',borderRadius:7,background:'#EAE4DB',color:'#735D53',display:'grid',placeItems:'center',cursor:'pointer' }}><NativeStatusIcon name="people" size={13}/></button><button type="button" title="Attach task document" onClick={()=>setToast('Task document controls retained')} style={{ width:25,height:25,border:'none',borderRadius:7,background:'#EAE4DB',color:'#735D53',display:'grid',placeItems:'center',cursor:'pointer' }}><NativeStatusIcon name="clip" size={13}/></button><button type="button" title="Delete task" onClick={()=>deleteTask(day.id,event.id,task.id)} style={{ width:25,height:25,border:'none',borderRadius:7,background:'#F6E5E0',color:'#A43828',display:'grid',placeItems:'center',cursor:'pointer' }}><NativeStatusIcon name="trash" size={13}/></button></span></div>)}</div>}
+                          <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6 }}>
+                            {actionButton('edit','Edit',()=>isSpan?setToast('Span editing retained'):openSheet('edit-event',{dayId:day.id,eventId:event.id,event}))}
+                            {!isSpan && actionButton('task','Task',()=>openSheet('task',{dayId:day.id,eventId:event.id}))}
+                            {actionButton('receipt','Expense',()=>openSheet('expense',{eventId:event.id}))}
+                            {actionButton('people','People',()=>isSpan?setToast('Span traveler controls retained'):openSheet('people',{dayId:day.id,eventId:event.id,event}))}
+                            <label style={{ height:48,border:'1px solid #E7E0D7',borderRadius:11,background:'#FAF8F4',color:'#705A50',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,fontSize:9.5,fontWeight:700,cursor:'pointer' }}><NativeStatusIcon name="clip" size={16}/>File<input type="file" style={{ display:'none' }} onChange={e=>{ isSpan?attachSpanFile(event.id,e.target.files[0]):attachDemoFile(day.id,event.id,e.target.files[0]); e.target.value=''; }}/></label>
+                            {actionButton('trash','Delete',()=>isSpan?deleteSpan(event.id):deleteEvent(day.id,event.id),true)}
+                          </div>
+                        </div>}
+                      </div>
+                    </article>;
+                  })}
+                </div>}
+              </section>
+            );
+          })}
+        </div>
+      </main>
+
+      <nav aria-label="App navigation" style={{ position:'fixed',zIndex:25,left:'50%',bottom:0,width:'min(430px, 100%)',transform:'translateX(-50%)',display:'grid',gridTemplateColumns:'repeat(4,1fr)',background:'rgba(255,255,255,0.97)',backdropFilter:'blur(18px)',borderTop:'1px solid #E3DDD4',padding:'8px 8px calc(env(safe-area-inset-bottom, 0px) + 7px)',boxSizing:'border-box' }}>
+        {[['home','Home'],['plan','Plan'],['status','Status'],['people','People']].map(([icon,label])=>{ const active=label==='Plan'; return <button key={label} type="button" aria-current={active?'page':undefined} style={{ height:48,border:'none',background:'transparent',color:active?'#6E2118':'#9A8980',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,fontSize:9.5,fontWeight:active?800:650,cursor:'pointer' }}><span style={{ position:'relative' }}><NativeStatusIcon name={icon} size={20}/>{active&&<span style={{ position:'absolute',width:4,height:4,borderRadius:'50%',background:'#6E2118',left:'50%',bottom:-6,transform:'translateX(-50%)' }}/>}</span>{label}</button>; })}
+      </nav>
+
+      {sheet && <div role="presentation" onClick={closeSheet} style={{ position:'fixed',zIndex:70,inset:0,background:'rgba(35,25,21,0.42)',display:'flex',alignItems:'flex-end',justifyContent:'center' }}>
+        <section role="dialog" aria-modal="true" aria-label="Itinerary editor" onClick={event=>event.stopPropagation()} style={{ width:'min(430px, 100%)',maxHeight:'84vh',overflowY:'auto',background:'#FAF8F4',borderRadius:'24px 24px 0 0',padding:'10px 17px calc(env(safe-area-inset-bottom, 0px) + 22px)',boxSizing:'border-box',boxShadow:'0 -14px 34px rgba(45,30,24,0.18)' }}>
+          <div aria-hidden="true" style={{ width:38,height:4,borderRadius:4,background:'#D4CCC2',margin:'0 auto 15px' }}/>
+          <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:16 }}><h2 style={{ margin:0,fontSize:18 }}>{({ 'add-day':'Add day','add-item':'Add to itinerary','task':'Add task','expense':'Log expense','edit-event':'Edit event','edit-day':'Edit day','people':'Assign travelers' }[sheet.type])}</h2><button type="button" aria-label="Close editor" onClick={closeSheet} style={{ width:34,height:34,border:'none',borderRadius:'50%',background:'#EDE7DE',color:'#654D43',fontSize:19,cursor:'pointer' }}>×</button></div>
+          {sheet.type==='add-day' && <><label style={labelStyle}>DATE</label><input type="date" value={draft.date||''} onChange={e=>setDraft({...draft,date:e.target.value})} style={inputStyle}/><label style={{...labelStyle,marginTop:12}}>LABEL</label><input value={draft.label||''} onChange={e=>setDraft({...draft,label:e.target.value})} placeholder="e.g. Travel day" style={inputStyle}/></>}
+          {sheet.type==='add-item' && <>
+            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:9 }}><div><label style={labelStyle}>DURATION</label><select value={draft.duration} onChange={e=>setDraft({...draft,duration:e.target.value,type:e.target.value==='single'?'Activity':'Accommodation'})} style={inputStyle}><option value="single">Single day</option><option value="multi">Multi-day</option></select></div><div><label style={labelStyle}>TYPE</label><select value={draft.type} onChange={e=>setDraft({...draft,type:e.target.value})} style={inputStyle}>{(draft.duration==='single'?['Activity','Travel']:['Accommodation','Travel','Other']).map(option=><option key={option}>{option}</option>)}</select></div></div>
+            {draft.type==='Travel' && <><label style={{...labelStyle,marginTop:12}}>MODE</label><select value={draft.mode} onChange={e=>setDraft({...draft,mode:e.target.value})} style={inputStyle}>{TRAVEL_MODES.map(mode=><option key={mode}>{mode}</option>)}</select>{draft.mode==='By Air'&&<><label style={{...labelStyle,marginTop:12}}>FLIGHT NUMBER *</label><input value={draft.flightNo} onChange={e=>setDraft({...draft,flightNo:e.target.value})} placeholder="e.g. TP 1363" style={inputStyle}/></>}</>}
+            <label style={{...labelStyle,marginTop:12}}>TITLE *</label><input value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})} placeholder={draft.type==='Activity'?'e.g. Museum visit':'Name this itinerary item'} style={inputStyle}/>
+            {draft.type==='Activity' ? <><div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:9,marginTop:12 }}><div><label style={labelStyle}>START *</label><input type="time" value={draft.time} onChange={e=>setDraft({...draft,time:e.target.value})} style={inputStyle}/></div><div><label style={labelStyle}>END *</label><input type="time" value={draft.endTime} onChange={e=>setDraft({...draft,endTime:e.target.value})} style={inputStyle}/></div></div><label style={{...labelStyle,marginTop:12}}>LOCATION</label><input value={draft.location} onChange={e=>setDraft({...draft,location:e.target.value})} style={inputStyle}/><label style={{...labelStyle,marginTop:12}}>CATEGORY</label><select value={draft.category} onChange={e=>setDraft({...draft,category:e.target.value})} style={inputStyle}>{['Sightseeing','Transport','Food','Accommodation','Activity','Other'].map(option=><option key={option}>{option}</option>)}</select></> : draft.type==='Travel' ? <><div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:9,marginTop:12 }}><div><label style={labelStyle}>FROM *</label><input value={draft.from} onChange={e=>setDraft({...draft,from:e.target.value})} style={inputStyle}/></div><div><label style={labelStyle}>TO *</label><input value={draft.to} onChange={e=>setDraft({...draft,to:e.target.value})} style={inputStyle}/></div></div></> : <><label style={{...labelStyle,marginTop:12}}>LOCATION</label><input value={draft.location} onChange={e=>setDraft({...draft,location:e.target.value})} style={inputStyle}/></>}
+            {draft.type!=='Activity' && <><div style={{ display:'grid',gridTemplateColumns:'1.3fr 1fr',gap:9,marginTop:12 }}><div><label style={labelStyle}>{draft.type==='Accommodation'?'CHECK-IN DATE *':'DEPART DATE *'}</label><input type="date" value={draft.startDate} onChange={e=>setDraft({...draft,startDate:e.target.value})} style={inputStyle}/></div><div><label style={labelStyle}>TIME</label><input type="time" value={draft.startTime} onChange={e=>setDraft({...draft,startTime:e.target.value})} style={inputStyle}/></div></div>{draft.duration==='multi'&&<div style={{ display:'grid',gridTemplateColumns:'1.3fr 1fr',gap:9,marginTop:12 }}><div><label style={labelStyle}>{draft.type==='Accommodation'?'CHECK-OUT DATE *':'ARRIVE DATE *'}</label><input type="date" value={draft.endDate} onChange={e=>setDraft({...draft,endDate:e.target.value})} style={inputStyle}/></div><div><label style={labelStyle}>TIME</label><input type="time" value={draft.spanEndTime} onChange={e=>setDraft({...draft,spanEndTime:e.target.value})} style={inputStyle}/></div></div>}{draft.type==='Travel'&&draft.mode==='By Road'&&<button type="button" onClick={()=>setToast('Arrival estimate retained')} style={{ marginTop:10,border:'1px dashed #CDBEB2',borderRadius:10,background:'transparent',padding:'7px 10px',color:'#6E2118',fontSize:10.5,fontWeight:700,cursor:'pointer' }}>↻ Auto-fill arrival from route</button>}</>}
+            <label style={{...labelStyle,marginTop:12}}>NOTES</label><input value={draft.notes} onChange={e=>setDraft({...draft,notes:e.target.value})} placeholder="Booking references, instructions…" style={inputStyle}/>
+            <div style={{ marginTop:14,paddingTop:13,borderTop:'1px dashed #D8CFC4' }}><div style={{ marginBottom:9,fontSize:10.5,fontWeight:800,color:'#8B786E' }}>OPTIONAL EXPENSE</div><div style={{ display:'grid',gridTemplateColumns:'1fr 1.2fr',gap:9 }}><input type="number" value={draft.expAmount} onChange={e=>setDraft({...draft,expAmount:e.target.value})} placeholder="Amount" style={inputStyle}/><select value={draft.expCat} onChange={e=>setDraft({...draft,expCat:e.target.value})} style={inputStyle}>{BUDGET_CATS.map(category=><option key={category}>{category}</option>)}</select></div><select value={draft.expTraveler} onChange={e=>setDraft({...draft,expTraveler:e.target.value})} style={{...inputStyle,marginTop:9}}><option value="">Shared</option>{members.map(member=><option key={member.userId} value={member.userId}>{member.name}</option>)}</select></div>
+          </>}
+          {sheet.type==='task' && <><label style={labelStyle}>TASK</label><input value={draft.text||''} onChange={e=>setDraft({...draft,text:e.target.value})} placeholder="Describe the task…" style={inputStyle}/></>}
+          {sheet.type==='expense' && <><div style={{ display:'grid',gridTemplateColumns:'1fr 1.2fr',gap:9 }}><div><label style={labelStyle}>AMOUNT *</label><input type="number" value={draft.amount||''} onChange={e=>setDraft({...draft,amount:e.target.value})} style={inputStyle}/></div><div><label style={labelStyle}>CATEGORY</label><select value={draft.category||'Food'} onChange={e=>setDraft({...draft,category:e.target.value})} style={inputStyle}>{BUDGET_CATS.map(category=><option key={category}>{category}</option>)}</select></div></div><label style={{...labelStyle,marginTop:12}}>TRAVELER</label><select value={draft.travelerId||''} onChange={e=>setDraft({...draft,travelerId:e.target.value})} style={inputStyle}><option value="">Shared</option>{members.map(member=><option key={member.userId} value={member.userId}>{member.name}</option>)}</select><label style={{...labelStyle,marginTop:12}}>DESCRIPTION</label><input value={draft.desc||''} onChange={e=>setDraft({...draft,desc:e.target.value})} style={inputStyle}/></>}
+          {sheet.type==='edit-event' && <><label style={labelStyle}>TITLE</label><input value={draft.title||''} onChange={e=>setDraft({...draft,title:e.target.value})} style={inputStyle}/><div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:9,marginTop:12 }}><div><label style={labelStyle}>START</label><input type="time" value={draft.time||''} onChange={e=>setDraft({...draft,time:e.target.value})} style={inputStyle}/></div><div><label style={labelStyle}>END</label><input type="time" value={draft.endTime||''} onChange={e=>setDraft({...draft,endTime:e.target.value})} style={inputStyle}/></div></div><label style={{...labelStyle,marginTop:12}}>LOCATION</label><input value={draft.location||''} onChange={e=>setDraft({...draft,location:e.target.value})} style={inputStyle}/><label style={{...labelStyle,marginTop:12}}>NOTES</label><input value={draft.notes||''} onChange={e=>setDraft({...draft,notes:e.target.value})} style={inputStyle}/></>}
+          {sheet.type==='edit-day' && <><label style={labelStyle}>DAY LABEL</label><input value={draft.label||''} onChange={e=>setDraft({...draft,label:e.target.value})} style={inputStyle}/></>}
+          {sheet.type==='people' && <><p style={{ margin:'0 0 10px',color:'#8A776D',fontSize:11 }}>No selection means everyone. Choose specific travelers below.</p>{members.map(member=><label key={member.userId} style={{ display:'flex',alignItems:'center',gap:10,padding:'9px 2px',borderBottom:'1px solid #EEE7DF',fontSize:12.5 }}><input type="checkbox" checked={(draft.selected||[]).includes(member.userId)} onChange={()=>setDraft({...draft,selected:(draft.selected||[]).includes(member.userId)?draft.selected.filter(id=>id!==member.userId):[...(draft.selected||[]),member.userId]})}/><img src={member.pic} alt="" style={{ width:30,height:30,borderRadius:'50%' }}/>{member.name}</label>)}</>}
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1.4fr',gap:8,marginTop:18 }}><button type="button" onClick={closeSheet} style={{ height:43,border:'1px solid #D9CFC5',borderRadius:12,background:'#fff',color:'#745F55',fontWeight:750,cursor:'pointer' }}>Cancel</button><button type="button" onClick={submitSheet} style={{ height:43,border:'none',borderRadius:12,background:'#6E2118',color:'#fff',fontWeight:750,cursor:'pointer' }}>{sheet.type==='edit-event'||sheet.type==='edit-day'||sheet.type==='people'?'Save':'Add'}</button></div>
+        </section>
+      </div>}
+      {toast && <div role="status" style={{ position:'fixed',zIndex:90,left:'50%',bottom:'calc(env(safe-area-inset-bottom, 0px) + 76px)',transform:'translateX(-50%)',background:'#2F2926',color:'#fff',borderRadius:24,padding:'10px 16px',fontSize:11.5,fontWeight:700,boxShadow:'0 8px 24px rgba(0,0,0,0.2)',whiteSpace:'nowrap' }}>{toast}</div>}
+    </div>
+  );
+}
+
 function LargeGroupStatusPreview() {
   return (
     <div style={{ fontFamily:'var(--font-body)', maxWidth:760, margin:'0 auto', minHeight:'100vh', background:'#F0EBE0' }}>
@@ -4229,6 +4707,9 @@ export default function Root() {
   const focusUserId = params.get('t'); // a traveler's share link shows only that traveler's status
   const token = params.get('k');       // the trip's secret — this is what unlocks a share link
   if (demo === 'timeline') return <TravelerTimelinePreview />;
+  if (demo === 'small-group-status') return <SmallGroupStatusPreview />;
+  if (demo === 'native-trip-status') return <NativeTripStatusPreview />;
+  if (demo === 'native-itinerary') return <NativeItineraryPreview />;
   if (demo === 'group-status') return <LargeGroupStatusPreview />;
   return viewId ? <ViewerApp tripId={viewId} token={token} focusUserId={focusUserId} /> : <MainApp />;
 }
