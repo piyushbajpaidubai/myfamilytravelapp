@@ -1683,6 +1683,7 @@ const SUPA_BUCKET = 'trip-media';
 // Netlify domain (works when the traveler is on the phone app too).
 const VAPID_PUBLIC = 'BAa-b04xoM_bBMoDI5swB7prW9uWkVr1AchqETMVemZC0u-SP_BCooth8VYx00K_dsBn5WiTklpT3ERzjoj4_gc';
 const NOTIFY_FN = 'https://mytravelhub.netlify.app/.netlify/functions/notify';
+const SUBSCRIBE_FN = 'https://mytravelhub.netlify.app/.netlify/functions/subscribe';
 const pushSupported = () => typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 const urlB64ToU8 = (b64) => {
   const pad = '='.repeat((4 - (b64.length % 4)) % 4);
@@ -1697,21 +1698,21 @@ async function followerSubscription() {
   try { const reg = await navigator.serviceWorker.getRegistration('/sw.js'); return reg ? await reg.pushManager.getSubscription() : null; }
   catch (e) { return null; }
 }
-// Store (or refresh) this browser's subscription row for the trip. Upserts on
-// the endpoint, so re-subscribing the same browser updates its keys instead of
-// erroring or piling up duplicate rows.
-async function storeFollowerSub(tripId, sub) {
+// Store (or refresh) this browser's subscription via the service-key function
+// (the table itself is closed to anon). Requires the trip's share token — the
+// function checks it, so you can only subscribe to a trip whose link you hold.
+async function storeFollowerSub(tripId, token, sub) {
   const j = sub.toJSON();
-  const r = await fetch(SUPA_URL + '/rest/v1/push_subscriptions?on_conflict=endpoint', {
-    method: 'POST', headers: { ...supaHeaders, Prefer: 'resolution=merge-duplicates' },
-    body: JSON.stringify({ trip_id: tripId, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth })
+  const r = await fetch(SUBSCRIBE_FN, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'subscribe', tripId, token, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth })
   });
-  if (!r.ok && r.status === 404) throw new Error('setup'); // table not created yet
-  if (!r.ok) throw new Error('save');                      // surface real failures, don't fake success
+  if (r.status === 404) throw new Error('setup'); // function not deployed yet
+  if (!r.ok) throw new Error('save');             // surface real failures, don't fake success
   return true;
 }
 // Follower taps "Notify me": ask permission, subscribe, store keyed to the trip.
-async function followerSubscribe(tripId) {
+async function followerSubscribe(tripId, token) {
   if (!pushSupported()) throw new Error('This browser doesn’t support notifications.');
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') throw new Error('blocked');
@@ -1719,7 +1720,7 @@ async function followerSubscribe(tripId) {
   await navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
   if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToU8(VAPID_PUBLIC) });
-  await storeFollowerSub(tripId, sub);
+  await storeFollowerSub(tripId, token, sub);
   return sub;
 }
 async function followerUnsubscribe() {
@@ -1727,7 +1728,7 @@ async function followerUnsubscribe() {
   if (!sub) return;
   const endpoint = sub.endpoint;
   try { await sub.unsubscribe(); } catch (e) {}
-  try { await fetch(SUPA_URL + '/rest/v1/push_subscriptions?endpoint=eq.' + encodeURIComponent(endpoint), { method: 'DELETE', headers: supaHeaders }); } catch (e) {}
+  try { await fetch(SUBSCRIBE_FN, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'unsubscribe', endpoint }) }); } catch (e) {}
 }
 // Traveler side: after a status change, ping the send-function (which fans out
 // to followers). No-op unless the trip has notifications switched on.
@@ -3678,7 +3679,7 @@ const fmtDateTime = (iso) => {
 
 // A follower's opt-in control on the shared status page: subscribe this
 // browser to push notifications for the trip (or turn them back off).
-function FollowerNotify({ tripId }) {
+function FollowerNotify({ tripId, token }) {
   const [state, setState] = useState('checking'); // checking | off | on | busy | unsupported | blocked | setup
   useEffect(() => {
     let cancelled = false;
@@ -3686,18 +3687,18 @@ function FollowerNotify({ tripId }) {
     followerSubscription().then(async sub => {
       if (cancelled) return;
       if (sub) {
-        // Self-heal: this browser is subscribed, so make sure its row is in the
-        // DB (an earlier failed insert could have left it subscribed but unsaved).
-        try { await storeFollowerSub(tripId, sub); } catch (e) {}
+        // Self-heal: this browser is subscribed, so make sure its row is stored
+        // (an earlier failed save could have left it subscribed but unsaved).
+        try { await storeFollowerSub(tripId, token, sub); } catch (e) {}
         if (!cancelled) setState('on');
       } else setState('off');
     });
     return () => { cancelled = true; };
-  }, [tripId]);
+  }, [tripId, token]);
   if (state === 'unsupported') return null; // e.g. iOS Safari not added to home screen
   const turnOn = async () => {
     setState('busy');
-    try { await followerSubscribe(tripId); setState('on'); }
+    try { await followerSubscribe(tripId, token); setState('on'); }
     catch (e) { setState(e.message === 'blocked' ? 'blocked' : e.message === 'setup' ? 'setup' : 'off'); }
   };
   const turnOff = async () => { setState('busy'); try { await followerUnsubscribe(); } catch (e) {} setState('off'); };
@@ -3804,7 +3805,7 @@ function ViewerApp({ tripId, token, focusUserId }) {
         <span>{updatedAt ? `Last updated ${fmtDateTime(updatedAt)}` : 'Live view'} · refreshes automatically</span>
         <button onClick={refresh} style={{ padding:"3px 10px", borderRadius:6, border:"1px solid #C8B09A", background:"transparent", color:"#8B2A14", fontSize:11.5, cursor:"pointer" }}>Refresh now</button>
       </div>
-      <FollowerNotify tripId={tripId} />
+      <FollowerNotify tripId={tripId} token={token} />
       <StatusTab trip={trip} focusUserId={focusUserId} />
       <div style={{ textAlign:"center", fontSize:11, color:"#B0A091", padding:"18px 0 8px" }}>Read-only view · shared by the traveler</div>
     </div>
