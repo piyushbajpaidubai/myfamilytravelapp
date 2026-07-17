@@ -3970,14 +3970,15 @@ const DEMO_TRIP = {
   id:'demo', name:'Team Offsite · Lisbon', destination:'Lisbon, Portugal', members:DEMO_MEMBERS,
   days:[
     { id:'d1', date:'2026-07-16', label:'Arrival and old town', events:[
-      { id:'e1', time:'08:30', endTime:'09:15', title:'Breakfast at the hotel', memberStatus:demoSt('done','done','done','done','done','done','done','done','done') },
-      { id:'e2', time:'10:00', endTime:'10:35', title:'Tram to Belém', memberStatus:demoSt('done','done','done','active','active','todo','done','active','todo') },
-      { id:'e3', time:'11:00', endTime:'12:30', title:'Jerónimos Monastery', memberStatus:demoSt('done','active','active','active','todo','todo','done','todo','active') },
-      { id:'e4', time:'19:30', endTime:'21:00', title:'Group dinner by the river', memberStatus:demoSt('todo','todo','todo','todo','todo','todo','todo','todo','todo') },
+      //                                  Aisha  Alex    Maya    Daniel  Sofia  Leo    Nina   Omar    Priya
+      { id:'e1', time:'08:30', endTime:'09:15', title:'Breakfast at the hotel',  memberStatus:demoSt('done','done',  'done',  'active','todo','todo','done','active','todo') },
+      { id:'e2', time:'10:00', endTime:'10:35', title:'Tram to Belém',           memberStatus:demoSt('done','active','done',  'todo',  'todo','todo','done','done',  'todo') },
+      { id:'e3', time:'11:00', endTime:'12:30', title:'Jerónimos Monastery',     memberStatus:demoSt('done','done',  'active','active','todo','todo','done','todo',  'todo') },
+      { id:'e4', time:'19:30', endTime:'21:00', title:'Group dinner by the river',memberStatus:demoSt('done','todo',  'todo',  'todo',  'todo','todo','done','todo',  'todo') },
     ]},
     { id:'d2', date:'2026-07-17', label:'Sintra day trip', events:[
-      { id:'e5', time:'08:15', endTime:'09:00', title:'Train to Sintra', memberStatus:demoSt() },
-      { id:'e6', time:'10:00', endTime:'12:30', title:'Pena Palace visit', memberStatus:demoSt() },
+      { id:'e5', time:'08:15', endTime:'09:00', title:'Train to Sintra',         memberStatus:demoSt('done','todo',  'todo',  'done',  'todo','todo','done','active','todo') },
+      { id:'e6', time:'10:00', endTime:'12:30', title:'Pena Palace visit',       memberStatus:demoSt('done','todo',  'done',  'todo',  'todo','todo','done','todo',  'todo') },
     ]},
   ],
 };
