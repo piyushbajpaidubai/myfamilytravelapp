@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Geolocation } from "@capacitor/geolocation";
 
-const TABS = ["Schedule", "Status", "Budget", "Packing", "Pictures"];
+const TABS = ["Schedule", "Status", "Budget", "Packing"];
 const CATEGORIES = ["Transport", "Hotel", "Food", "Sightseeing", "Other"];
 const BUDGET_CATS = ["Transport", "Accommodation", "Food", "Activities", "Shopping", "Other"];
 const PACK_CATS = ["Documents", "Clothing", "Toiletries", "Electronics", "Other"];
@@ -41,7 +41,7 @@ const tripDateRange = (trip) => {
 
 const defaultTrip = () => ({
   id: uid(), name: "", destination: "", startDate: "", endDate: "",
-  days: [], expenses: [], packItems: [], pictures: [],
+  days: [], expenses: [], packItems: [],
   budget: "", ownerId: "", members: [], status: "todo", currency: "$", viewers: []
 });
 
@@ -1247,81 +1247,6 @@ function PackingTab({ trip, update }) {
             <Btn onClick={addItem}>Add</Btn>
           </div>
         </Modal>
-      )}
-    </div>
-  );
-}
-
-// ---- Locations Tab ----
-function PicturesTab({ trip, update }) {
-  const [lightbox, setLightbox] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const pics = trip.pictures || [];
-
-  async function addPics(e) {
-    const files = Array.from(e.target.files);
-    e.target.value = '';
-    if (!files.length) return;
-    setUploading(true);
-    const newPics = [];
-    for (const file of files) {
-      try {
-        const url = await uploadToStorage(file, 'pics');
-        newPics.push({ id: 'pic_' + uid(), name: file.name, url });
-      } catch (err) {
-        alert('Could not upload "' + file.name + '". ' + err.message);
-      }
-    }
-    if (newPics.length) update(t => ({ ...t, pictures: [...(t.pictures || []), ...newPics] }));
-    setUploading(false);
-  }
-
-  function delPic(id) {
-    const pic = pics.find(p => p.id === id);
-    if (pic && pic.url) deleteFromStorage(pic.url);
-    update(t => ({ ...t, pictures: (t.pictures || []).filter(p => p.id !== id) }));
-    if (lightbox && lightbox.id === id) setLightbox(null);
-  }
-
-  return (
-    <div style={{ padding: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h3 style={{ margin: 0, color: '#3D0C02', fontFamily: "var(--font-body)", fontSize: '18px', fontWeight: 600 }}>Trip Pictures</h3>
-        <label style={{ background: uploading ? '#7A5A50' : '#3D0C02', color: '#fff', padding: '8px 18px', borderRadius: '8px', cursor: uploading ? 'default' : 'pointer', fontFamily: "var(--font-body)", fontSize: '14px', fontWeight: 500 }}>
-          {uploading ? 'Uploading…' : '+ Upload Photos'}
-          <input type="file" accept="image/*" multiple disabled={uploading} onChange={addPics} style={{ display: 'none' }} />
-        </label>
-      </div>
-
-      {pics.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px', color: '#8B4A3A' }}>
-          <div style={{ fontSize: '48px', marginBottom: '12px' }}>📷</div>
-          <p style={{ fontFamily: "var(--font-body)", fontSize: '15px' }}>No pictures yet. Upload some to get started!</p>
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
-          {pics.map(pic => (
-            <div key={pic.id} style={{ position: 'relative', borderRadius: '10px', overflow: 'hidden', aspectRatio: '1', background: '#E8E4D9', cursor: 'pointer', boxShadow: '0 2px 8px rgba(61,12,2,0.12)' }}
-              onClick={() => setLightbox(pic)}>
-              <img src={pic.url || pic.data} alt={pic.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-              <button onClick={e => { e.stopPropagation(); delPic(pic.id); }}
-                style={{ position: 'absolute', top: '6px', right: '6px', background: 'rgba(61,12,2,0.75)', border: 'none', borderRadius: '50%', width: '24px', height: '24px', color: '#fff', cursor: 'pointer', fontSize: '14px', lineHeight: '24px', textAlign: 'center', padding: 0 }}>×</button>
-              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent,rgba(61,12,2,0.6))', padding: '18px 6px 6px', fontSize: '11px', color: '#fff', fontFamily: "var(--font-body)", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pic.name}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {lightbox && (
-        <div onClick={() => setLightbox(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div onClick={e => e.stopPropagation()} style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>
-            <img src={lightbox.url || lightbox.data} alt={lightbox.name} style={{ display: 'block', maxWidth: '90vw', maxHeight: '85vh', objectFit: 'contain' }} />
-            <div style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '10px 16px', fontFamily: "var(--font-body)", fontSize: '13px' }}>{lightbox.name}</div>
-            <button onClick={() => setLightbox(null)}
-              style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.6)', border: '2px solid #fff', borderRadius: '50%', width: '32px', height: '32px', color: '#fff', cursor: 'pointer', fontSize: '18px', lineHeight: '28px', textAlign: 'center', padding: 0 }}>×</button>
-          </div>
-        </div>
       )}
     </div>
   );
@@ -2819,7 +2744,7 @@ function MainApp() {
 
   const updateTrip = (id, patch) => {
     recordHistory();
-    // patch may be a plain object (most tabs) or an updater fn (Pictures tab)
+    // patch may be a plain object (most tabs) or an updater fn
     setTrips(prev => prev.map(t =>
       t.id===id ? { ...t, ...(typeof patch === "function" ? patch(t) : patch) } : t
     ));
@@ -3282,7 +3207,6 @@ function MainApp() {
           {activeTab==="Status" && <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)}
             sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)}
             shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${trip.shareToken ? `&k=${encodeURIComponent(trip.shareToken)}` : ''}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />}
-          {activeTab==="Pictures" && <PicturesTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
         </div>
       )}
 
