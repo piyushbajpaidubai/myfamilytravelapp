@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Geolocation } from "@capacitor/geolocation";
 
 const TABS = ["Schedule", "Status", "Budget", "Packing", "Pictures"];
 const CATEGORIES = ["Transport", "Hotel", "Food", "Sightseeing", "Other"];
@@ -1363,7 +1364,7 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
 }
 
 // ---- Status Tab ----  (per-traveler rollup of event/activity/span statuses per day)
-function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focusUserId=null }) {
+function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focusUserId=null, sharingLoc=false, onToggleShare=null, shareToken=null }) {
   const days = trip.days || [];
   // focusUserId (from a traveler's share link) narrows the view to that traveler only
   const roster = focusUserId ? (trip.members || []).filter(m => m.userId === focusUserId) : (trip.members || []);
@@ -1383,6 +1384,23 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
     return () => { cancelled = true; };
   }, [memberKey]);
   const picOf = (userId) => (memberPics[userId] || {}).pic || '';
+
+  // ── Live locations: travellers read the table, followers via the token-gated fn ──
+  const [locations, setLocations] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      const p = session ? locFetch(session, trip.id) : sharedLocFetch(trip.id, shareToken);
+      p.then(rows => { if (!cancelled) setLocations(rows || []); });
+    };
+    load();
+    const iv = setInterval(load, 20000); // refresh every 20s
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [trip.id, session, shareToken, sharingLoc]);
+  const nameForLoc = (userId) => {
+    const m = (trip.members || []).find(x => x.userId === userId);
+    return (m && m.name) || (memberPics[userId] || {}).name || userId;
+  };
   const copyShare = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
@@ -1533,6 +1551,37 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Live location: who's on the move right now ── */}
+      {(onToggleShare || locations.length > 0) && (
+        <div style={{ marginBottom:18, background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:10, padding:'12px 14px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', marginBottom: locations.length ? 8 : 0 }}>
+            <span style={{ fontSize:12.5, fontWeight:700, color:'#8B2A14', flex:1, minWidth:120 }}>📍 Live location</span>
+            {onToggleShare && (
+              <button onClick={onToggleShare}
+                style={{ border:'none', borderRadius:20, padding:'6px 14px', fontSize:12, fontWeight:700, cursor:'pointer',
+                  background: sharingLoc ? '#3C8A3C' : '#6E1A10', color:'#fff', display:'inline-flex', alignItems:'center', gap:6 }}>
+                {sharingLoc ? <><span style={{ width:7,height:7,borderRadius:'50%',background:'#fff',display:'inline-block' }} /> Sharing · Stop</> : 'Share my location'}
+              </button>
+            )}
+          </div>
+          {locations.length === 0
+            ? <div style={{ fontSize:11.5, color:'#9A8478', lineHeight:1.5 }}>{sharingLoc ? 'Getting a GPS fix… your followers will see you move shortly.' : (onToggleShare ? 'Turn this on while you drive so followers can watch your journey live.' : 'No one is sharing their location right now.')}</div>
+            : locations.map(loc => (
+                <div key={loc.user_id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderTop:'1px solid #E2D8C8' }}>
+                  <div style={{ width:30, height:30, borderRadius:'50%', overflow:'hidden', background:'#E8E2D4', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:12, fontWeight:700, color:'#8A6A50' }}>
+                    {picOf(loc.user_id) ? <img src={picOf(loc.user_id)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : ((nameForLoc(loc.user_id)||'?').trim().charAt(0)||'?').toUpperCase()}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:'#6E1A10' }}>{nameForLoc(loc.user_id)}{session && loc.user_id===session.userId ? ' (you)' : ''}</div>
+                    <div style={{ fontSize:11, color:'#9A8478' }}>updated {timeAgo(loc.updated_at)}</div>
+                  </div>
+                  <a href={gmapsPinUrl(loc.lat, loc.lon)} target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize:12, fontWeight:700, color:'#fff', background:'#1A73E8', borderRadius:8, padding:'7px 12px', textDecoration:'none', whiteSpace:'nowrap' }}>View on Map</a>
+                </div>
+              ))}
         </div>
       )}
 
@@ -1828,6 +1877,52 @@ async function saveToCloud(trips, headerNote) {
 }
 
 const SUPA_BUCKET = 'trip-media';
+
+// ---- Live location sharing (one row per traveller + trip) --------------
+// The traveller writes their own position as themselves (RLS keys on auth_uid);
+// people on the trip read it directly, anonymous followers via a token-gated fn.
+async function locUpsert(session, tripId, lat, lon, sharing) {
+  try {
+    if (!session) return;
+    await fetch(SUPA_URL + '/rest/v1/trip_locations?on_conflict=user_id,trip_id', {
+      method: 'POST', headers: { ...authHeaders(session), Prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify({ trip_id: tripId, user_id: normUserId(session.userId), auth_uid: session.uid, lat, lon, sharing, updated_at: new Date().toISOString() })
+    });
+  } catch (e) {}
+}
+// Travellers in the app read the table directly (RLS lets trip members see it)
+async function locFetch(session, tripId) {
+  try {
+    if (!session) return [];
+    const r = await fetch(SUPA_URL + '/rest/v1/trip_locations?trip_id=eq.' + encodeURIComponent(tripId) + '&sharing=eq.true&select=user_id,lat,lon,updated_at', { headers: authHeaders(session) });
+    if (!r.ok) return [];
+    const rows = await r.json();
+    return Array.isArray(rows) ? rows.filter(x => x.lat != null) : [];
+  } catch (e) { return []; }
+}
+// Anonymous followers on a ?view= link read through the share-token function
+async function sharedLocFetch(tripId, token) {
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/rpc/shared_trip_locations', {
+      method: 'POST', headers: supaHeaders, body: JSON.stringify({ p_id: tripId, p_token: token || '' })
+    });
+    if (!r.ok) return [];
+    const rows = await r.json();
+    return Array.isArray(rows) ? rows : [];
+  } catch (e) { return []; }
+}
+// "3 min ago" style relative time
+const timeAgo = (iso) => {
+  try {
+    const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 45) return 'just now';
+    if (s < 3600) return `${Math.floor(s/60)} min ago`;
+    if (s < 86400) return `${Math.floor(s/3600)} h ago`;
+    return `${Math.floor(s/86400)} d ago`;
+  } catch (e) { return ''; }
+};
+// A pin at the traveller's actual coordinates
+const gmapsPinUrl = (lat, lon) => 'https://www.google.com/maps?q=' + lat + ',' + lon;
 
 // ---- Follower push notifications --------------------------------------
 // Public VAPID key (safe to ship). The matching private key lives only in
@@ -2753,6 +2848,36 @@ function MainApp() {
     setShowProfile(false);
   };
 
+  // ── Live location sharing: while sharingTripId is set, push my GPS to Supabase ──
+  const [sharingTripId, setSharingTripId] = useState(() => { try { return localStorage.getItem('sharingTripId') || null; } catch(e){ return null; } });
+  useEffect(() => { try { sharingTripId ? localStorage.setItem('sharingTripId', sharingTripId) : localStorage.removeItem('sharingTripId'); } catch(e){} }, [sharingTripId]);
+  useEffect(() => {
+    if (!sharingTripId || !session) return;
+    let watchId = null, last = 0, active = true;
+    (async () => {
+      try { await Geolocation.requestPermissions(); } catch(e){} // prompts on Android; no-op on web
+      try {
+        watchId = await Geolocation.watchPosition({ enableHighAccuracy:true, timeout:25000, maximumAge:10000 }, (pos, err) => {
+          if (!active || err || !pos) return;
+          const now = Date.now();
+          if (now - last < 12000) return; // throttle writes to ~12s
+          last = now;
+          freshSession(session, setSession).then(s => locUpsert(s, sharingTripId, pos.coords.latitude, pos.coords.longitude, true));
+        });
+      } catch(e){}
+    })();
+    return () => { active = false; if (watchId) { try { Geolocation.clearWatch({ id: watchId }); } catch(e){} } };
+  }, [sharingTripId, session]);
+  const toggleSharing = async (tripId) => {
+    if (sharingTripId === tripId) {
+      setSharingTripId(null);
+      const s = await freshSession(session, setSession);
+      locUpsert(s, tripId, null, null, false); // stop → hide from followers
+    } else {
+      setSharingTripId(tripId);
+    }
+  };
+
   const onAuth = (s) => { setSession(s); saveAuth(s); setShowDashboard(true); };
   const onLogout = () => { authSignOut(session); setSession(null); saveAuth(null); setShowAccount(false); };
 
@@ -3155,6 +3280,7 @@ function MainApp() {
           {activeTab==="Budget" && <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />}
           {activeTab==="Packing" && <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
           {activeTab==="Status" && <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)}
+            sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)}
             shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${trip.shareToken ? `&k=${encodeURIComponent(trip.shareToken)}` : ''}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />}
           {activeTab==="Pictures" && <PicturesTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
         </div>
@@ -3958,7 +4084,7 @@ function ViewerApp({ tripId, token, focusUserId }) {
         <button onClick={refresh} style={{ padding:"3px 10px", borderRadius:6, border:"1px solid #C8B09A", background:"transparent", color:"#8B2A14", fontSize:11.5, cursor:"pointer" }}>Refresh now</button>
       </div>
       <FollowerNotify tripId={tripId} token={token} />
-      <StatusTab trip={trip} focusUserId={focusUserId} />
+      <StatusTab trip={trip} focusUserId={focusUserId} shareToken={token} />
       <div style={{ textAlign:"center", fontSize:11, color:"#B0A091", padding:"18px 0 8px" }}>Read-only view · shared by the traveler</div>
     </div>
   );
