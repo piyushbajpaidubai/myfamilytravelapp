@@ -61,9 +61,12 @@ const TRIP_STATUS = {
 const tripStatusOf = (trip) => (trip && trip.status) || 'todo';
 
 function Modal({ title, onClose, children }) {
+  // The overlay itself scrolls, so a form taller than the screen stays reachable
+  // (margin:auto keeps short dialogs centred). Safe-area padding clears the notch.
   return (
-    <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.3)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center" }}>
-      <div style={{ background:"#F0EBE0",borderRadius:12,padding:24,minWidth:320,maxWidth:480,width:"90%",boxShadow:"0 8px 32px rgba(44,24,16,0.15)" }}>
+    <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.3)",zIndex:100,display:"flex",justifyContent:"center",overflowY:"auto",WebkitOverflowScrolling:"touch",
+      padding:"calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px)" }}>
+      <div style={{ background:"#F0EBE0",borderRadius:12,padding:24,minWidth:0,maxWidth:480,width:"100%",margin:"auto",boxShadow:"0 8px 32px rgba(44,24,16,0.15)" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
           <h3 style={{ margin:0,fontSize:16,fontWeight:600 }}>{title}</h3>
           <button onClick={onClose} style={{ background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#B54030" }}>×</button>
@@ -980,7 +983,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
                 <>
                   <Input label="Live tracking link (optional)" value={evForm.liveLink} onChange={e=>setEvForm({...evForm,liveLink:e.target.value})} placeholder="Paste Google Maps “Share trip progress” link" />
                   <p style={{ fontSize:11.5, color:'#8A7A6D', margin:'-6px 0 14px', lineHeight:1.5 }}>
-                    While navigating in Google Maps, tap <strong>⋮ → Share trip progress</strong> and paste the link here. Anyone following this trip's status link then sees your real position and ETA. You can also add it mid-journey from the Status tab.
+                    Google Maps → <strong>⋮ → Share trip progress</strong>. Followers then see your live position. Can also be added mid-drive from the Status tab.
                   </p>
                 </>
               )}
