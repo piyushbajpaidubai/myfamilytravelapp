@@ -141,6 +141,10 @@ const TRAVEL_MODES = ["By Road", "By Air"];
 // Official Google Maps directions URL (no API key needed; opens the Maps app on phones for live navigation)
 const gmapsDirUrl = (from, to) =>
   'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(from || '') + '&destination=' + encodeURIComponent(to || '') + '&travelmode=driving';
+// Same, but with NO origin — Google Maps then routes from the device's CURRENT location,
+// i.e. real turn-by-turn navigation from wherever the traveler actually is.
+const gmapsNavUrl = (to) =>
+  'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(to || '') + '&travelmode=driving';
 // Flightradar24 flight-status page for a given flight number (free feature; live when airborne)
 const fr24Url = (flightNo) => 'https://www.flightradar24.com/data/flights/' + encodeURIComponent((flightNo || '').replace(/\s+/g, '').toLowerCase());
 
@@ -285,7 +289,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
   const [dayForm, setDayForm] = useState({ date:"", label:"" });
   // evForm covers both single-day activities (time/endTime/category) and multi-day spans (startDate/endDate/…)
   // duration = 'single' | 'multi' decides which; type only matters for multi-day spans
-  const [evForm, setEvForm] = useState({ duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" });
+  const [evForm, setEvForm] = useState({ duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", liveLink:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" });
   // Activity state: { [eventId]: inputText }
   const [activityInput, setActivityInput] = useState({});
   // Which event is showing the activity input box
@@ -412,7 +416,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
 
   const delDay = (id) => update({ days: (trip.days||[]).filter(d=>d.id!==id) });
 
-  const blankForm = { duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" };
+  const blankForm = { duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", liveLink:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" };
   const closeModal = () => { setShowEvent(null); setEvForm(blankForm); };
   // Open "add" modal from a day; prefill span dates to that day + default the optional expense to the current traveler
   const openAddEvent = (day) => {
@@ -469,7 +473,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
       else if (!f.from || !f.to) { alert('Please fill in the From and To locations.'); return; }
     }
     const endDate = f.duration === 'single' ? f.startDate : f.endDate; // single-day travel stays same-day
-    const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, mode:f.mode, flightNo:f.flightNo, notes:f.notes, startDate:f.startDate, startTime:f.startTime, endDate, endTime:f.spanEndTime };
+    const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, mode:f.mode, flightNo:f.flightNo, liveLink:f.liveLink, notes:f.notes, startDate:f.startDate, startTime:f.startTime, endDate, endTime:f.spanEndTime };
     const span = { id:uid(), ...fields, dayStatus:{}, docs:[] };
     const exp = expenseFromForm(span.id);
     update(t => ({
@@ -972,6 +976,14 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
                 <div style={{ flex:1 }}><Input label={evForm.mode==='By Air' ? 'From' : 'From *'} value={evForm.from} onChange={e=>setEvForm({...evForm,from:e.target.value})} placeholder={evForm.mode==='By Air' ? 'e.g. Delhi (DEL)' : 'e.g. Dehradun'} /></div>
                 <div style={{ flex:1 }}><Input label={evForm.mode==='By Air' ? 'To' : 'To *'} value={evForm.to} onChange={e=>setEvForm({...evForm,to:e.target.value})} placeholder={evForm.mode==='By Air' ? 'e.g. Dubai (DXB)' : 'e.g. Kedarnath'} /></div>
               </div>
+              {evForm.mode !== 'By Air' && (
+                <>
+                  <Input label="Live tracking link (optional)" value={evForm.liveLink} onChange={e=>setEvForm({...evForm,liveLink:e.target.value})} placeholder="Paste Google Maps “Share trip progress” link" />
+                  <p style={{ fontSize:11.5, color:'#8A7A6D', margin:'-6px 0 14px', lineHeight:1.5 }}>
+                    While navigating in Google Maps, tap <strong>⋮ → Share trip progress</strong> and paste the link here. Anyone following this trip's status link then sees your real position and ETA. You can also add it mid-journey from the Status tab.
+                  </p>
+                </>
+              )}
               {evForm.duration === 'multi' ? (
                 <>
                   <div style={{ display:"flex", gap:10 }}>
@@ -1387,7 +1399,8 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
   };
 
   const LINE = '#3D0C02';
-  const [livePopup, setLivePopup] = useState(null); // { kind:'maps'|'flight', from, to, mode, flightNo, name }
+  const [livePopup, setLivePopup] = useState(null); // { kind:'maps'|'flight', from, to, mode, flightNo, liveLink, spanId, name }
+  const [liveLinkDraft, setLiveLinkDraft] = useState(''); // editable copy of the trip-progress link in the popup
   const [sentenceView, setSentenceView] = useState(false); // Markers ⇄ Sentences
   // Travelers who count for an item: its assignees, or everyone when unassigned
   const assignedRoster = (item) => {
@@ -1478,8 +1491,8 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
       const sr = assignedRoster(s);
       const statuses = perTraveler ? sr.map(m => spanMemStOf(s, m.userId, day.date)) : [spanStOf(s, day.date)];
       const isTravel = meta.kind === 'travel';
-      const hasLink = isTravel && (s.mode === 'By Air' ? !!s.flightNo : (s.from || s.to));
-      const extra = { ref:{ kind:'span', spanId:s.id, dayISO:day.date }, titleText: s.title || '(untitled)', ...(hasLink ? { travel: { mode:s.mode, from:s.from, to:s.to, flightNo:s.flightNo, name:s.title || 'Travel' } } : {}) };
+      const hasLink = isTravel && (s.mode === 'By Air' ? !!s.flightNo : (s.from || s.to || s.liveLink || update));
+      const extra = { ref:{ kind:'span', spanId:s.id, dayISO:day.date }, titleText: s.title || '(untitled)', ...(hasLink ? { travel: { mode:s.mode, from:s.from, to:s.to, flightNo:s.flightNo, liveLink:s.liveLink, spanId:s.id, name:s.title || 'Travel' } } : {}) };
       push(s.id+'_'+day.id, spanSegLabel(s, day.date), `${spanIcon(s)} ${s.title || '(untitled)'}`.trim(), statuses, extra, sr);
     };
     const pushEvent = (ev) => {
@@ -1724,9 +1737,9 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                                 style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#F16C1E', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
                                 <span style={{ fontSize:14 }}>✈️</span> Show Live
                               </button>
-                            : <button onClick={()=>setLivePopup({ kind:'maps', ...it.travel })}
-                                style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#1A73E8', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
-                                <span style={{ fontSize:14 }}>🗺</span> Show Live
+                            : <button onClick={()=>{ setLiveLinkDraft(it.travel.liveLink || ''); setLivePopup({ kind:'maps', ...it.travel }); }}
+                                style={{ display:'inline-flex', alignItems:'center', gap:6, background: it.travel.liveLink ? '#1E8E3E' : '#1A73E8', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
+                                <span style={{ fontSize:14 }}>{it.travel.liveLink ? '📍' : '🗺'}</span> {it.travel.liveLink ? 'Live location' : 'Route'}
                               </button>}
                         </div>
                       )}
@@ -1781,17 +1794,47 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
           </div>
         </Modal>
       ) : (
-        <Modal title="Live on Google Maps" onClose={()=>setLivePopup(null)}>
+        <Modal title={livePopup.liveLink ? 'Live location' : 'Travel route'} onClose={()=>setLivePopup(null)}>
           <div style={{ fontSize:13.5, color:'#6E1A10', marginBottom:6 }}>{livePopup.name}</div>
-          <div style={{ display:'flex', alignItems:'center', gap:8, background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:9, padding:'12px 14px', marginBottom:16 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:9, padding:'12px 14px', marginBottom:14 }}>
             <span style={{ fontSize:18 }}>🚗</span>
             <span style={{ fontSize:14, fontWeight:600, color:'#2E2320' }}>{livePopup.from || '?'} <span style={{ color:'#B0967A' }}>→</span> {livePopup.to || '?'}</span>
           </div>
-          <p style={{ fontSize:12.5, color:'#8A7A6D', margin:'0 0 16px', lineHeight:1.5 }}>Opens live driving directions in Google Maps — on a phone this launches turn-by-turn navigation.</p>
-          <div style={{ display:'flex', gap:8 }}>
-            <Btn onClick={()=>{ window.open(gmapsDirUrl(livePopup.from, livePopup.to), '_blank', 'noopener'); setLivePopup(null); }} style={{ background:'#1A73E8' }}>Open live in Google Maps</Btn>
-            <Btn variant="ghost" onClick={()=>setLivePopup(null)}>Cancel</Btn>
-          </div>
+
+          {/* Real live tracking — the traveler's own Google Maps trip-progress link */}
+          {livePopup.liveLink && (
+            <>
+              <Btn onClick={()=>{ window.open(livePopup.liveLink, '_blank', 'noopener'); setLivePopup(null); }} style={{ background:'#1E8E3E', width:'100%', marginBottom:8 }}>📍 Open live tracking</Btn>
+              <p style={{ fontSize:11.5, color:'#8A7A6D', margin:'0 0 16px', lineHeight:1.5 }}>Shows the traveller's real position and ETA, shared from their Google Maps navigation.</p>
+            </>
+          )}
+
+          {/* Navigate from where I actually am (travellers only — a viewer would get their own route) */}
+          {update && (
+            <Btn onClick={()=>{ window.open(gmapsNavUrl(livePopup.to), '_blank', 'noopener'); setLivePopup(null); }} style={{ background:'#1A73E8', width:'100%', marginBottom:8 }}>🧭 Navigate from my location</Btn>
+          )}
+          <Btn variant="soft" onClick={()=>{ window.open(gmapsDirUrl(livePopup.from, livePopup.to), '_blank', 'noopener'); setLivePopup(null); }} style={{ width:'100%' }}>🗺 Planned route ({livePopup.from || '?'} → {livePopup.to || '?'})</Btn>
+
+          {/* Paste / update the trip-progress link mid-journey */}
+          {update && (
+            <div style={{ marginTop:16, paddingTop:14, borderTop:'1px solid #E4D8C4' }}>
+              <Input label={livePopup.liveLink ? 'Live tracking link' : 'Add a live tracking link'} value={liveLinkDraft} onChange={e=>setLiveLinkDraft(e.target.value)} placeholder="Paste Google Maps “Share trip progress” link" />
+              <p style={{ fontSize:11.5, color:'#8A7A6D', margin:'-6px 0 10px', lineHeight:1.5 }}>In Google Maps while navigating: <strong>⋮ → Share trip progress</strong>. Paste it here so followers see your real position.</p>
+              <div style={{ display:'flex', gap:8 }}>
+                <Btn onClick={()=>{
+                  const v = liveLinkDraft.trim();
+                  update(t => ({ spans:(t.spans||[]).map(s => s.id===livePopup.spanId ? { ...s, liveLink:v } : s) }));
+                  setLivePopup(p => p ? { ...p, liveLink:v } : p);
+                }}>{livePopup.liveLink ? 'Update link' : 'Save link'}</Btn>
+                {livePopup.liveLink && (
+                  <Btn variant="ghost" onClick={()=>{
+                    update(t => ({ spans:(t.spans||[]).map(s => s.id===livePopup.spanId ? { ...s, liveLink:'' } : s) }));
+                    setLiveLinkDraft(''); setLivePopup(p => p ? { ...p, liveLink:'' } : p);
+                  }}>Remove</Btn>
+                )}
+              </div>
+            </div>
+          )}
         </Modal>
       ))}
     </div>
