@@ -488,7 +488,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
   };
   const delSpan = (id) => {
     const s = (trip.spans||[]).find(x=>x.id===id);
-    if (s && s.docs) s.docs.forEach(d => d.url && deleteFromStorage(d.url));
+    if (s && s.docs) s.docs.forEach(d => d.url && deleteFromStorage(session, d.url));
     update(t => ({ spans:(t.spans||[]).filter(x=>x.id!==id), expenses:(t.expenses||[]).filter(e => e.eventId !== id) }));
   };
   const cycleSpanStatus = (id, dayISO) =>
@@ -506,7 +506,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
   const delSpanDoc = (id, docId) => {
     const s = (trip.spans||[]).find(x=>x.id===id);
     const d = s && (s.docs||[]).find(x=>x.id===docId);
-    if (d && d.url) deleteFromStorage(d.url);
+    if (d && d.url) deleteFromStorage(session, d.url);
     update({ spans:(trip.spans||[]).map(x => x.id===id ? { ...x, docs:(x.docs||[]).filter(dd=>dd.id!==docId) } : x) });
   };
 
@@ -584,7 +584,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
     const _ev = _day && (_day.events||[]).find(e=>e.id===evId);
     const _list = _ev ? (actId ? (((_ev.activities||[]).find(a=>a.id===actId)||{}).docs||[]) : (_ev.docs||[])) : [];
     const _target = _list.find(x=>x.id===docId);
-    if (_target && _target.url) deleteFromStorage(_target.url);
+    if (_target && _target.url) deleteFromStorage(session, _target.url);
     const days = (trip.days||[]).map(d => d.id===dayId
       ? { ...d, events:(d.events||[]).map(e => {
           if (e.id !== evId) return e;
@@ -1931,15 +1931,18 @@ async function uploadToStorage(file, folder) {
 }
 
 // Best-effort delete of a stored file given its public URL.
-async function deleteFromStorage(url) {
+// Removing a file needs a signed-in traveller: the bucket's delete policy is
+// granted to `authenticated` only, so the anon key silently left orphans behind.
+async function deleteFromStorage(session, url) {
   if (!url || typeof url !== 'string') return;
   const marker = '/object/public/' + SUPA_BUCKET + '/';
   const i = url.indexOf(marker);
   if (i === -1) return;
   const path = url.slice(i + marker.length);
   try {
+    const s = await freshSession(session);
     await fetch(SUPA_URL + '/storage/v1/object/' + SUPA_BUCKET + '/' + path, {
-      method: 'DELETE', headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY }
+      method: 'DELETE', headers: authHeaders(s)
     });
   } catch(e) {}
 }
