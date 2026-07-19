@@ -281,6 +281,31 @@ function Assignees({ members, value, onChange }) {
 }
 
 // ---- Schedule Tab ----
+// ---- Icon set for the native itinerary UI (from the Schedule redesign) ----
+function NativeStatusIcon({ name, size=20, stroke='currentColor' }) {
+  const common = { fill:'none', stroke, strokeWidth:1.8, strokeLinecap:'round', strokeLinejoin:'round' };
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" style={{ display:'block' }}>
+      {name === 'back' && <path {...common} d="M15 18l-6-6 6-6" />}
+      {name === 'share' && <><circle {...common} cx="18" cy="5" r="2.2"/><circle {...common} cx="6" cy="12" r="2.2"/><circle {...common} cx="18" cy="19" r="2.2"/><path {...common} d="M8 11l7.8-4.6M8 13l7.8 4.6"/></>}
+      {name === 'home' && <><path {...common} d="M3.5 10.5L12 3l8.5 7.5"/><path {...common} d="M5.5 9.3V21h13V9.3M9.5 21v-6h5v6"/></>}
+      {name === 'plan' && <><rect {...common} x="4" y="5" width="16" height="15" rx="2.5"/><path {...common} d="M8 3v4M16 3v4M4 10h16"/></>}
+      {name === 'status' && <><circle {...common} cx="12" cy="12" r="8.5"/><path {...common} d="M8.5 12.5l2.3 2.3 4.8-5.2"/></>}
+      {name === 'people' && <><circle {...common} cx="9" cy="8" r="3"/><path {...common} d="M3.5 20c.5-4 2.4-6 5.5-6s5 2 5.5 6"/><circle {...common} cx="17.5" cy="9" r="2.2"/><path {...common} d="M15.5 15c2.8-.5 4.7 1.1 5 4"/></>}
+      {name === 'pin' && <><path {...common} d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1114 0z"/><circle {...common} cx="12" cy="10" r="2.2"/></>}
+      {name === 'clock' && <><circle {...common} cx="12" cy="12" r="9"/><path {...common} d="M12 7v5l3 2"/></>}
+      {name === 'plus' && <path {...common} d="M12 5v14M5 12h14" />}
+      {name === 'chevron' && <path {...common} d="M6 9l6 6 6-6" />}
+      {name === 'edit' && <><path {...common} d="M4 20l4.2-1 10-10a2.1 2.1 0 00-3-3l-10 10L4 20z"/><path {...common} d="M13.8 7.4l3 3"/></>}
+      {name === 'clip' && <path {...common} d="M8.5 12.5l6.2-6.2a3.2 3.2 0 114.5 4.5l-8.3 8.3a5 5 0 11-7-7l8-8" />}
+      {name === 'receipt' && <><path {...common} d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path {...common} d="M9 8h6M9 12h6M9 16h3"/></>}
+      {name === 'trash' && <><path {...common} d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></>}
+      {name === 'task' && <><rect {...common} x="4" y="4" width="16" height="16" rx="3"/><path {...common} d="M8 12l2.2 2.2L16 9"/></>}
+      {name === 'more' && <><circle fill={stroke} cx="5" cy="12" r="1.5"/><circle fill={stroke} cx="12" cy="12" r="1.5"/><circle fill={stroke} cx="19" cy="12" r="1.5"/></>}
+    </svg>
+  );
+}
+
 function ScheduleTab({ trip, update, session, canEdit=true }) {
   const myId = session ? session.userId : null;
   // The status the current user sees/toggles on an item (per-traveler when logged in, else legacy shared)
@@ -288,9 +313,17 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
   const spStatus = (s, iso) => myId ? spanMemStOf(s, myId, iso) : spanStOf(s, iso);
   const [showDay, setShowDay] = useState(false);
   const [collapsedDays, setCollapsedDays] = useState({}); // { [dayId]: true } when collapsed
+  const [expandedItems, setExpandedItems] = useState({});
+  const [expandedTaskPeople, setExpandedTaskPeople] = useState({});
+  const [editingPanelFor, setEditingPanelFor] = useState(null);
+  const [peoplePanelFor, setPeoplePanelFor] = useState(null);
   const toggleDayCollapse = (id) => setCollapsedDays(c => ({ ...c, [id]: !c[id] }));
+  const toggleItemDetails = (id) => setExpandedItems(current => ({ ...current, [id]:!current[id] }));
+  const toggleTaskPeople = (id) => setExpandedTaskPeople(current => ({ ...current, [id]:!current[id] }));
   const [showEvent, setShowEvent] = useState(null); // dayId when the add modal is open
+  const [showTask, setShowTask] = useState(null); // dayId when the independent task modal is open
   const [dayForm, setDayForm] = useState({ date:"", label:"" });
+  const [taskForm, setTaskForm] = useState({ time:"", text:"", assignees:[] });
   // evForm covers both single-day activities (time/endTime/category) and multi-day spans (startDate/endDate/…)
   // duration = 'single' | 'multi' decides which; type only matters for multi-day spans
   const [evForm, setEvForm] = useState({ duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" });
@@ -384,6 +417,20 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
               if (myId) { const cur=memStOf(a, myId); return { ...a, memberStatus:{ ...(a.memberStatus||{}), [myId]: cur==='done'?'todo':'done' } }; }
               return { ...a, status: stOf(a)==='done' ? 'todo' : 'done', done: undefined };
             }) } : e) } : d) }));
+
+  const cycleDayTaskStatus = (dayId, taskId) =>
+    update(t => ({ days:(t.days||[]).map(day => day.id===dayId
+      ? { ...day, tasks:(day.tasks||[]).map(task => {
+          if (task.id!==taskId) return task;
+          if (myId) return { ...task, memberStatus:{ ...(task.memberStatus||{}), [myId]:nextStatus(memStOf(task,myId)) } };
+          return { ...task, status:nextStatus(stOf(task)), done:undefined };
+        }) }
+      : day) }));
+
+  const setDayTaskAssignees = (dayId, taskId, assignees) =>
+    update(t => ({ days:(t.days||[]).map(day => day.id===dayId
+      ? { ...day, tasks:(day.tasks||[]).map(task => task.id===taskId ? { ...task,assignees } : task) }
+      : day) }));
 
   // Renders an editable text span; clicking turns it into an input (Enter/blur saves, Esc cancels)
   const Editable = ({ kind, ids, value, placeholder, spanStyle, inputWidth, inputType }) => {
@@ -600,7 +647,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
     update({ days });
   };
 
-  const fmtSize = (bytes) => bytes < 1024 ? bytes+'B' : bytes < 1048576 ? (bytes/1024).toFixed(1)+'KB' : (bytes/1048576).toFixed(1)+'MB';
+  const fmtSize = (bytes) => bytes == null ? '' : bytes < 1024 ? bytes+'B' : bytes < 1048576 ? (bytes/1024).toFixed(1)+'KB' : (bytes/1048576).toFixed(1)+'MB';
 
   // Reusable doc attachment row
   function DocList({ docs=[], onAdd, onDel }) {
@@ -643,7 +690,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
         <div key={doc.id} style={{ display:'flex',alignItems:'center',gap:6,padding:'3px 0',borderBottom:'1px solid #E8E2D4' }}>
           <span style={{ fontSize:14 }}>📎</span>
           <span onClick={()=>openPreview(doc)} style={{ fontSize:12,color:'#8B2A14',textDecoration:'underline',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:'pointer' }}>{doc.name}</span>
-          <span style={{ fontSize:11,color:'#C05040',flexShrink:0 }}>{fmtSize(doc.size)}</span>
+          {doc.size != null && <span style={{ fontSize:11,color:'#C05040',flexShrink:0 }}>{fmtSize(doc.size)}</span>}
           {onDel && <button onClick={()=>onDel(doc.id)} style={{ background:'none',border:'none',cursor:'pointer',color:'#C04428',fontSize:13,padding:'0 2px',lineHeight:1 }}>✕</button>}
         </div>
       ))}
@@ -728,182 +775,209 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
 
 
 
-  // Merge spans + events for a day and sort chronologically by start time (all-day/mid-span items first)
+  // Merge spans, independent tasks, and events for a day, then sort by time.
   const mergedDayItems = (day) => {
     const spanT = (s) => day.date === s.startDate ? (s.startTime || '') : day.date === s.endDate ? (s.endTime || '') : '';
     const items = [
       ...spansOnDay(trip, day.date).map(s => ({ kind:'span', s, t: spanT(s) })),
       ...(day.events || []).map(ev => ({ kind:'event', ev, t: ev.time || '' })),
+      ...(day.tasks || []).map(task => ({ kind:'task', task, t:task.time || '' })),
     ];
     return items.sort((a, b) => (!a.t && !b.t) ? 0 : !a.t ? -1 : !b.t ? 1 : (a.t > b.t ? 1 : a.t < b.t ? -1 : 0));
   };
 
-  // ── Multi-day span strip (hotel / travel) ──
-  const renderSpanStrip = (day, s) => (
-    <div key={s.id} style={{ padding:"9px 14px",borderTop:"1px solid #D4BFB0",background:"#F3ECDA" }}>
-      <div style={{ display:"flex",alignItems:"flex-start",gap:8 }}>
-        <StatusBox status={spStatus(s, day.date)} onClick={()=>cycleSpanStatus(s.id, day.date)} size={16} style={{ marginRight:0 }} />
-        <span style={{ fontSize:17,lineHeight:1.2,flexShrink:0 }}>{spanIcon(s)}</span>
-        <div style={{ flex:1,minWidth:0 }}>
-          <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
-            <span style={{ opacity: spStatus(s, day.date)==='done'?0.55:1, textDecoration: spStatus(s, day.date)==='done'?"line-through":"none" }}>
-              {Editable({ kind:'span', ids:{ dayId:day.id, evId:s.id }, value:s.title, placeholder:'(untitled)', spanStyle:{ fontSize:13,fontWeight:700,color:'#6E1A10' }, inputWidth:200 })}
-            </span>
-            <span style={{ fontSize:11,background:"#E4D3B4",borderRadius:4,padding:"1px 6px",color:"#7A4A1A",fontWeight:600 }}>{s.type}</span>
-          </div>
-          <div style={{ fontSize:11.5,color:'#9A6A2A',fontWeight:700,marginTop:3,textTransform:'uppercase',letterSpacing:'0.04em' }}>{spanSegLabel(s, day.date)}</div>
-          {spanLocationText(s) && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {spanLocationText(s)}</div>}
-          {s.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{s.notes}</div>}
-          <div style={{ fontSize:10.5,color:'#B0967A',marginTop:3 }}>
-            {fmtDate(s.startDate)}{s.startTime?` · ${s.startTime}`:''} → {fmtDate(s.endDate)}{s.endTime?` · ${s.endTime}`:''}
-          </div>
-          {canEdit && <Assignees members={members} value={s.assignees} onChange={(list)=>setSpanAssignees(s.id, list)} />}
-          <DocList docs={s.docs||[]} onAdd={(file)=>attachSpanDoc(s.id,file)} onDel={canEdit ? (docId)=>delSpanDoc(s.id,docId) : null} />
-          <button onClick={()=>openExpense(s.id)}
-            style={{ marginTop:8, background:'none', border:'1px dashed #C8B09A', borderRadius:6, padding:'3px 10px', fontSize:12, color:'#8B2A14', cursor:'pointer', fontWeight:500 }}>
-            + Expense
-          </button>
-        </div>
-        <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
-          <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={spStatus(s, day.date)} /></span>
-          {canEdit && (<>
-          <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
-            <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
-            <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachSpanDoc(s.id,e.target.files[0]); e.target.value=''; }} />
-          </label>
-          <button title="Delete" onClick={()=>delSpan(s.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
-          </>)}
-        </div>
+  const scheduleStatusLabel = { todo:'Not started', active:'Ongoing', done:'Complete' };
+  const scheduleCategoryIcon = (category) => ({ Food:'☕', Transport:'↗', Sightseeing:'◇', Accommodation:'⌂', Activity:'○', Other:'•' }[category] || '○');
+  const itemPeople = (item) => {
+    const ids = item.assignees || [];
+    return ids.length ? ids.map(id => members.find(member => member.userId===id)).filter(Boolean) : members;
+  };
+
+  const openDayTask = (dayId) => {
+    setTaskForm({ time:"", text:"", assignees:[] });
+    setShowTask(dayId);
+  };
+  const closeDayTask = () => {
+    setShowTask(null);
+    setTaskForm({ time:"", text:"", assignees:[] });
+  };
+  const addDayTask = () => {
+    const text = taskForm.text.trim();
+    if (!taskForm.time) { alert('Please enter a task time.'); return; }
+    if (!text) { alert('Please enter a task.'); return; }
+    const task = { id:uid(), time:taskForm.time, text, assignees:taskForm.assignees||[], status:'todo' };
+    update(t => ({ days:(t.days||[]).map(day => day.id===showTask
+      ? { ...day, tasks:[...(day.tasks||[]),task].sort((a,b)=>(a.time||'').localeCompare(b.time||'')) }
+      : day) }));
+    closeDayTask();
+  };
+  const itemPeopleLabel = (item) => (item.assignees||[]).length ? `${item.assignees.length} assigned` : 'Everyone';
+  const nativeActionStyle = (danger=false) => ({ minHeight:44,border:`1px solid ${danger?'#EBCFC9':'#E2D8CC'}`,borderRadius:11,background:danger?'#FFF3F0':'#FAF8F4',color:danger?'#A43828':'#6E2118',fontSize:10.5,fontWeight:750,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:5,padding:'7px 8px',boxSizing:'border-box' });
+  const renderPeopleRow = (item, detailKey) => {
+    const expanded = !!expandedItems[detailKey];
+    const roster = itemPeople(item);
+    return <button type="button" aria-expanded={expanded} aria-label={`${expanded?'Collapse':'Expand'} ${item.title} details`} onClick={()=>toggleItemDetails(detailKey)} style={{ width:'100%',minHeight:48,border:'none',borderTop:'1px solid #D8C8B8',background:expanded?'#E4D7C8':'#E9DED1',padding:'8px 13px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8 }}>
+      <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} style={{ width:26,height:26,marginLeft:index===0?0:-6,borderRadius:'50%',overflow:'hidden',border:'2px solid #fff',boxShadow:'0 0 0 1px #CDBEAF',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:9,fontWeight:800,flexShrink:0 }}>{member.pic?<img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}<span style={{ marginLeft:7,color:'#7C675D',fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{itemPeopleLabel(item)}</span></span>
+      <span style={{ color:'#6E2118',transform:expanded?'rotate(180deg)':'none',transition:'transform .15s',display:'grid',placeItems:'center',flexShrink:0 }}><NativeStatusIcon name="chevron" size={16}/></span>
+    </button>;
+  };
+
+  // Independent day task with separate status and traveler-tag interaction zones.
+  const renderDayTask = (day, task) => {
+    const status = evStatus(task);
+    const roster = itemPeople(task);
+    const peopleKey = `${day.id}-${task.id}`;
+    const peopleOpen = !!expandedTaskPeople[peopleKey];
+    const selectedIds = task.assignees||[];
+    const everyoneSelected = selectedIds.length===0;
+    const peopleLabel = everyoneSelected ? 'Everyone' : selectedIds.map(id=>members.find(member=>member.userId===id)).filter(Boolean).map(member=>(member.name||member.userId).split(' ')[0]).join(', ') || `${selectedIds.length} tagged`;
+    const toggleMember = (userId) => {
+      const next = everyoneSelected ? [userId] : selectedIds.includes(userId) ? selectedIds.filter(id=>id!==userId) : [...selectedIds,userId];
+      setDayTaskAssignees(day.id,task.id,next);
+    };
+    return <article key={`day-task-${task.id}`} style={{ display:'grid',gridTemplateColumns:'32px minmax(0,1fr)',gap:8,position:'relative',marginBottom:12 }}>
+      <span aria-hidden="true" style={{ width:12,height:12,margin:'20px 0 0 10px',borderRadius:3,transform:'rotate(45deg)',background:STATUS_META[status].ring,border:'3px solid #F7F5F0',boxShadow:`0 0 0 1px ${STATUS_META[status].ring}`,boxSizing:'border-box',zIndex:2 }}/>
+      <div style={{ border:'1.5px solid #C99B7C',borderRadius:15,background:'#FFF7EC',boxShadow:'0 4px 14px rgba(110,33,24,0.08)',overflow:'hidden' }}>
+        <button type="button" aria-label={`Update task ${task.text} status. Current status: ${scheduleStatusLabel[status]}`} onClick={()=>cycleDayTaskStatus(day.id,task.id)} style={{ position:'relative',width:'100%',minHeight:76,padding:'11px 13px 10px 35px',border:'none',background:'linear-gradient(135deg,#FFF1DF 0%,#FFF9F0 100%)',textAlign:'left',cursor:'pointer',color:'#302521',overflow:'hidden' }}>
+          <span aria-hidden="true" style={{ position:'absolute',left:0,top:0,bottom:0,width:21,background:'#8B0015',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:850,letterSpacing:'0.02em',writingMode:'vertical-rl',transform:'rotate(180deg)' }}>Task</span>
+          <span style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:10 }}><span style={{ color:'#8B2A14',fontSize:10.5,fontWeight:850,letterSpacing:'0.07em' }}>✓ {task.time} · TASK</span><span style={{ borderRadius:20,padding:'4px 8px',background:STATUS_META[status].bg,color:STATUS_META[status].color,fontSize:9.5,fontWeight:800,flexShrink:0 }}>{scheduleStatusLabel[status]}</span></span>
+          <span style={{ display:'block',marginTop:6,fontSize:14,fontWeight:850,textDecoration:status==='done'?'line-through':'none',opacity:status==='done'?0.65:1 }}>{task.text}</span>
+        </button>
+        <button type="button" disabled={!canEdit} aria-expanded={peopleOpen} aria-label={`${peopleOpen?'Close':'Edit'} tagged travelers for task ${task.text}`} onClick={()=>toggleTaskPeople(peopleKey)} style={{ width:'100%',minHeight:42,padding:'6px 13px',border:'none',borderTop:'1px solid #D6BDAA',background:peopleOpen?'#DFCDBE':'#E9DED1',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,textAlign:'left',cursor:canEdit?'pointer':'default',opacity:1 }}>
+          <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} style={{ width:24,height:24,marginLeft:index===0?0:-6,borderRadius:'50%',overflow:'hidden',border:'2px solid #fff',boxShadow:'0 0 0 1px #CDBEAF',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:8.5,fontWeight:800,flexShrink:0 }}>{member.pic?<img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}<span style={{ marginLeft:7,color:'#6F574C',fontSize:10.5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{peopleLabel}</span></span>
+          {canEdit&&<span style={{ color:'#6E2118',transform:peopleOpen?'rotate(180deg)':'none',transition:'transform .15s',display:'grid',placeItems:'center',flexShrink:0 }}><NativeStatusIcon name="chevron" size={15}/></span>}
+        </button>
+        {peopleOpen&&canEdit&&<div role="region" aria-label={`Traveler tags for task ${task.text}`} style={{ padding:'9px 10px 10px',borderTop:'1px solid #D6BDAA',background:'#F8F0E7',display:'flex',flexWrap:'wrap',gap:6 }}>
+          <button type="button" aria-pressed={everyoneSelected} onClick={()=>setDayTaskAssignees(day.id,task.id,[])} style={{ minHeight:31,padding:'4px 9px',border:`1px solid ${everyoneSelected?'#8B2A14':'#D5C5B8'}`,borderRadius:18,background:everyoneSelected?'#8B2A14':'#fff',color:everyoneSelected?'#fff':'#6F574C',fontSize:10.5,fontWeight:750,cursor:'pointer' }}>Everyone</button>
+          {members.map(member=>{ const selected=selectedIds.includes(member.userId); return <button key={member.userId} type="button" aria-pressed={selected} onClick={()=>toggleMember(member.userId)} style={{ minHeight:31,padding:'3px 8px 3px 4px',border:`1px solid ${selected?'#8B2A14':'#D5C5B8'}`,borderRadius:18,background:selected?'#F3D9CB':'#fff',color:'#5E463C',fontSize:10.5,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5 }}><span style={{ width:22,height:22,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:8,fontWeight:800 }}>{member.pic?<img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>{(member.name||member.userId).split(' ')[0]}</button>;})}
+        </div>}
       </div>
-    </div>
-  );
+    </article>;
+  };
 
-  // ── Single-day timed event block ──
-  const renderEventBlock = (day, ev) => (
-    <div key={ev.id} style={{ padding:"10px 14px",borderTop:"1px solid #D4BFB0" }}>
-      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
-        <StatusBox status={evStatus(ev)} onClick={()=>cycleEventStatus(day.id,ev.id)} size={16} style={{ marginRight:8 }} />
-        <div style={{ flex:1 }}>
-          <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
-            <span style={{ fontSize:12,color:"#B54030",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4 }}>
-              {Editable({ kind:'startTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.time, placeholder:'--:--', spanStyle:{ fontSize:12,color:'#B54030',fontWeight:600 }, inputType:'time', inputWidth:108 })}
-              <span style={{ color:'#C8A090' }}>–</span>
-              {Editable({ kind:'endTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.endTime, placeholder:'--:--', spanStyle:{ fontSize:12,color:'#B54030',fontWeight:600 }, inputType:'time', inputWidth:108 })}
-            </span>
-            <span style={{ opacity: evStatus(ev)==='done'?0.55:1, textDecoration: evStatus(ev)==='done'?"line-through":"none" }}>
-              {Editable({ kind:'event', ids:{ dayId:day.id, evId:ev.id }, value:ev.title, placeholder:'(untitled)', spanStyle:{ fontSize:13, fontWeight:500 }, inputWidth:200 })}
-            </span>
-            <span style={{ fontSize:11,background:"#DDD8CB",borderRadius:4,padding:"1px 6px",color:"#8B2A14" }}>{ev.category}</span>
+  // ── Native mobile card for multi-day spans (hotel / travel) ──
+  const renderSpanStrip = (day, s) => {
+    const status = spStatus(s, day.date);
+    const detailKey = `span-${day.id}-${s.id}`;
+    const expanded = !!expandedItems[detailKey];
+    return <article key={`${day.id}-${s.id}`} style={{ display:'grid',gridTemplateColumns:'32px minmax(0,1fr)',gap:8,position:'relative',marginBottom:12 }}>
+      <span aria-hidden="true" style={{ width:13,height:13,margin:'21px 0 0 10px',borderRadius:'50%',background:STATUS_META[status].ring,border:'3px solid #F7F5F0',boxShadow:`0 0 0 1px ${STATUS_META[status].ring}`,boxSizing:'border-box',zIndex:2 }}/>
+      <div style={{ background:'#FFF9ED',border:'1px solid #E7D7B6',borderRadius:18,boxShadow:'0 4px 14px rgba(63,47,40,0.06)',overflow:'hidden' }}>
+        <button type="button" aria-label={`Update ${s.title} status. Current status: ${scheduleStatusLabel[status]}`} onClick={()=>cycleSpanStatus(s.id,day.date)} style={{ display:'block',width:'100%',padding:'13px',border:'none',background:'transparent',textAlign:'left',cursor:'pointer',outline:'none' }}>
+          <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:10 }}><span style={{ color:'#8D786E',fontSize:10.5,fontWeight:750 }}>{spanIcon(s)} {s.startTime||'All day'} · {s.type}</span><span style={{ borderRadius:20,padding:'4px 8px',background:STATUS_META[status].bg,color:STATUS_META[status].color,fontSize:9.5,fontWeight:800 }}>{scheduleStatusLabel[status]}</span></div>
+          <div style={{ marginTop:7,fontSize:15,fontWeight:800,color:'#302521' }}>{s.title||'(untitled)'}</div>
+          <div style={{ display:'flex',alignItems:'center',gap:4,marginTop:5,color:'#99867C',fontSize:10.5 }}><NativeStatusIcon name="pin" size={12}/>{spanLocationText(s)||'Location not set'}</div>
+        </button>
+        {renderPeopleRow(s,detailKey)}
+        {expanded && <div style={{ padding:'12px 13px 14px',borderTop:'1px solid #E8DDD0',background:'#FCFAF6' }}>
+          <div style={{ color:'#8B786E',fontSize:10.5,lineHeight:1.45 }}>{spanSegLabel(s,day.date)} · {fmtDate(s.startDate)}{s.startTime?` ${s.startTime}`:''} → {fmtDate(s.endDate)}{s.endTime?` ${s.endTime}`:''}</div>
+          {s.notes && <p style={{ margin:'9px 0',color:'#6F5C53',fontSize:11.5,lineHeight:1.5 }}>{s.notes}</p>}
+          {canEdit && editingPanelFor===detailKey && <div style={{ margin:'10px 0',padding:'10px',borderRadius:12,background:'#F3EFE9',display:'grid',gap:8 }}>
+            <div><div style={{ marginBottom:4,fontSize:9,fontWeight:800,letterSpacing:'0.08em',color:'#8D7A70' }}>TITLE</div>{Editable({ kind:'span', ids:{ dayId:day.id, evId:s.id }, value:s.title, placeholder:'(untitled)', spanStyle:{ display:'block',minHeight:24,padding:'5px 7px',border:'1px dashed #C8B09A',borderRadius:7,fontSize:11.5,color:'#4E3D36' }, inputWidth:240 })}</div>
+          </div>}
+          {canEdit && peoplePanelFor===detailKey && <div style={{ margin:'10px 0',padding:'10px',borderRadius:12,background:'#F3EFE9' }}><div style={{ marginBottom:7,fontSize:9,fontWeight:800,letterSpacing:'0.08em',color:'#8D7A70' }}>TRAVELERS</div><Assignees members={members} value={s.assignees} onChange={(list)=>setSpanAssignees(s.id,list)} /></div>}
+          <DocList docs={s.docs||[]} onAdd={(file)=>attachSpanDoc(s.id,file)} onDel={canEdit?(docId)=>delSpanDoc(s.id,docId):null}/>
+          <div style={{ display:'grid',gridTemplateColumns:canEdit?'repeat(3,1fr)':'1fr',gap:7,marginTop:11 }}>
+            {canEdit && <button type="button" onClick={()=>setEditingPanelFor(editingPanelFor===detailKey?null:detailKey)} style={nativeActionStyle()}>✎ Edit</button>}
+            <button type="button" onClick={()=>openExpense(s.id)} style={nativeActionStyle()}>▤ Expense</button>
+            {canEdit && <button type="button" onClick={()=>setPeoplePanelFor(peoplePanelFor===detailKey?null:detailKey)} style={nativeActionStyle()}>♧ People</button>}
+            {canEdit && <label style={nativeActionStyle()}><span>⌕ File</span><input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachSpanDoc(s.id,e.target.files[0]); e.target.value=''; }}/></label>}
+            {canEdit && <button type="button" onClick={()=>delSpan(s.id)} style={nativeActionStyle(true)}>♲ Delete</button>}
           </div>
-          {ev.location && <div style={{ fontSize:12,color:"#A83020",marginTop:2 }}>📍 {ev.location}</div>}
-          {ev.notes && <div style={{ fontSize:12,color:"#C05040",marginTop:2 }}>{ev.notes}</div>}
-          {canEdit && <Assignees members={members} value={ev.assignees} onChange={(list)=>setEventAssignees(day.id, ev.id, list)} />}
-        </div>
-        <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
-          <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={evStatus(ev)} /></span>
-          {canEdit && (<>
-          <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
-            <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
-            <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,null,e.target.files[0]); e.target.value=''; }} />
-          </label>
-          <button title="Delete event" onClick={()=>delEvent(day.id,ev.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
-          </>)}
-        </div>
+        </div>}
       </div>
+    </article>;
+  };
 
-      <DocList docs={ev.docs||[]} onAdd={(file)=>attachDoc(day.id,ev.id,null,file)} onDel={canEdit ? (docId)=>delDoc(day.id,ev.id,null,docId) : null} />
+  // ── Native mobile card for single-day timed events ──
+  const renderEventBlock = (day, ev) => {
+    const status = evStatus(ev);
+    const detailKey = `event-${day.id}-${ev.id}`;
+    const expanded = !!expandedItems[detailKey];
+    return <article key={ev.id} style={{ display:'grid',gridTemplateColumns:'32px minmax(0,1fr)',gap:8,position:'relative',marginBottom:12 }}>
+      <span aria-hidden="true" style={{ width:13,height:13,margin:'21px 0 0 10px',borderRadius:'50%',background:STATUS_META[status].ring,border:'3px solid #F7F5F0',boxShadow:`0 0 0 1px ${STATUS_META[status].ring}`,boxSizing:'border-box',zIndex:2 }}/>
+      <div style={{ background:'#fff',border:'1px solid #E7E0D8',borderRadius:18,boxShadow:'0 4px 14px rgba(63,47,40,0.06)',overflow:'hidden' }}>
+        <button type="button" aria-label={`Update ${ev.title} status. Current status: ${scheduleStatusLabel[status]}`} onClick={()=>cycleEventStatus(day.id,ev.id)} style={{ display:'block',width:'100%',padding:'13px',border:'none',background:'transparent',textAlign:'left',cursor:'pointer',outline:'none' }}>
+          <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:10 }}>
+            <span style={{ display:'inline-flex',alignItems:'center',gap:4,color:'#8D786E',fontSize:10.5,fontWeight:750 }}>{scheduleCategoryIcon(ev.category)} {ev.time||'--:--'}<span>–</span>{ev.endTime||'--:--'}</span>
+            <span style={{ borderRadius:20,padding:'4px 8px',background:STATUS_META[status].bg,color:STATUS_META[status].color,fontSize:9.5,fontWeight:800,flexShrink:0 }}>{scheduleStatusLabel[status]}</span>
+          </div>
+          <div style={{ marginTop:7,fontSize:15,fontWeight:800,color:'#302521' }}>{ev.title||'(untitled)'}</div>
+          <div style={{ display:'flex',alignItems:'center',gap:4,marginTop:5,color:'#99867C',fontSize:10.5 }}><NativeStatusIcon name="pin" size={12}/>{ev.location||'Location not set'}</div>
+        </button>
+        {renderPeopleRow(ev,detailKey)}
+        {expanded && <div style={{ padding:'12px 13px 14px',borderTop:'1px solid #E8DDD0',background:'#FCFAF6' }}>
+          {ev.notes && <p style={{ margin:'0 0 10px',color:'#6F5C53',fontSize:11.5,lineHeight:1.5 }}>{ev.notes}</p>}
+          {canEdit && editingPanelFor===detailKey && <div style={{ margin:'10px 0',padding:'10px',borderRadius:12,background:'#F3EFE9',display:'grid',gap:8 }}>
+            <div><div style={{ marginBottom:4,fontSize:9,fontWeight:800,letterSpacing:'0.08em',color:'#8D7A70' }}>TITLE</div>{Editable({ kind:'event', ids:{ dayId:day.id, evId:ev.id }, value:ev.title, placeholder:'(untitled)', spanStyle:{ display:'block',minHeight:24,padding:'5px 7px',border:'1px dashed #C8B09A',borderRadius:7,fontSize:11.5,color:'#4E3D36' }, inputWidth:240 })}</div>
+            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}><div><div style={{ marginBottom:4,fontSize:9,fontWeight:800,letterSpacing:'0.08em',color:'#8D7A70' }}>START</div>{Editable({ kind:'startTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.time, placeholder:'--:--', spanStyle:{ display:'block',minHeight:24,padding:'5px 7px',border:'1px dashed #C8B09A',borderRadius:7,fontSize:11.5,color:'#4E3D36' }, inputType:'time', inputWidth:100 })}</div><div><div style={{ marginBottom:4,fontSize:9,fontWeight:800,letterSpacing:'0.08em',color:'#8D7A70' }}>END</div>{Editable({ kind:'endTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.endTime, placeholder:'--:--', spanStyle:{ display:'block',minHeight:24,padding:'5px 7px',border:'1px dashed #C8B09A',borderRadius:7,fontSize:11.5,color:'#4E3D36' }, inputType:'time', inputWidth:100 })}</div></div>
+          </div>}
+          {canEdit && peoplePanelFor===detailKey && <div style={{ margin:'10px 0',padding:'10px',borderRadius:12,background:'#F3EFE9' }}><div style={{ marginBottom:7,fontSize:9,fontWeight:800,letterSpacing:'0.08em',color:'#8D7A70' }}>TRAVELERS</div><Assignees members={members} value={ev.assignees} onChange={(list)=>setEventAssignees(day.id,ev.id,list)} /></div>}
+          <DocList docs={ev.docs||[]} onAdd={(file)=>attachDoc(day.id,ev.id,null,file)} onDel={canEdit?(docId)=>delDoc(day.id,ev.id,null,docId):null}/>
 
-      {(ev.activities||[]).length > 0 && (
-        <div style={{ marginTop:10,paddingLeft:12,borderLeft:"2px solid #D4BFB0" }}>
-          {(ev.activities||[]).map(act => (
-            <div key={act.id} style={{ marginBottom:6 }}>
-              <div style={{ display:"flex",alignItems:"flex-start",gap:6 }}>
-                <StatusBox status={evStatus(act)} onClick={()=>cycleActivityStatus(day.id,ev.id,act.id)} size={14} style={{ marginTop:2 }} />
-                <div style={{ flex:1 }}>
-                  <span style={{ display:"inline-block", opacity: evStatus(act)==='done'?0.55:1, textDecoration: evStatus(act)==='done'?"line-through":"none" }}>
-                    {Editable({ kind:'activity', ids:{ dayId:day.id, evId:ev.id, actId:act.id }, value:act.text, placeholder:'(empty)', spanStyle:{ fontSize:13, color:'#6E1A10' }, inputWidth:240 })}
-                  </span>
-                  <DocList docs={act.docs||[]} onAdd={(file)=>attachDoc(day.id,ev.id,act.id,file)} onDel={canEdit ? (docId)=>delDoc(day.id,ev.id,act.id,docId) : null} />
-                  {canEdit && <Assignees members={members} value={act.assignees} onChange={(list)=>setTaskAssignees(day.id, ev.id, act.id, list)} />}
-                </div>
-                <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0,marginLeft:8 }}>
-                  <span style={{ width:54,display:"flex",justifyContent:"flex-end" }}><StatusBadge status={evStatus(act)} /></span>
-                  {canEdit && (<>
-                  <label title="Attach document" style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,cursor:'pointer',color:'#8B2A14',background:'rgba(139,42,20,0.08)',flexShrink:0 }}>
-                    <span style={{ fontSize:15, lineHeight:1 }}>📎</span>
-                    <input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,act.id,e.target.files[0]); e.target.value=''; }} />
-                  </label>
-                  <button title="Delete task" onClick={()=>delActivity(day.id,ev.id,act.id)} style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',color:'#8B2A14',background:'#F5E0D8',fontSize:13,lineHeight:1,flexShrink:0 }}>✕</button>
-                  </>)}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+          {(ev.activities||[]).length>0 && <div style={{ margin:'11px 0',padding:'10px',borderRadius:13,background:'#F3EFE9' }}>
+            <div style={{ marginBottom:7,fontSize:9.5,fontWeight:850,letterSpacing:'0.09em',color:'#8D7A70' }}>TASKS</div>
+            {(ev.activities||[]).map(act=><div key={act.id} style={{ display:'grid',gridTemplateColumns:'24px minmax(0,1fr) auto',alignItems:'start',gap:7,padding:'6px 0' }}>
+              <StatusBox status={evStatus(act)} onClick={()=>cycleActivityStatus(day.id,ev.id,act.id)} size={16}/>
+              <div style={{ minWidth:0 }}><span onClick={e=>e.stopPropagation()}>{Editable({ kind:'activity', ids:{ dayId:day.id, evId:ev.id, actId:act.id }, value:act.text, placeholder:'(empty)', spanStyle:{ fontSize:11.5,color:'#4E3D36',textDecoration:evStatus(act)==='done'?'line-through':'none' }, inputWidth:190 })}</span><DocList docs={act.docs||[]} onAdd={(file)=>attachDoc(day.id,ev.id,act.id,file)} onDel={canEdit?(docId)=>delDoc(day.id,ev.id,act.id,docId):null}/>{canEdit&&<Assignees members={members} value={act.assignees} onChange={(list)=>setTaskAssignees(day.id,ev.id,act.id,list)}/>}</div>
+              {canEdit && <span style={{ display:'flex',gap:4 }}><label title="Attach task document" style={{ width:27,height:27,borderRadius:8,background:'#E6DED4',display:'grid',placeItems:'center',cursor:'pointer',color:'#6E2118' }}>⌕<input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,act.id,e.target.files[0]); e.target.value=''; }}/></label><button type="button" title="Delete task" onClick={()=>delActivity(day.id,ev.id,act.id)} style={{ width:27,height:27,border:'none',borderRadius:8,background:'#F5DFDA',color:'#A43828',cursor:'pointer' }}>×</button></span>}
+            </div>)}
+          </div>}
 
-      {addingActivityFor === ev.id ? (
-        <div style={{ display:'flex',gap:6,marginTop:8,alignItems:'center' }}>
-          <input autoFocus placeholder="Describe the task…" value={activityInput[ev.id]||''}
-            onChange={e=>setActivityInput(prev=>({...prev,[ev.id]:e.target.value}))}
-            onKeyDown={e=>{ if(e.key==='Enter') addActivity(day.id,ev.id); if(e.key==='Escape') setAddingActivityFor(null); }}
-            style={{ flex:1,padding:'5px 9px',border:'1px solid #C8B09A',borderRadius:6,fontSize:13,background:'#F0EBE0',color:'#6E1A10',outline:'none' }} />
-          <Btn style={{ padding:'4px 10px',fontSize:12 }} onClick={()=>addActivity(day.id,ev.id)}>Add</Btn>
-          <Btn variant="ghost" style={{ padding:'4px 8px',fontSize:12 }} onClick={()=>setAddingActivityFor(null)}>Cancel</Btn>
-        </div>
-      ) : (
-        <div style={{ display:'flex', gap:8, marginTop:8 }}>
-          {canEdit && <button onClick={()=>setAddingActivityFor(ev.id)} style={{ background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}>+ Task</button>}
-          <button onClick={()=>openExpense(ev.id)} style={{ background:'none',border:'1px dashed #C8B09A',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#8B2A14',cursor:'pointer',fontWeight:500 }}>+ Expense</button>
-        </div>
-      )}
-    </div>
-  );
+          {addingActivityFor===ev.id && <div style={{ display:'flex',gap:6,margin:'9px 0',alignItems:'center' }}><input autoFocus placeholder="Describe the task…" value={activityInput[ev.id]||''} onChange={e=>setActivityInput(prev=>({...prev,[ev.id]:e.target.value}))} onKeyDown={e=>{if(e.key==='Enter')addActivity(day.id,ev.id);if(e.key==='Escape')setAddingActivityFor(null);}} style={{ flex:1,minWidth:0,padding:'8px 9px',border:'1px solid #CFC2B5',borderRadius:9,fontSize:11.5,background:'#fff',color:'#4E3D36',outline:'none' }}/><Btn style={{ padding:'7px 10px',fontSize:10.5 }} onClick={()=>addActivity(day.id,ev.id)}>Add</Btn><Btn variant="ghost" style={{ padding:'7px 8px',fontSize:10.5 }} onClick={()=>setAddingActivityFor(null)}>Cancel</Btn></div>}
+
+          <div style={{ display:'grid',gridTemplateColumns:canEdit?'repeat(3,1fr)':'1fr',gap:7,marginTop:11 }}>
+            {canEdit && <button type="button" onClick={()=>setEditingPanelFor(editingPanelFor===detailKey?null:detailKey)} style={nativeActionStyle()}>✎ Edit</button>}
+            {canEdit && <button type="button" onClick={()=>setAddingActivityFor(addingActivityFor===ev.id?null:ev.id)} style={nativeActionStyle()}>☑ Task</button>}
+            <button type="button" onClick={()=>openExpense(ev.id)} style={nativeActionStyle()}>▤ Expense</button>
+            {canEdit && <button type="button" onClick={()=>setPeoplePanelFor(peoplePanelFor===detailKey?null:detailKey)} style={nativeActionStyle()}>♧ People</button>}
+            {canEdit && <label style={nativeActionStyle()}><span>⌕ File</span><input type="file" style={{ display:'none' }} onChange={e=>{if(e.target.files[0])attachDoc(day.id,ev.id,null,e.target.files[0]);e.target.value='';}}/></label>}
+            {canEdit && <button type="button" onClick={()=>delEvent(day.id,ev.id)} style={nativeActionStyle(true)}>♲ Delete</button>}
+          </div>
+        </div>}
+      </div>
+    </article>;
+  };
 
   return (
-    <div>
-      <div style={{ position:"sticky", top:"calc(env(safe-area-inset-top, 0px) + 51px)", zIndex:15, background:"#F0EBE0", margin:"0 -20px 16px", padding:"6px 20px 10px", borderBottom:"2px solid #C4A882", display:"flex",justifyContent:"space-between",alignItems:"center" }}>
-        <h2 style={{ margin:0,fontSize:16,fontWeight:700 }}>Days</h2>
-        {canEdit && <Btn onClick={()=>setShowDay(true)}>+ Add Day</Btn>}
-      </div>
+    <div style={{ width:'100%',maxWidth:460,margin:'0 auto',background:'#F7F5F0',borderRadius:22,padding:'16px 14px 24px',boxSizing:'border-box',boxShadow:'0 10px 30px rgba(62,38,28,0.08)' }}>
+      <section aria-label="Itinerary summary" style={{ marginBottom:22 }}>
+        <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:12 }}>
+          <div><strong style={{ display:'block',fontSize:15,color:'#302521' }}>{(trip.days||[]).length} trip day{(trip.days||[]).length===1?'':'s'}</strong><span style={{ color:'#927F75',fontSize:10.5 }}>{(trip.days||[]).reduce((count,day)=>count+(day.events||[]).length+(day.tasks||[]).length,0)+(trip.spans||[]).length} itinerary items</span></div>
+          <div style={{ display:'flex',alignItems:'center',flexShrink:0 }}>{members.slice(0,4).map((member,index)=><span key={member.userId} style={{ width:29,height:29,marginLeft:index===0?0:-7,borderRadius:'50%',overflow:'hidden',border:'2px solid #F7F5F0',boxShadow:'0 0 0 1px #CFC2B5',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:800 }}>{member.pic?<img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}{members.length>4&&<span style={{ marginLeft:5,fontSize:10,color:'#8F7D73' }}>+{members.length-4}</span>}</div>
+        </div>
+        {canEdit && <div style={{ marginTop:12,marginLeft:40 }}>
+          <button type="button" onClick={()=>setShowDay(true)} style={{ width:'100%',height:42,border:'1px solid #D7CCC0',borderRadius:12,background:'#fff',color:'#6E2118',fontSize:11.5,fontWeight:800,cursor:'pointer' }}>＋ Day</button>
+        </div>}
+      </section>
 
       {(!trip.days||trip.days.length===0) && (
-        <p style={{ color:"#C05040",fontSize:13,textAlign:"center",padding:"24px 0" }}>No days added yet.</p>
+        <p style={{ color:'#907D73',fontSize:12.5,textAlign:'center',padding:'30px 0' }}>No days added yet.</p>
       )}
 
-      {(trip.days||[]).map(day => (
-        <div key={day.id} style={{ marginBottom:16,border:"1px solid #D4BFB0",borderRadius:10,overflow:"hidden",background:"#EDE7D9" }}>
-          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"#DDD8CB" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <span onClick={()=>toggleDayCollapse(day.id)} title={collapsedDays[day.id]?"Expand day":"Collapse day"}
-                style={{ cursor:"pointer", display:"inline-flex", alignItems:"center", gap:8 }}>
-                <span style={{ fontSize:11, color:"#8B2A14", display:"inline-block", transition:"transform .15s", transform: collapsedDays[day.id]?"rotate(-90deg)":"rotate(0deg)" }}>▼</span>
-                <span style={{ display:"inline-flex", flexDirection:"column", alignItems:"center", lineHeight:1 }}>
-                  <strong style={{ fontSize:22, fontWeight:800, color:"#8B2A14", lineHeight:1 }}>{compactDate(day.date).d}</strong>
-                  <span style={{ fontSize:10, fontWeight:700, color:"#8B2A14", letterSpacing:"0.08em", marginTop:2 }}>{compactDate(day.date).mon}</span>
-                </span>
-              </span>
-              <span>{Editable({ kind:'day', ids:{ dayId:day.id }, value:day.label, placeholder:'+ add label', spanStyle:{ fontSize:13, color:'#8B2A14' }, inputWidth:160 })}</span>
-            </div>
-            {canEdit && (
-            <div style={{ display:"flex",gap:6 }}>
-              <Btn onClick={()=>openAddEvent(day)} style={{ padding:"4px 10px",fontSize:12 }}>+ Event</Btn>
-              <Btn variant="danger" style={{ padding:"4px 8px",fontSize:12 }} onClick={()=>delDay(day.id)}>✕</Btn>
-            </div>
-            )}
+      <div aria-label="All itinerary days">{(trip.days||[]).map((day,dayIndex)=>{
+        const items=mergedDayItems(day); const collapsed=!!collapsedDays[day.id]; const weekday=new Date(`${day.date}T00:00:00`).toLocaleDateString('en-GB',{weekday:'long'});
+        return <section key={day.id} aria-label={`Day ${dayIndex+1}: ${day.label||'Untitled day'}`} style={{ marginTop:dayIndex===0?0:28,paddingTop:dayIndex===0?0:24,borderTop:dayIndex===0?'none':'1px dashed #D7CCC0' }}>
+          <div style={{ display:'grid',gridTemplateColumns:canEdit?'58px minmax(0,1fr) 96px':'58px minmax(0,1fr)',alignItems:'stretch',gap:10,minHeight:82,marginBottom:14 }}>
+            <button type="button" aria-label={collapsed?'Expand day':'Collapse day'} onClick={()=>toggleDayCollapse(day.id)} style={{ width:58,minHeight:82,border:'none',borderRadius:16,background:'#6E2118',color:'#fff',cursor:'pointer',alignSelf:'stretch' }}><strong style={{ display:'block',fontSize:20 }}>{compactDate(day.date).d}</strong><span style={{ display:'block',marginTop:3,fontSize:9.5,letterSpacing:'0.08em' }}>{compactDate(day.date).mon}</span></button>
+            <div style={{ minWidth:0,alignSelf:'center',padding:'4px 0' }}><div style={{ fontSize:9.5,fontWeight:850,letterSpacing:'0.11em',color:'#927F75' }}>DAY {dayIndex+1} · {weekday.toUpperCase()}</div><div style={{ marginTop:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{Editable({ kind:'day', ids:{ dayId:day.id }, value:day.label, placeholder:'Untitled day', spanStyle:{ fontSize:16,fontWeight:800,color:'#302521' }, inputWidth:180 })}</div><div style={{ marginTop:4,color:'#9A877D',fontSize:10.5,lineHeight:1.3 }}>{items.length} item{items.length===1?'':'s'} · {fmtDate(day.date)}</div></div>
+            {canEdit&&<div style={{ display:'grid',gridTemplateRows:'1fr 1fr',gap:7,minWidth:0 }}><button type="button" aria-label="Add activity" onClick={()=>openAddEvent(day)} style={{ width:'100%',minHeight:0,border:'none',borderRadius:11,background:'#E8DDD5',color:'#6E2118',fontSize:10,fontWeight:850,cursor:'pointer' }}>＋ Activity</button><button type="button" aria-label="Add task" onClick={()=>openDayTask(day.id)} style={{ width:'100%',minHeight:0,border:'1px solid #D7CCC0',borderRadius:11,background:'#fff',color:'#6E2118',fontSize:10,fontWeight:850,cursor:'pointer' }}>＋ Task</button></div>}
           </div>
 
-          {!collapsedDays[day.id] && (<>
-          {(!day.events||day.events.length===0) && spansOnDay(trip, day.date).length===0 && (
-            <p style={{ color:"#C05040",fontSize:13,padding:"10px 14px",margin:0 }}>No events</p>
-          )}
+          {!collapsed&&<div style={{ position:'relative' }}><span aria-hidden="true" style={{ position:'absolute',left:16,top:22,bottom:24,width:1,background:'#D7CCC0' }}/>
+            {items.length===0?<p style={{ margin:'0 0 0 40px',padding:'14px',border:'1px dashed #D7CCC0',borderRadius:14,color:'#927F75',fontSize:11.5 }}>No events or tasks</p>:items.map(it=>it.kind==='span'?renderSpanStrip(day,it.s):it.kind==='task'?renderDayTask(day,it.task):renderEventBlock(day,it.ev))}
+          </div>}
+        </section>;
+      })}</div>
 
-          {/* ── Events, tasks & spans interleaved chronologically by start time ── */}
-          {mergedDayItems(day).map(it => it.kind === 'span' ? renderSpanStrip(day, it.s) : renderEventBlock(day, it.ev))}
-
-          </>)}
-        </div>
-      ))}
+      {showTask && (
+        <Modal title="Add Task" onClose={closeDayTask}>
+          <Input label="Time *" type="time" value={taskForm.time} onInput={e=>setTaskForm(current=>({ ...current,time:e.target.value }))} onChange={e=>setTaskForm(current=>({ ...current,time:e.target.value }))}/>
+          <Input label="Task *" value={taskForm.text} onInput={e=>setTaskForm(current=>({ ...current,text:e.target.value }))} onChange={e=>setTaskForm(current=>({ ...current,text:e.target.value }))} onKeyDown={e=>{ if(e.key==='Enter') addDayTask(); }} placeholder="What needs to be done?" />
+          <div style={{ margin:'2px 0 16px' }}><div style={{ marginBottom:5,fontSize:12,color:'#8B2A14' }}>Tag travelers</div><Assignees members={members} value={taskForm.assignees} onChange={assignees=>setTaskForm(current=>({ ...current,assignees }))}/></div>
+          <div style={{ display:'flex',gap:8 }}><Btn onClick={addDayTask}>Save Task</Btn><Btn variant="ghost" onClick={closeDayTask}>Cancel</Btn></div>
+        </Modal>
+      )}
 
       {expenseFor && (
         <Modal title="Log Expense" onClose={()=>setExpenseFor(null)}>
