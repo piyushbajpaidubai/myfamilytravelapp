@@ -499,7 +499,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
     }) }));
   const attachSpanDoc = async (id, file) => {
     let doc;
-    try { const url = await uploadToStorage(file, 'docs'); doc = { id:uid(), name:file.name, size:file.size, type:file.type, url }; }
+    try { const url = await uploadToStorage(session, file, 'docs'); doc = { id:uid(), name:file.name, size:file.size, type:file.type, url }; }
     catch(err) { alert('Could not upload "' + file.name + '". ' + err.message); return; }
     update(t => ({ spans:(t.spans||[]).map(s => s.id===id ? { ...s, docs:[...(s.docs||[]), doc] } : s) }));
   };
@@ -553,7 +553,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
   const attachDoc = async (dayId, evId, actId, file) => {
     let doc;
     try {
-      const url = await uploadToStorage(file, 'docs');
+      const url = await uploadToStorage(session, file, 'docs');
       doc = { id:uid(), name:file.name, size:file.size, type:file.type, url };
     } catch(err) {
       alert('Could not upload "' + file.name + '". ' + err.message);
@@ -1916,14 +1916,17 @@ async function sendFollowerPush(session, trip, title, body) {
 }
 
 // Upload a File/Blob to Supabase Storage; returns its public URL.
-async function uploadToStorage(file, folder) {
+// Uploads run as the signed-in traveller so the bucket needn't accept writes
+// from the public anon key (which anyone could lift out of the client JS).
+async function uploadToStorage(session, file, folder) {
   const ext = (file.name && file.name.includes('.'))
     ? file.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g,'')
     : 'bin';
   const path = folder + '/' + uid() + '-' + Date.now() + '.' + ext;
+  const s = await freshSession(session);
   const res = await fetch(SUPA_URL + '/storage/v1/object/' + SUPA_BUCKET + '/' + path, {
     method: 'POST',
-    headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY, 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'true' },
+    headers: { ...authHeaders(s), 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'true' },
     body: file
   });
   if (!res.ok) throw new Error('Storage upload failed (' + res.status + ')');
@@ -1931,8 +1934,8 @@ async function uploadToStorage(file, folder) {
 }
 
 // Best-effort delete of a stored file given its public URL.
-// Removing a file needs a signed-in traveller: the bucket's delete policy is
-// granted to `authenticated` only, so the anon key silently left orphans behind.
+// Deletes run as the signed-in traveller, so the bucket can refuse deletes from
+// the public anon key (otherwise any visitor could remove a trip's documents).
 async function deleteFromStorage(session, url) {
   if (!url || typeof url !== 'string') return;
   const marker = '/object/public/' + SUPA_BUCKET + '/';
@@ -2950,7 +2953,7 @@ function MainApp() {
             onOpenDetails={()=>{ setShowAccount(false); setShowProfile(true); }} onClose={()=>setShowAccount(false)} />
         )}
         {showProfile && (
-          <ProfileModal initial={profile} onSave={saveProfile} onClose={()=>setShowProfile(false)} />
+          <ProfileModal initial={profile} onSave={saveProfile} onClose={()=>setShowProfile(false)} session={session} />
         )}
       </>
     );
@@ -2978,7 +2981,7 @@ function MainApp() {
             onOpenDetails={()=>{ setShowAccount(false); setShowProfile(true); }} onClose={()=>setShowAccount(false)} />
         )}
         {showProfile && (
-          <ProfileModal initial={profile} onSave={saveProfile} onClose={()=>setShowProfile(false)} />
+          <ProfileModal initial={profile} onSave={saveProfile} onClose={()=>setShowProfile(false)} session={session} />
         )}
       </>
     );
@@ -3259,7 +3262,7 @@ function MainApp() {
       )}
 
       {showProfile && (
-        <ProfileModal initial={profile} onSave={saveProfile} onClose={()=>setShowProfile(false)} />
+        <ProfileModal initial={profile} onSave={saveProfile} onClose={()=>setShowProfile(false)} session={session} />
       )}
 
       {showSearch && (
@@ -3274,7 +3277,7 @@ function MainApp() {
 }
 
 // ---- Traveler Profile (device-local: pic, name, age, gender, city) ----
-function ProfileModal({ initial, onSave, onClose }) {
+function ProfileModal({ initial, onSave, onClose, session }) {
   const [form, setForm] = useState(initial || { pic:'', name:'', age:'', gender:'', city:'' });
   const [uploading, setUploading] = useState(false);
 
@@ -3284,7 +3287,7 @@ function ProfileModal({ initial, onSave, onClose }) {
     if (!file) return;
     setUploading(true);
     try {
-      const url = await uploadToStorage(file, 'profile');
+      const url = await uploadToStorage(session, file, 'profile');
       setForm(f => ({ ...f, pic: url }));
     } catch (err) {
       alert('Could not upload photo. ' + err.message);
