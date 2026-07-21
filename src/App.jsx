@@ -1373,6 +1373,38 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
   const [statusModal, setStatusModal] = useState(null); // { ref, title, members } — full traveler list popup for one event
   const [copied, setCopied] = useState(false);
 
+  // Opening Status should drop the traveler at the leg of the trip they are
+  // actually living, not back at day 1. Jump to today, or to the next dated day
+  // when nothing is planned today. Runs once per trip so tapping a status
+  // never yanks the page out from under a thumb.
+  const dayEls = useRef({});
+  const landedOnTrip = useRef(null);
+  useEffect(() => {
+    if (landedOnTrip.current === trip.id || !days.length) return;
+    const p = n => String(n).padStart(2, '0');
+    const now = new Date();
+    // local date, not toISOString() — UTC would roll over a day early in Dubai
+    const todayISO = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+    const dated = days.filter(d => (d.date || '').slice(0, 10));
+    const target = dated.find(d => d.date.slice(0, 10) === todayISO)
+      || dated.filter(d => d.date.slice(0, 10) > todayISO)
+              .sort((a, b) => a.date < b.date ? -1 : 1)[0];
+    // A trip entirely in the past has no "current" day — leave it at the top.
+    if (!target) { landedOnTrip.current = trip.id; return; }
+    // Wait for layout so the day's position is real before measuring it.
+    const raf = requestAnimationFrame(() => {
+      const el = dayEls.current[target.id];
+      if (!el) return;
+      landedOnTrip.current = trip.id;
+      const bar = document.querySelector('[data-tabbar]');
+      const offset = (bar ? bar.getBoundingClientRect().height : 0) + 8;
+      const top = el.getBoundingClientRect().top + window.scrollY - offset;
+      const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [trip.id, days]);
+
   // Load each traveler's photo (identity) from the directory
   const [memberPics, setMemberPics] = useState({});
   const memberKey = roster.map(m => m.userId).join(',');
@@ -1685,7 +1717,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
         const t = parseDay(day.date);
         const dayNum = (baseMs != null && t != null) ? Math.round((t - baseMs) / 86400000) + 1 : (di + 1);
         return (
-          <div key={day.id}>
+          <div key={day.id} ref={el => { dayEls.current[day.id] = el; }}>
             {di>0 && <div style={{ borderTop:'2px dotted #C8B09A', margin:'0 0 30px' }} />}
             {/* Day header on top, left-aligned — frees the full width for the timeline content below */}
             <div style={{ marginBottom:16 }}>
@@ -3380,7 +3412,7 @@ function MainApp() {
           </div>
 
           {/* Inner tabs — sticky so you can switch tabs while scrolled down */}
-          <div style={{ position:"sticky", top:"env(safe-area-inset-top, 0px)", zIndex:20, background:"#F0EBE0", margin:"0 -20px 20px", padding:"8px 20px", borderBottom: activeTab==="Schedule" ? "none" : "2px solid #C4A882" }}>
+          <div data-tabbar="" style={{ position:"sticky", top:"env(safe-area-inset-top, 0px)", zIndex:20, background:"#F0EBE0", margin:"0 -20px 20px", padding:"8px 20px", borderBottom: activeTab==="Schedule" ? "none" : "2px solid #C4A882" }}>
             <div style={{ display:"flex",gap:2,background:"#E8E2D4",borderRadius:8,padding:3 }}>
               {TABS.map(tab=>(
                 <button key={tab} onClick={()=>setActiveTab(tab)}
