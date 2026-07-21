@@ -1373,51 +1373,22 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
   const [statusModal, setStatusModal] = useState(null); // { ref, title, members } — full traveler list popup for one event
   const [copied, setCopied] = useState(false);
 
-  // Opening Status should drop the traveler at the leg of the trip they are
-  // actually living, not back at day 1. Jump to today, or to the next dated day
-  // when nothing is planned today. Runs once per trip so tapping a status
-  // never yanks the page out from under a thumb.
-  const dayEls = useRef({});
-  const landedOnTrip = useRef(null);
-  useEffect(() => {
-    if (landedOnTrip.current === trip.id || !days.length) return;
-    const p = n => String(n).padStart(2, '0');
-    const now = new Date();
+  // Days already travelled collapse to their header, so today sits near the top
+  // without the page having to scroll itself — scrolling on open fought the tab
+  // swipe, moving the page vertically while it was still sliding sideways.
+  // Tapping a past day's header opens it again.
+  const todayISO = (() => {
     // local date, not toISOString() — UTC would roll over a day early in Dubai
-    const todayISO = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
-    const dated = days.filter(d => (d.date || '').slice(0, 10));
-    const target = dated.find(d => d.date.slice(0, 10) === todayISO)
-      || dated.filter(d => d.date.slice(0, 10) > todayISO)
-              .sort((a, b) => a.date < b.date ? -1 : 1)[0];
-    // A trip entirely in the past has no "current" day — leave it at the top.
-    if (!target) { landedOnTrip.current = trip.id; return; }
-    // Wait for layout so the day's position is real before measuring it.
-    let raf = requestAnimationFrame(() => {
-      const el = dayEls.current[target.id];
-      if (!el) return;
-      landedOnTrip.current = trip.id;
-      const bar = document.querySelector('[data-tabbar]');
-      const offset = (bar ? bar.getBoundingClientRect().height : 0) + 8;
-      const to = Math.max(0, el.getBoundingClientRect().top + window.scrollY - offset);
-      const from = window.scrollY;
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || Math.abs(to - from) < 4) {
-        window.scrollTo(0, to);
-        return;
-      }
-      // Native smooth scrolling is abrupt over a long trip, so ease it by hand:
-      // a slow start and a long settle reads as the page drifting to today.
-      const DURATION = 900;
-      const started = performance.now();
-      const ease = p => p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
-      const step = now => {
-        const p = Math.min(1, (now - started) / DURATION);
-        window.scrollTo(0, from + (to - from) * ease(p));
-        if (p < 1) raf = requestAnimationFrame(step);
-      };
-      raf = requestAnimationFrame(step);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [trip.id, days]);
+    const p = n => String(n).padStart(2, '0');
+    const d = new Date();
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  })();
+  const isPastDay = (day) => {
+    const iso = (day.date || '').slice(0, 10);
+    return !!iso && iso < todayISO;             // today itself is never "past"
+  };
+  const [openPastDays, setOpenPastDays] = useState({});
+  const togglePastDay = (id) => setOpenPastDays(o => ({ ...o, [id]: !o[id] }));
 
   // Load each traveler's photo (identity) from the directory
   const [memberPics, setMemberPics] = useState({});
@@ -1730,18 +1701,35 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
         const items = dayItems(day);
         const t = parseDay(day.date);
         const dayNum = (baseMs != null && t != null) ? Math.round((t - baseMs) / 86400000) + 1 : (di + 1);
+        const past = isPastDay(day);
+        const shut = past && !openPastDays[day.id];
+        const header = (
+          <>
+            <div style={{ fontSize:25, fontWeight:400, letterSpacing:'0.14em', color: past?'#7A685F':'#2E2320', lineHeight:1.05 }}>DAY {dayNum}</div>
+            <div style={{ fontSize:11, fontWeight:500, letterSpacing:'0.12em', color:'#7A685F', marginTop:5 }}>{fmtDate(day.date).toUpperCase()}</div>
+            {day.label && <div style={{ fontSize:12, color:'#8B2A14', marginTop:4, fontStyle:'italic' }}>{day.label}</div>}
+          </>
+        );
         return (
-          <div key={day.id} ref={el => { dayEls.current[day.id] = el; }}>
+          <div key={day.id}>
             {di>0 && <div style={{ borderTop:'2px dotted #C8B09A', margin:'0 0 30px' }} />}
             {/* Day header on top, left-aligned — frees the full width for the timeline content below */}
-            <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:25, fontWeight:400, letterSpacing:'0.14em', color:'#2E2320', lineHeight:1.05 }}>DAY {dayNum}</div>
-              <div style={{ fontSize:11, fontWeight:500, letterSpacing:'0.12em', color:'#7A685F', marginTop:5 }}>{fmtDate(day.date).toUpperCase()}</div>
-              {day.label && <div style={{ fontSize:12, color:'#8B2A14', marginTop:4, fontStyle:'italic' }}>{day.label}</div>}
-            </div>
+            {past ? (
+              <button type="button" onClick={()=>togglePastDay(day.id)} aria-expanded={!shut}
+                style={{ display:'flex', alignItems:'center', gap:12, width:'100%', textAlign:'left', border:'none',
+                  background:'transparent', padding:0, margin:`0 0 ${shut?18:16}px`, cursor:'pointer', font:'inherit', color:'inherit' }}>
+                <span style={{ minWidth:0, flex:1 }}>{header}</span>
+                <span aria-hidden="true" style={{ flexShrink:0, fontSize:12, color:'#8B2A14', display:'flex', alignItems:'center', gap:6 }}>
+                  {shut && <span style={{ fontSize:11, color:'#7A685F' }}>{items.length} item{items.length===1?'':'s'}</span>}
+                  <span style={{ display:'inline-block', transform:`rotate(${shut?0:180}deg)`, transition:'transform 180ms ease' }}>▾</span>
+                </span>
+              </button>
+            ) : (
+              <div style={{ marginBottom:16 }}>{header}</div>
+            )}
 
             {/* Timeline below — indented so the vertical bar/dots sit under the centre of the DAY header */}
-            <div style={{ minWidth:0, marginBottom:30, paddingLeft:32 }}>
+            <div style={{ minWidth:0, marginBottom:30, paddingLeft:32, display: shut?'none':'block' }}>
               {items.length===0 && <div style={{ fontSize:13, color:'#C05040', padding:'2px 0' }}>No events</div>}
               {items.map((it, idx) => {
                 const first = idx===0, last = idx===items.length-1;
@@ -2697,7 +2685,7 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
   );
 }
 
-function SwipeableTabPanels({ activeTab, onChange, renderTab }) {
+function SwipeableTabPanels({ activeTab, onChange, renderTab, slideTo }) {
   const frameRef = useRef(null);
   const gestureRef = useRef(null);
   const settleTimerRef = useRef(null);
@@ -2707,6 +2695,26 @@ function SwipeableTabPanels({ activeTab, onChange, renderTab }) {
   useEffect(() => () => clearTimeout(settleTimerRef.current), []);
 
   const frameWidth = () => frameRef.current ? frameRef.current.getBoundingClientRect().width : window.innerWidth;
+
+  // Tapping a tab label slides the same way a swipe does, so the two ways of
+  // changing tab never look like different features. Jumping more than one tab
+  // (Status → Packing) slides once toward the destination rather than through
+  // every tab in between.
+  useEffect(() => {
+    if (!slideTo || slideTo.tab === activeTab) return;
+    const to = TABS.indexOf(slideTo.tab);
+    if (to < 0 || gestureRef.current) return;
+    const width = frameWidth();
+    const forward = to > activeIndex;
+    // Show the destination arriving from the correct side, then run it home.
+    setMotion({ offset:0, targetIndex:to, animate:false });
+    const raf = requestAnimationFrame(() => {
+      setMotion({ offset: forward ? -width : width, targetIndex:to, animate:true });
+    });
+    clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(() => { onChange(slideTo.tab); resetMotion(); }, 230);
+    return () => cancelAnimationFrame(raf);
+  }, [slideTo]); // deliberately keyed on the request alone
   const resetMotion = () => setMotion({ offset:0, targetIndex:null, animate:false });
   const settle = (commit) => {
     const g = gestureRef.current;
@@ -2787,6 +2795,9 @@ function MainApp() {
   const [trips, setTrips] = useState([]);
   const [activeTrip, setActiveTrip] = useState(null);
   const [activeTab, setActiveTab] = useState("Status");
+  // A tab tap asks the panels to slide there; the timestamp lets the same tab be
+  // requested again after the traveler has swiped away from it.
+  const [slideTo, setSlideTo] = useState(null);
   const [showNewTrip, setShowNewTrip] = useState(false);
   const [showToday, setShowToday] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -3437,7 +3448,7 @@ function MainApp() {
           <div data-tabbar="" style={{ position:"sticky", top:"env(safe-area-inset-top, 0px)", zIndex:20, background:"#F0EBE0", margin:"0 -20px 20px", padding:"8px 20px", borderBottom: activeTab==="Schedule" ? "none" : "2px solid #C4A882" }}>
             <div style={{ display:"flex",gap:2,background:"#E8E2D4",borderRadius:8,padding:3 }}>
               {TABS.map(tab=>(
-                <button key={tab} onClick={()=>setActiveTab(tab)}
+                <button key={tab} onClick={()=>{ if (tab !== activeTab) setSlideTo({ tab, at: Date.now() }); }}
                   style={{ flex:1,padding:"6px 0",border:"none",borderRadius:6,fontSize:13,cursor:"pointer",fontWeight:500,
                     background: activeTab===tab?"#F0EBE0":"transparent",
                     color: activeTab===tab?"#6E1A10":"#B54030",
@@ -3448,7 +3459,7 @@ function MainApp() {
             </div>
           </div>
 
-          <SwipeableTabPanels activeTab={activeTab} onChange={setActiveTab} renderTab={renderTripTab} />
+          <SwipeableTabPanels activeTab={activeTab} onChange={setActiveTab} renderTab={renderTripTab} slideTo={slideTo} />
           {activeTab === 'Status' && <div aria-hidden="true" style={{ height:72 }} />}
 
           {activeTab === 'Status' && !showDocsSheet && (
