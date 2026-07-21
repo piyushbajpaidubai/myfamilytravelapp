@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Geolocation } from "@capacitor/geolocation";
 
-const TABS = ["Schedule", "Status", "Budget", "Packing"];
+const TABS = ["Status", "Schedule", "Budget", "Packing"];
 const CATEGORIES = ["Transport", "Hotel", "Food", "Sightseeing", "Other"];
 const BUDGET_CATS = ["Transport", "Accommodation", "Food", "Activities", "Shopping", "Other"];
 const PACK_CATS = ["Documents", "Clothing", "Toiletries", "Electronics", "Other"];
@@ -2651,14 +2651,93 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
   );
 }
 
+function SwipeableTabPanels({ activeTab, onChange, renderTab }) {
+  const frameRef = useRef(null);
+  const gestureRef = useRef(null);
+  const settleTimerRef = useRef(null);
+  const [motion, setMotion] = useState({ offset:0, targetIndex:null, animate:false });
+  const activeIndex = Math.max(0, TABS.indexOf(activeTab));
+
+  useEffect(() => () => clearTimeout(settleTimerRef.current), []);
+
+  const frameWidth = () => frameRef.current ? frameRef.current.getBoundingClientRect().width : window.innerWidth;
+  const resetMotion = () => setMotion({ offset:0, targetIndex:null, animate:false });
+  const settle = (commit) => {
+    const g = gestureRef.current;
+    if (!g) return;
+    const width = frameWidth();
+    const targetIndex = g.targetIndex;
+    const finalOffset = commit && targetIndex != null ? (targetIndex > activeIndex ? -width : width) : 0;
+    setMotion(m => ({ ...m, offset:finalOffset, animate:true }));
+    clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(() => {
+      if (commit && targetIndex != null) onChange(TABS[targetIndex]);
+      gestureRef.current = null;
+      resetMotion();
+    }, 230);
+  };
+  const onPointerStart = (e) => {
+    if (motion.animate || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const target = e.target;
+    if (target && target.closest && target.closest('button, a, input, textarea, select, label, [data-no-tab-swipe]')) return;
+    if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
+    gestureRef.current = { pointerId:e.pointerId, x:e.clientX, y:e.clientY, at:Date.now(), axis:null, dx:0, targetIndex:null };
+  };
+  const onPointerMove = (e) => {
+    const g = gestureRef.current;
+    if (!g || g.pointerId !== e.pointerId) return;
+    const dx = e.clientX - g.x;
+    const dy = e.clientY - g.y;
+    if (!g.axis && Math.max(Math.abs(dx), Math.abs(dy)) > 8) g.axis = Math.abs(dx) > Math.abs(dy) * 1.15 ? 'x' : 'y';
+    if (g.axis !== 'x') return;
+    e.preventDefault();
+    const direction = dx < 0 ? 1 : -1;
+    const targetIndex = activeIndex + direction;
+    const validTarget = targetIndex >= 0 && targetIndex < TABS.length ? targetIndex : null;
+    const width = frameWidth();
+    const offset = Math.max(-width, Math.min(width, validTarget == null ? dx * 0.22 : dx));
+    g.dx = dx;
+    g.targetIndex = validTarget;
+    setMotion({ offset, targetIndex:validTarget, animate:false });
+  };
+  const onPointerEnd = (e) => {
+    const g = gestureRef.current;
+    if (!g || (e && g.pointerId !== e.pointerId)) return;
+    if (e && e.currentTarget.releasePointerCapture && e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    if (g.axis !== 'x') { gestureRef.current = null; resetMotion(); return; }
+    const elapsed = Math.max(1, Date.now() - g.at);
+    const velocity = Math.abs(g.dx) / elapsed;
+    const commit = g.targetIndex != null && (Math.abs(g.dx) > Math.min(72, frameWidth() * 0.2) || velocity > 0.45);
+    settle(commit);
+  };
+  const targetIndex = motion.targetIndex;
+  const targetSide = targetIndex == null ? 0 : (targetIndex > activeIndex ? 1 : -1);
+  const transition = motion.animate ? 'transform 230ms cubic-bezier(0.22, 0.72, 0.22, 1)' : 'none';
+
+  return (
+    <div ref={frameRef} onPointerDown={onPointerStart} onPointerMove={onPointerMove} onPointerUp={onPointerEnd} onPointerCancel={onPointerEnd}
+      style={{ position:'relative', overflow:'hidden', touchAction:'pan-y' }}>
+      <div style={{ position:'relative', transform:`translate3d(${motion.offset}px,0,0)`, transition, willChange: motion.offset ? 'transform' : 'auto' }}>
+        {renderTab(activeTab)}
+      </div>
+      {targetIndex != null && (
+        <div aria-hidden="true" style={{ position:'absolute', inset:'0 0 auto', width:'100%', transform:`translate3d(${motion.offset + targetSide * frameWidth()}px,0,0)`, transition, willChange:'transform' }}>
+          {renderTab(TABS[targetIndex])}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MainApp() {
   const [trips, setTrips] = useState([]);
   const [activeTrip, setActiveTrip] = useState(null);
-  const [activeTab, setActiveTab] = useState("Schedule");
+  const [activeTab, setActiveTab] = useState("Status");
   const [showNewTrip, setShowNewTrip] = useState(false);
   const [showToday, setShowToday] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
+  const [showDocsSheet, setShowDocsSheet] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [accountMode, setAccountMode] = useState('login'); // which tab the account modal opens on
@@ -2671,6 +2750,9 @@ function MainApp() {
   const [headerNote, setHeaderNote] = useState('');
   const [savedStatus, setSavedStatus] = useState(''); // '', 'saving', 'saved'
   const [past, setPast] = useState([]); // undo history: recent trips snapshots (max 3)
+  const [loadedTripOwner, setLoadedTripOwner] = useState('');
+  const activeLandingRef = useRef('');
+  const docsPullStartRef = useRef(null);
 
   // Snapshot current trips before a mutation so it can be reverted (keep last 3)
   const recordHistory = () => setPast(p => [trips, ...p].slice(0, 3));
@@ -2692,6 +2774,7 @@ function MainApp() {
   // Load trips whenever the signed-in traveler changes
   useEffect(() => {
     let cancelled = false;
+    setLoadedTripOwner('');
     const loadLegacy = async () => {
       const cloudData = await loadFromCloud();
       if (cancelled) return;
@@ -2706,12 +2789,13 @@ function MainApp() {
           if (sv) { const { trips: t } = JSON.parse(sv); if (t && t.length) { setTrips(t); setActiveTrip(a => a || t[0].id); } }
         } catch(e) {}
       }
+      setLoadedTripOwner(sessionKey);
     };
     (async () => {
       // Signed out shows only the landing page, so load nothing: the old shared
       // blob would otherwise hand this browser somebody else's trips and header
       // note, and the note would then follow whoever logs in next.
-      if (!session) { cloudMode.current = 'legacy'; setTrips([]); setHeaderNote(''); return; }
+      if (!session) { cloudMode.current = 'legacy'; activeLandingRef.current = ''; setTrips([]); setHeaderNote(''); return; }
       const s = await freshSession(session, setSession);
       const res = await tripsFetch(s);
       if (cancelled) return;
@@ -2723,6 +2807,7 @@ function MainApp() {
         setTrips(list);
         setActiveTrip(a => list.some(t => t.id === a) ? a : (list[0] ? list[0].id : null));
         try { localStorage.setItem('travelPlannerData', JSON.stringify({ trips: list })); } catch(e) {}
+        setLoadedTripOwner(sessionKey);
       } else if (res.mode === 'legacy') {
         cloudMode.current = 'legacy';
         await loadLegacy();
@@ -2733,6 +2818,19 @@ function MainApp() {
     })();
     return () => { cancelled = true; };
   }, [sessionKey]);
+
+  // On app launch, an in-progress trip is the traveler's immediate workspace.
+  // Run this once per authenticated session so returning to Dashboard remains possible.
+  useEffect(() => {
+    if (!session || loadedTripOwner !== sessionKey || activeLandingRef.current === sessionKey) return;
+    activeLandingRef.current = sessionKey;
+    const inProgress = trips.find(t => t.id === activeTrip && tripStatusOf(t) === 'active')
+      || trips.find(t => tripStatusOf(t) === 'active');
+    if (!inProgress) return;
+    setActiveTrip(inProgress.id);
+    setActiveTab('Status');
+    setShowDashboard(false);
+  }, [activeTrip, loadedTripOwner, session, sessionKey, trips]);
 
   // The header note used to live in the one shared row. With trips isolated per
   // traveler it becomes personal, and rides along in the account's profile.
@@ -2936,7 +3034,13 @@ function MainApp() {
   // Promote/demote a member's per-trip role (creator only, gated in the UI)
   const setMemberRole = (tripId, userId, role) => updateTrip(tripId, t => ({ members: (t.members || []).map(m => m.userId === userId ? { ...m, role } : m) }));
 
-  const goToTrip = (id) => { setActiveTrip(id); setActiveTab('Schedule'); setShowSearch(false); setShowDashboard(false); };
+  const goToTrip = (id) => {
+    const selected = trips.find(t => t.id === id);
+    setActiveTrip(id);
+    setActiveTab(selected && tripStatusOf(selected) === 'active' ? 'Status' : 'Schedule');
+    setShowSearch(false);
+    setShowDashboard(false);
+  };
 
   // Trips visible to the signed-in traveler: unowned/legacy, owned by me, or shared with me.
   // Logged out shows everything (unchanged behaviour).
@@ -2957,6 +3061,15 @@ function MainApp() {
   // Local calendar date as YYYY-MM-DD, for the Today's Plan view
   const todayISO = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; })();
   const dateRange = trip ? tripDateRange(trip) : { start:"", end:"" };
+  const renderTripTab = (tab) => {
+    if (!trip) return null;
+    if (tab === 'Schedule') return <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} canEdit={isTripCaptain(trip)} />;
+    if (tab === 'Budget') return <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />;
+    if (tab === 'Packing') return <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />;
+    return <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)}
+      sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)}
+      shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${trip.shareToken ? `&k=${encodeURIComponent(trip.shareToken)}` : ''}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />;
+  };
 
   // ── Landing page for logged-out visitors ──
   if (!session) {
@@ -3042,7 +3155,7 @@ function MainApp() {
           profile={profile}
           trips={visibleTrips}
           canCreate={myRole === 'captain'}
-          onOpenTrip={(id)=>{ setActiveTrip(id); setActiveTab('Schedule'); setShowDashboard(false); }}
+          onOpenTrip={goToTrip}
           onOpenStatus={(id)=>{ setActiveTrip(id); setActiveTab('Status'); setShowDashboard(false); }}
           onMyTrips={()=>setShowDashboard(false)}
           onCalendar={()=>{ setShowDashboard(false); setShowToday(true); }}
@@ -3157,7 +3270,7 @@ function MainApp() {
         {/* Trip tabs */}
         <div style={{ display:"flex",gap:2,overflowX:"auto",padding:"0 20px",paddingBottom:0 }}>
           {visibleTrips.map(t=>(
-            <button key={t.id} onClick={()=>setActiveTrip(t.id)}
+            <button key={t.id} onClick={()=>{ setActiveTrip(t.id); setActiveTab(tripStatusOf(t)==='active' ? 'Status' : 'Schedule'); }}
               style={{
                 padding:"8px 16px",
                 borderRadius:"6px 6px 0 0",
@@ -3281,12 +3394,23 @@ function MainApp() {
             </div>
           </div>
 
-          {activeTab==="Schedule" && <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} canEdit={isTripCaptain(trip)} />}
-          {activeTab==="Budget" && <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />}
-          {activeTab==="Packing" && <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />}
-          {activeTab==="Status" && <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)}
-            sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)}
-            shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${trip.shareToken ? `&k=${encodeURIComponent(trip.shareToken)}` : ''}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />}
+          <SwipeableTabPanels activeTab={activeTab} onChange={setActiveTab} renderTab={renderTripTab} />
+          {activeTab === 'Status' && <div aria-hidden="true" style={{ height:72 }} />}
+
+          {activeTab === 'Status' && !showDocsSheet && (
+            <button type="button" aria-label="Open itinerary documents" onClick={()=>setShowDocsSheet(true)}
+              onTouchStart={e=>{ docsPullStartRef.current = e.touches[0] ? e.touches[0].clientY : null; }}
+              onTouchEnd={e=>{ const y = e.changedTouches[0] ? e.changedTouches[0].clientY : null; if (docsPullStartRef.current != null && y != null && docsPullStartRef.current - y > 24) setShowDocsSheet(true); docsPullStartRef.current = null; }}
+              style={{ position:'fixed', left:'50%', bottom:'calc(env(safe-area-inset-bottom, 0px) + 10px)', transform:'translateX(-50%)', zIndex:35,
+                width:'min(calc(100% - 28px), 650px)', minHeight:58, border:'1px solid #D4BFB0', borderRadius:14, background:'#F5EFE2', color:'#6E1A10',
+                display:'flex', alignItems:'center', gap:10, padding:'8px 14px', boxShadow:'0 6px 22px rgba(61,12,2,0.18)', cursor:'pointer', textAlign:'left', touchAction:'pan-y' }}>
+              <span aria-hidden="true" style={{ width:34, height:34, borderRadius:'50%', background:'#6E1A10', color:'#F5ECD7', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:18 }}>⌃</span>
+              <span style={{ minWidth:0, flex:1 }}>
+                <span style={{ display:'block', fontSize:13.5, fontWeight:700 }}>Itinerary Documents</span>
+                <span style={{ display:'block', fontSize:11.5, color:'#8A7A6D', marginTop:2 }}>Pull up for tickets and bookings</span>
+              </span>
+            </button>
+          )}
         </div>
       )}
 
@@ -3345,6 +3469,10 @@ function MainApp() {
 
       {showDocs && trip && (
         <DocsView trip={trip} onClose={()=>setShowDocs(false)} />
+      )}
+
+      {showDocsSheet && trip && (
+        <DocsSheet trip={trip} onClose={()=>setShowDocsSheet(false)} />
       )}
     </div>
   );
@@ -3802,6 +3930,99 @@ function SearchModal({ trips, onGoToTrip, onClose }) {
         ))}
       </div>
     </Modal>
+  );
+}
+
+// ---- Thumb-reachable document sheet used from the Status tab ----
+function DocsSheet({ trip, onClose }) {
+  const [dragY, setDragY] = useState(0);
+  const dragRef = useRef(null);
+  const byDate = {};
+  const dayLabelOf = {};
+  (trip.days || []).forEach(day => { dayLabelOf[(day.date || '').slice(0, 10)] = day.label || ''; });
+  const addDoc = (date, doc, context) => {
+    const key = (date || '').slice(0, 10) || '__undated__';
+    (byDate[key] = byDate[key] || []).push({ doc, context });
+  };
+  (trip.days || []).forEach(day => (day.events || []).forEach(event => {
+    (event.docs || []).forEach(doc => addDoc(day.date, doc, event.title || 'event'));
+    (event.activities || []).forEach(activity => (activity.docs || []).forEach(doc => addDoc(day.date, doc, `${event.title || 'event'} · ${activity.text || 'task'}`)));
+  }));
+  (trip.spans || []).forEach(span => (span.docs || []).forEach(doc => addDoc(span.startDate, doc, `${spanIcon(span)} ${span.title || span.type}`)));
+  const dates = Object.keys(byDate).sort((a, b) => a === '__undated__' ? 1 : b === '__undated__' ? -1 : (a > b ? 1 : -1));
+  const totalCount = Object.values(byDate).reduce((total, docs) => total + docs.length, 0);
+  const fmtSize = bytes => bytes == null ? '' : bytes < 1024 ? `${bytes}B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)}KB` : `${(bytes / 1048576).toFixed(1)}MB`;
+  const startDrag = (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { pointerId:e.pointerId, startY:e.clientY, currentY:e.clientY };
+  };
+  const moveDrag = (e) => {
+    if (!dragRef.current || dragRef.current.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    dragRef.current.currentY = e.clientY;
+    setDragY(Math.max(0, e.clientY - dragRef.current.startY));
+  };
+  const endDrag = (e) => {
+    if (!dragRef.current || dragRef.current.pointerId !== e.pointerId) return;
+    const distance = Math.max(0, dragRef.current.currentY - dragRef.current.startY);
+    if (e.currentTarget.releasePointerCapture && e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    dragRef.current = null;
+    if (distance > 72) onClose();
+    else setDragY(0);
+  };
+
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:220, background:'rgba(44,24,16,0.28)', display:'flex', alignItems:'flex-end', justifyContent:'center', fontFamily:'var(--font-body)', color:'#6E1A10' }}>
+      <section role="dialog" aria-modal="true" aria-label="Itinerary Documents" onClick={e=>e.stopPropagation()}
+        style={{ width:'min(100%, 680px)', height:'66dvh', minHeight:360, maxHeight:620, background:'#F0EBE0', borderRadius:'20px 20px 0 0', boxShadow:'0 -10px 34px rgba(44,24,16,0.24)', overflow:'hidden', display:'flex', flexDirection:'column', transform:`translate3d(0,${dragY}px,0)`, transition:dragRef.current == null ? 'transform 180ms ease-out' : 'none' }}>
+        <div onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} data-no-tab-swipe
+          style={{ flexShrink:0, background:'#F5EFE2', borderBottom:'1px solid #D8CFC2', padding:'8px 16px 12px', touchAction:'none' }}>
+          <button type="button" onClick={onClose} aria-label="Close itinerary documents"
+            style={{ width:56, height:18, display:'block', margin:'0 auto 5px', padding:0, border:'none', background:'transparent', cursor:'pointer' }}>
+            <span style={{ display:'block', width:42, height:4, margin:'7px auto', borderRadius:4, background:'#B9A99A' }} />
+          </button>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+            <div>
+              <div style={{ fontSize:16, fontWeight:800, color:'#6E1A10' }}>Itinerary Documents</div>
+              <div style={{ fontSize:11.5, color:'#8A7A6D', marginTop:2 }}>{trip.name} · {totalCount} file{totalCount===1?'':'s'}</div>
+            </div>
+            <button type="button" onClick={onClose} aria-label="Close" style={{ width:34, height:34, borderRadius:'50%', border:'1px solid #D4BFB0', background:'#F0EBE0', color:'#8B2A14', cursor:'pointer', fontSize:19, lineHeight:1 }}>×</button>
+          </div>
+        </div>
+
+        <div data-no-tab-swipe style={{ flex:1, minHeight:0, overflowY:'auto', WebkitOverflowScrolling:'touch', overscrollBehavior:'contain', touchAction:'pan-y', padding:'8px 20px calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
+          {totalCount === 0 ? (
+            <div style={{ textAlign:'center', padding:'46px 10px', color:'#B54030' }}>
+              <div style={{ fontSize:42, marginBottom:12 }}>📎</div>
+              <p style={{ fontSize:15, margin:0 }}>No documents attached yet.</p>
+              <p style={{ fontSize:13, color:'#8A7A6D', marginTop:8 }}>Attach files to events or tasks in the Schedule tab.</p>
+            </div>
+          ) : dates.map((iso, dateIndex) => (
+            <div key={iso}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', margin:dateIndex===0 ? '10px 0' : '24px 0 10px' }}>
+                <span style={{ background:'#5C1A1A', color:'#F5ECD7', borderRadius:8, padding:'6px 11px', fontSize:13, fontWeight:700 }}>
+                  {iso === '__undated__' ? 'Undated' : fmtDate(iso)}
+                </span>
+                {iso !== '__undated__' && <span style={{ fontSize:11.5, color:'#9A8478', textTransform:'uppercase', letterSpacing:'0.05em', fontWeight:600 }}>{weekdayOf(iso)}{dayLabelOf[iso] ? ` · ${dayLabelOf[iso]}` : ''}</span>}
+                <span style={{ marginLeft:'auto', fontSize:11, color:'#B07A4A' }}>{byDate[iso].length} file{byDate[iso].length===1?'':'s'}</span>
+              </div>
+              {byDate[iso].map(item => (
+                <a key={item.doc.id || `${iso}-${item.doc.name}`} href={item.doc.url || item.doc.data} target="_blank" rel="noopener noreferrer"
+                  style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 4px', borderBottom:'1px solid #E2D8C8', textDecoration:'none', color:'inherit' }}>
+                  <span style={{ fontSize:20 }}>📎</span>
+                  <span style={{ flex:1, minWidth:0 }}>
+                    <span style={{ display:'block', fontSize:13.5, color:'#8B2A14', textDecoration:'underline', wordBreak:'break-word' }}>{item.doc.name}</span>
+                    <span style={{ display:'block', fontSize:11.5, color:'#9A8478', marginTop:2 }}>{item.context}</span>
+                  </span>
+                  {item.doc.size != null && <span style={{ fontSize:11.5, color:'#B07A4A', flexShrink:0 }}>{fmtSize(item.doc.size)}</span>}
+                </a>
+              ))}
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 
