@@ -65,7 +65,7 @@ function Modal({ title, onClose, children }) {
   // The overlay itself scrolls, so a form taller than the screen stays reachable
   // (margin:auto keeps short dialogs centred). Safe-area padding clears the notch.
   return (
-    <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.3)",zIndex:100,display:"flex",justifyContent:"center",overflowY:"auto",WebkitOverflowScrolling:"touch",
+    <div data-no-tab-swipe="" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.3)",zIndex:100,display:"flex",justifyContent:"center",overflowY:"auto",WebkitOverflowScrolling:"touch",
       padding:"calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px)" }}>
       <div style={{ background:"#F0EBE0",borderRadius:12,padding:24,minWidth:0,maxWidth:480,width:"100%",margin:"auto",boxShadow:"0 8px 32px rgba(44,24,16,0.15)" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
@@ -1392,15 +1392,29 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
     // A trip entirely in the past has no "current" day — leave it at the top.
     if (!target) { landedOnTrip.current = trip.id; return; }
     // Wait for layout so the day's position is real before measuring it.
-    const raf = requestAnimationFrame(() => {
+    let raf = requestAnimationFrame(() => {
       const el = dayEls.current[target.id];
       if (!el) return;
       landedOnTrip.current = trip.id;
       const bar = document.querySelector('[data-tabbar]');
       const offset = (bar ? bar.getBoundingClientRect().height : 0) + 8;
-      const top = el.getBoundingClientRect().top + window.scrollY - offset;
-      const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      window.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
+      const to = Math.max(0, el.getBoundingClientRect().top + window.scrollY - offset);
+      const from = window.scrollY;
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || Math.abs(to - from) < 4) {
+        window.scrollTo(0, to);
+        return;
+      }
+      // Native smooth scrolling is abrupt over a long trip, so ease it by hand:
+      // a slow start and a long settle reads as the page drifting to today.
+      const DURATION = 900;
+      const started = performance.now();
+      const ease = p => p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+      const step = now => {
+        const p = Math.min(1, (now - started) / DURATION);
+        window.scrollTo(0, from + (to - from) * ease(p));
+        if (p < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
     });
     return () => cancelAnimationFrame(raf);
   }, [trip.id, days]);
@@ -2745,15 +2759,23 @@ function SwipeableTabPanels({ activeTab, onChange, renderTab }) {
   const targetIndex = motion.targetIndex;
   const targetSide = targetIndex == null ? 0 : (targetIndex > activeIndex ? 1 : -1);
   const transition = motion.animate ? 'transform 230ms cubic-bezier(0.22, 0.72, 0.22, 1)' : 'none';
+  // At rest the panel must carry NO transform: a transformed element becomes the
+  // containing block for its position:fixed children, which trapped every modal
+  // opened from inside a tab (Add Task, Add Activity...) inside this clipped frame.
+  const sliding = motion.offset !== 0 || targetIndex != null || motion.animate;
 
   return (
     <div ref={frameRef} onPointerDown={onPointerStart} onPointerMove={onPointerMove} onPointerUp={onPointerEnd} onPointerCancel={onPointerEnd}
-      style={{ position:'relative', overflow:'hidden', touchAction:'pan-y' }}>
-      <div style={{ position:'relative', transform:`translate3d(${motion.offset}px,0,0)`, transition, willChange: motion.offset ? 'transform' : 'auto' }}>
+      style={{ position:'relative', overflow: sliding ? 'hidden' : 'visible', touchAction:'pan-y' }}>
+      <div style={{ position:'relative', transform: sliding ? `translate3d(${motion.offset}px,0,0)` : 'none', transition, willChange: motion.offset ? 'transform' : 'auto' }}>
         {renderTab(activeTab)}
       </div>
       {targetIndex != null && (
-        <div aria-hidden="true" style={{ position:'absolute', inset:'0 0 auto', width:'100%', transform:`translate3d(${motion.offset + targetSide * frameWidth()}px,0,0)`, transition, willChange:'transform' }}>
+        // The incoming tab carries a hairline edge and a soft shadow, so the seam
+        // between the two tabs reads as one page sliding over another.
+        <div aria-hidden="true" style={{ position:'absolute', inset:'0 0 auto', width:'100%', background:'#F0EBE0',
+          boxShadow: targetSide > 0 ? '-1px 0 0 #C4A882, -10px 0 22px rgba(74,44,32,0.13)' : '1px 0 0 #C4A882, 10px 0 22px rgba(74,44,32,0.13)',
+          transform:`translate3d(${motion.offset + targetSide * frameWidth()}px,0,0)`, transition, willChange:'transform' }}>
           {renderTab(TABS[targetIndex])}
         </div>
       )}
