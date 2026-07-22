@@ -326,7 +326,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
   const [taskForm, setTaskForm] = useState({ time:"", text:"", assignees:[] });
   // evForm covers both single-day activities (time/endTime/category) and multi-day spans (startDate/endDate/…)
   // duration = 'single' | 'multi' decides which; type only matters for multi-day spans
-  const [evForm, setEvForm] = useState({ duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" });
+  const [evForm, setEvForm] = useState({ duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", assignees:[], startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" });
   // Activity state: { [eventId]: inputText }
   const [activityInput, setActivityInput] = useState({});
   // Which event is showing the activity input box
@@ -336,6 +336,19 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
   const [estimateMsg, setEstimateMsg] = useState('');
   // Event expense modal: eventId being logged + the form
   const members = trip.members || [];
+  // Tapping a traveller's icon narrows the schedule to their items. The signed-in
+  // traveller sorts first so they can pick their own schedule at a glance.
+  const orderedMembers = myId ? [...members].sort((a, b) => a.userId === myId ? -1 : b.userId === myId ? 1 : 0) : members;
+  const [focusMember, setFocusMember] = useState(null);
+  const [showFocusPicker, setShowFocusPicker] = useState(false);
+  const focusName = focusMember ? ((members.find(m => m.userId === focusMember) || {}).name || focusMember) : null;
+  // A merged item belongs to a traveller if it is assigned to them, or to no one (everyone).
+  const itemForMember = (it, uid) => {
+    if (!uid) return true;
+    const u = it.s || it.ev || it.task;
+    const ids = (u && u.assignees) || [];
+    return ids.length === 0 || ids.includes(uid);
+  };
   const [expenseFor, setExpenseFor] = useState(null); // eventId
   const [expForm, setExpForm] = useState({ amount:"", category:"Food", travelerId:"", desc:"" });
   const nameOfTraveler = (uid) => { const m = members.find(x => x.userId === uid); return m ? m.name : ''; };
@@ -467,7 +480,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
 
   const delDay = (id) => update({ days: (trip.days||[]).filter(d=>d.id!==id) });
 
-  const blankForm = { duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", notes:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" };
+  const blankForm = { duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", assignees:[], startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" };
   const closeModal = () => { setShowEvent(null); setEvForm(blankForm); };
   // Open "add" modal from a day; prefill span dates to that day + default the optional expense to the current traveler
   const openAddEvent = (day) => {
@@ -505,7 +518,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
       alert('Please fill in Title, Start Time and End Time.');
       return;
     }
-    const newEvent = { id:uid(), time:evForm.time, endTime:evForm.endTime, title:evForm.title, location:evForm.location, category:evForm.category, notes:evForm.notes, activities:[], docs:[] };
+    const newEvent = { id:uid(), time:evForm.time, endTime:evForm.endTime, title:evForm.title, location:evForm.location, category:evForm.category, assignees:evForm.assignees||[], activities:[], docs:[] };
     const exp = expenseFromForm(newEvent.id);
     update(t => ({
       days:(t.days||[]).map(d => d.id===dayId ? { ...d, events:[...(d.events||[]), newEvent].sort((a,b)=>a.time>b.time?1:-1) } : d),
@@ -524,7 +537,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
       else if (!f.from || !f.to) { alert('Please fill in the From and To locations.'); return; }
     }
     const endDate = f.duration === 'single' ? f.startDate : f.endDate; // single-day travel stays same-day
-    const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, mode:f.mode, flightNo:f.flightNo, notes:f.notes, startDate:f.startDate, startTime:f.startTime, endDate, endTime:f.spanEndTime };
+    const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, mode:f.mode, flightNo:f.flightNo, assignees:f.assignees||[], startDate:f.startDate, startTime:f.startTime, endDate, endTime:f.spanEndTime };
     const span = { id:uid(), ...fields, dayStatus:{}, docs:[] };
     const exp = expenseFromForm(span.id);
     update(t => ({
@@ -871,7 +884,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
         {renderPeopleRow(s,detailKey)}
         {expanded && <div style={{ padding:'12px 13px 14px',borderTop:'1px solid #E8DDD0',background:'#FCFAF6' }}>
           <div style={{ color:'#8B786E',fontSize:10.5,lineHeight:1.45 }}>{spanSegLabel(s,day.date)} · {fmtDate(s.startDate)}{s.startTime?` ${s.startTime}`:''} → {fmtDate(s.endDate)}{s.endTime?` ${s.endTime}`:''}</div>
-          {s.notes && <p style={{ margin:'9px 0',color:'#6F5C53',fontSize:11.5,lineHeight:1.5 }}>{s.notes}</p>}
+          {/* notes removed — travellers are assigned instead */}
           {canEdit && editingPanelFor===detailKey && <div style={{ margin:'10px 0',padding:'10px',borderRadius:12,background:'#F3EFE9',display:'grid',gap:8 }}>
             <div><div style={{ marginBottom:4,fontSize:9,fontWeight:800,letterSpacing:'0.08em',color:'#8D7A70' }}>TITLE</div>{Editable({ kind:'span', ids:{ dayId:day.id, evId:s.id }, value:s.title, placeholder:'(untitled)', spanStyle:{ display:'block',minHeight:24,padding:'5px 7px',border:'1px dashed #C8B09A',borderRadius:7,fontSize:11.5,color:'#4E3D36' }, inputWidth:240 })}</div>
           </div>}
@@ -907,7 +920,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
         </button>
         {renderPeopleRow(ev,detailKey)}
         {expanded && <div style={{ padding:'12px 13px 14px',borderTop:'1px solid #E8DDD0',background:'#FCFAF6' }}>
-          {ev.notes && <p style={{ margin:'0 0 10px',color:'#6F5C53',fontSize:11.5,lineHeight:1.5 }}>{ev.notes}</p>}
+          {/* notes removed — travellers are assigned instead */}
           {canEdit && editingPanelFor===detailKey && <div style={{ margin:'10px 0',padding:'10px',borderRadius:12,background:'#F3EFE9',display:'grid',gap:8 }}>
             <div><div style={{ marginBottom:4,fontSize:9,fontWeight:800,letterSpacing:'0.08em',color:'#8D7A70' }}>TITLE</div>{Editable({ kind:'event', ids:{ dayId:day.id, evId:ev.id }, value:ev.title, placeholder:'(untitled)', spanStyle:{ display:'block',minHeight:24,padding:'5px 7px',border:'1px dashed #C8B09A',borderRadius:7,fontSize:11.5,color:'#4E3D36' }, inputWidth:240 })}</div>
             <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}><div><div style={{ marginBottom:4,fontSize:9,fontWeight:800,letterSpacing:'0.08em',color:'#8D7A70' }}>START</div>{Editable({ kind:'startTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.time, placeholder:'--:--', spanStyle:{ display:'block',minHeight:24,padding:'5px 7px',border:'1px dashed #C8B09A',borderRadius:7,fontSize:11.5,color:'#4E3D36' }, inputType:'time', inputWidth:100 })}</div><div><div style={{ marginBottom:4,fontSize:9,fontWeight:800,letterSpacing:'0.08em',color:'#8D7A70' }}>END</div>{Editable({ kind:'endTime', ids:{ dayId:day.id, evId:ev.id }, value:ev.endTime, placeholder:'--:--', spanStyle:{ display:'block',minHeight:24,padding:'5px 7px',border:'1px dashed #C8B09A',borderRadius:7,fontSize:11.5,color:'#4E3D36' }, inputType:'time', inputWidth:100 })}</div></div>
@@ -944,19 +957,39 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
       <section aria-label="Itinerary summary" style={{ marginBottom:22 }}>
         <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:12 }}>
           <div><strong style={{ display:'block',fontSize:15,color:'#302521' }}>{(trip.days||[]).length} trip day{(trip.days||[]).length===1?'':'s'}</strong><span style={{ color:'#927F75',fontSize:10.5 }}>{(trip.days||[]).reduce((count,day)=>count+(day.events||[]).length+(day.tasks||[]).length,0)+(trip.spans||[]).length} itinerary items</span></div>
-          <div style={{ display:'flex',alignItems:'center',flexShrink:0 }}>{members.slice(0,4).map((member,index)=><span key={member.userId} style={{ width:29,height:29,marginLeft:index===0?0:-7,borderRadius:'50%',overflow:'hidden',border:'2px solid #F7F5F0',boxShadow:'0 0 0 1px #CFC2B5',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:800 }}>{member.pic?<img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}{members.length>4&&<span style={{ marginLeft:5,fontSize:10,color:'#8F7D73' }}>+{members.length-4}</span>}</div>
+          <div style={{ display:'flex',alignItems:'center',flexShrink:0 }}>{orderedMembers.slice(0,6).map((member,index)=>{ const on=focusMember===member.userId; return <button key={member.userId} type="button" aria-pressed={on} title={`Show only ${member.name||member.userId}'s schedule`} onClick={()=>setFocusMember(on?null:member.userId)} style={{ width:29,height:29,marginLeft:index===0?0:-7,borderRadius:'50%',overflow:'hidden',border:on?'2px solid #6E2118':'2px solid #F7F5F0',boxShadow:on?'0 0 0 2px #6E2118':'0 0 0 1px #CFC2B5',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:800,cursor:'pointer',padding:0,transform:on?'translateY(-2px)':'none',zIndex:on?2:1 }}>{member.pic?<img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</button>;})}{orderedMembers.length>6&&<button type="button" onClick={()=>setShowFocusPicker(true)} title="More travellers" style={{ marginLeft:5,width:27,height:27,borderRadius:'50%',border:'1px solid #CFC2B5',background:'#fff',color:'#6E2118',fontSize:14,fontWeight:800,cursor:'pointer',display:'grid',placeItems:'center',flexShrink:0 }}>+</button>}</div>
         </div>
+        {focusMember && (
+          <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:8, background:'#F1E7DD', border:'1px solid #E0D2C5', borderRadius:12, padding:'7px 12px' }}>
+            <span style={{ fontSize:11.5, color:'#6E2118', fontWeight:700 }}>Showing {focusName}'s schedule</span>
+            <button type="button" onClick={()=>setFocusMember(null)} style={{ marginLeft:'auto', border:'none', background:'transparent', color:'#8B2A14', fontSize:11.5, fontWeight:800, cursor:'pointer', padding:0 }}>Show all ✕</button>
+          </div>
+        )}
         {canEdit && <div style={{ marginTop:12,marginLeft:40 }}>
           <button type="button" onClick={()=>setShowDay(true)} style={{ width:'100%',height:42,border:'1px solid #D7CCC0',borderRadius:12,background:'#fff',color:'#6E2118',fontSize:11.5,fontWeight:800,cursor:'pointer' }}>＋ Day</button>
         </div>}
       </section>
+
+      {showFocusPicker && (
+        <Modal title="Show whose schedule?" onClose={()=>setShowFocusPicker(false)}>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            <button type="button" onClick={()=>{ setFocusMember(null); setShowFocusPicker(false); }} style={{ textAlign:'left', border:'1px solid #E0D2C5', borderRadius:10, padding:'10px 12px', background: !focusMember?'#F1E7DD':'#fff', color:'#6E2118', fontSize:13, fontWeight:700, cursor:'pointer' }}>Everyone</button>
+            {orderedMembers.map(m=>(
+              <button key={m.userId} type="button" onClick={()=>{ setFocusMember(m.userId); setShowFocusPicker(false); }} style={{ display:'flex', alignItems:'center', gap:10, textAlign:'left', border:'1px solid #E0D2C5', borderRadius:10, padding:'8px 12px', background: focusMember===m.userId?'#F1E7DD':'#fff', color:'#5E463C', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                <span style={{ width:26,height:26,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:800,flexShrink:0 }}>{m.pic?<img src={m.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((m.name||m.userId||'?')[0]||'?').toUpperCase()}</span>
+                {m.name||m.userId}{m.userId===myId?' (you)':''}
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
 
       {(!trip.days||trip.days.length===0) && (
         <p style={{ color:'#907D73',fontSize:12.5,textAlign:'center',padding:'30px 0' }}>No days added yet.</p>
       )}
 
       <div aria-label="All itinerary days">{(trip.days||[]).map((day,dayIndex)=>{
-        const items=mergedDayItems(day); const collapsed=!!collapsedDays[day.id]; const weekday=new Date(`${day.date}T00:00:00`).toLocaleDateString('en-GB',{weekday:'long'});
+        const items=mergedDayItems(day).filter(it=>itemForMember(it,focusMember)); const collapsed=!!collapsedDays[day.id]; const weekday=new Date(`${day.date}T00:00:00`).toLocaleDateString('en-GB',{weekday:'long'});
         return <section key={day.id} aria-label={`Day ${dayIndex+1}: ${day.label||'Untitled day'}`} style={{ marginTop:dayIndex===0?0:28,paddingTop:dayIndex===0?0:24,borderTop:dayIndex===0?'none':'1px dashed #D7CCC0' }}>
           <div style={{ display:'grid',gridTemplateColumns:canEdit?'58px minmax(0,1fr) 96px':'58px minmax(0,1fr)',alignItems:'stretch',gap:10,minHeight:82,marginBottom:14 }}>
             <button type="button" aria-label={collapsed?'Expand day':'Collapse day'} onClick={()=>toggleDayCollapse(day.id)} style={{ width:58,minHeight:82,border:'none',borderRadius:16,background:'#6E2118',color:'#fff',cursor:'pointer',alignSelf:'stretch' }}><strong style={{ display:'block',fontSize:20 }}>{compactDate(day.date).d}</strong><span style={{ display:'block',marginTop:3,fontSize:9.5,letterSpacing:'0.08em' }}>{compactDate(day.date).mon}</span></button>
@@ -1034,7 +1067,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
               <Input label="Location" value={evForm.location} onChange={e=>setEvForm({...evForm,location:e.target.value})} placeholder="e.g. Kedarnath Temple" />
               <Select label="Category" value={evForm.category} onChange={e=>setEvForm({...evForm,category:e.target.value})}
                 options={["Sightseeing","Transport","Food","Accommodation","Activity","Other"]} />
-              <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Any notes…" />
+              <div style={{ marginBottom:12 }}><div style={{ fontSize:12, color:'#A83020', marginBottom:4 }}>Travelers</div><Assignees members={members} value={evForm.assignees} onChange={list=>setEvForm({...evForm,assignees:list})} /></div>
               {expenseFields}
               <div style={{ display:"flex",gap:8,marginTop:8 }}>
                 <Btn onClick={()=>addEvent(showEvent)}>Add Event</Btn>
@@ -1080,7 +1113,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
                   {estimateMsg && <div style={{ fontSize:11.5, color:'#8A7A6D', marginTop:6, lineHeight:1.4 }}>{estimateMsg}</div>}
                 </div>
               )}
-              <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Vehicle, driver, PNR…" />
+              <div style={{ marginBottom:12 }}><div style={{ fontSize:12, color:'#A83020', marginBottom:4 }}>Travelers</div><Assignees members={members} value={evForm.assignees} onChange={list=>setEvForm({...evForm,assignees:list})} /></div>
               {expenseFields}
               <div style={{ display:"flex",gap:8,marginTop:8 }}>
                 <Btn onClick={submitSpan}>Add</Btn>
@@ -1104,7 +1137,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
                   </div>
                   <Input label="Location" value={evForm.location} onChange={e=>setEvForm({...evForm,location:e.target.value})}
                     placeholder={evForm.type==='Accommodation' ? 'e.g. Laxman Jhula Rd' : 'Optional'} />
-                  <Input label="Notes" value={evForm.notes} onChange={e=>setEvForm({...evForm,notes:e.target.value})} placeholder="Booking ref, room type…" />
+                  <div style={{ marginBottom:12 }}><div style={{ fontSize:12, color:'#A83020', marginBottom:4 }}>Travelers</div><Assignees members={members} value={evForm.assignees} onChange={list=>setEvForm({...evForm,assignees:list})} /></div>
                 </>
               ); })()}
               {expenseFields}
@@ -2378,15 +2411,14 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
     heroX = { r, total, dayN, next, pct };
   }
 
-  // What each family member is up to right now (hero trip, today)
+  // What each family member is up to right now (hero trip, today) — every
+  // in-progress event, listed separately, not just the first.
   const memberNow = (m) => {
-    let active = null, done = null;
-    spansOnDay(hero, todayISO).forEach(sp => { const st = spanMemStOf(sp, m.userId, todayISO); if (st === 'active' && !active) active = sp.title; else if (st === 'done' && !done) done = sp.title; });
+    const active = [], done = [];
+    spansOnDay(hero, todayISO).forEach(sp => { const st = spanMemStOf(sp, m.userId, todayISO); if (st === 'active') active.push(sp.title || 'Untitled'); else if (st === 'done') done.push(sp.title || 'Untitled'); });
     const day = (hero.days || []).find(d => (d.date || '').slice(0, 10) === todayISO);
-    if (day) (day.events || []).forEach(ev => { const st = memStOf(ev, m.userId); if (st === 'active' && !active) active = ev.title; else if (st === 'done' && !done) done = ev.title; });
-    if (active) return { line: `At ${active}`, chip: 'Active', ok: true };
-    if (done) return { line: `Finished ${done}`, chip: 'Active', ok: true };
-    return { line: 'No update yet', chip: 'No update', ok: false };
+    if (day) (day.events || []).forEach(ev => { const st = memStOf(ev, m.userId); if (st === 'active') active.push(ev.title || 'Untitled'); else if (st === 'done') done.push(ev.title || 'Untitled'); });
+    return { active, done };
   };
 
   const chipFor = (t) => {
@@ -2590,13 +2622,24 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
                   const s = memberNow(m);
                   const ini = ((m.name || m.userId || '?').trim().charAt(0) || '?').toUpperCase();
                   return (
-                    <div key={m.userId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: '1px solid #EFE6D6' }}>
-                      <span style={{ width: 34, height: 34, borderRadius: '50%', background: '#EFE3CC', color: '#8B5A3C', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 800, flexShrink: 0 }}>{ini}</span>
+                    <div key={m.userId} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0', borderTop: '1px solid #EFE6D6' }}>
+                      <span style={{ width: 34, height: 34, borderRadius: '50%', background: '#EFE3CC', color: '#8B5A3C', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 800, flexShrink: 0, marginTop: 1 }}>{ini}</span>
                       <span style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#3D0C02' }}>{(m.name || m.userId).split(/\s+/)[0]}</span>
-                        <span style={{ display: 'block', fontSize: 11, color: '#9A8478', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.line}</span>
+                        <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#3D0C02', marginBottom: 3 }}>{(m.name || m.userId).split(/\s+/)[0]}</span>
+                        {s.active.length > 0 ? (
+                          s.active.map((title, i) => (
+                            <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: i ? 4 : 0 }}>
+                              <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: '#5A4A40', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+                              <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 6, padding: '2px 8px', flexShrink: 0, color: STATUS_META.active.color, background: STATUS_META.active.bg }}>Active</span>
+                            </span>
+                          ))
+                        ) : (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: '#9A8478', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.done.length ? `Finished ${s.done[0]}${s.done.length > 1 ? ` +${s.done.length - 1}` : ''}` : 'No update yet'}</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 6, padding: '2px 8px', flexShrink: 0, color: s.done.length ? STATUS_META.done.color : '#8A7A6D', background: s.done.length ? STATUS_META.done.bg : '#EDE5D4' }}>{s.done.length ? 'Done' : 'No update'}</span>
+                          </span>
+                        )}
                       </span>
-                      <span style={{ fontSize: 10.5, fontWeight: 700, borderRadius: 6, padding: '2px 8px', flexShrink: 0, color: s.ok ? STATUS_META.active.color : '#8A7A6D', background: s.ok ? STATUS_META.active.bg : '#EDE5D4' }}>{s.chip}</span>
                     </div>
                   );
                 })}
@@ -3837,7 +3880,7 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
                     <StatusBadge status={spStatus(s, todayISO)} />
                   </div>
                   {spanLocationText(s) && <div style={{ fontSize:12.5, color:'#A83020', marginTop:3 }}>📍 {spanLocationText(s)}</div>}
-                  {s.notes && <div style={{ fontSize:12.5, color:'#7A685F', marginTop:3 }}>{s.notes}</div>}
+                  {/* notes removed */}
                   {docLinks(s.docs)}
                 </div>
               </div>
@@ -3854,7 +3897,7 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
                     <StatusBadge status={evStatus(ev)} />
                   </div>
                   {ev.location && <div style={{ fontSize:12.5, color:'#A83020', marginTop:3 }}>📍 {ev.location}</div>}
-                  {ev.notes && <div style={{ fontSize:12.5, color:'#7A685F', marginTop:3 }}>{ev.notes}</div>}
+                  {/* notes removed */}
                   {docLinks(ev.docs)}
                   {(ev.activities||[]).length > 0 && (
                     <div style={{ marginTop:10, borderLeft:'2px solid #E2D8C8' }}>
@@ -3966,7 +4009,7 @@ function DocsSheet({ trip, onClose }) {
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:220, background:'rgba(44,24,16,0.28)', display:'flex', alignItems:'flex-end', justifyContent:'center', fontFamily:'var(--font-body)', color:'#6E1A10' }}>
       <section role="dialog" aria-modal="true" aria-label="Itinerary Documents" onClick={e=>e.stopPropagation()}
-        style={{ width:'min(100%, 680px)', height:'66dvh', minHeight:360, maxHeight:620, background:'#F0EBE0', borderRadius:'20px 20px 0 0', boxShadow:'0 -10px 34px rgba(44,24,16,0.24)', overflow:'hidden', display:'flex', flexDirection:'column', transform:`translate3d(0,${dragY}px,0)`, transition:dragRef.current == null ? 'transform 180ms ease-out' : 'none' }}>
+        style={{ width:'min(100%, 680px)', height:'calc(100dvh - env(safe-area-inset-top, 0px) - 138px)', minHeight:360, maxHeight:'92dvh', background:'#F0EBE0', borderRadius:'20px 20px 0 0', boxShadow:'0 -10px 34px rgba(44,24,16,0.24)', overflow:'hidden', display:'flex', flexDirection:'column', transform:`translate3d(0,${dragY}px,0)`, transition:dragRef.current == null ? 'transform 180ms ease-out' : 'none' }}>
         <div onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} data-no-tab-swipe
           style={{ flexShrink:0, background:'#F5EFE2', borderBottom:'1px solid #D8CFC2', padding:'8px 16px 12px', touchAction:'none' }}>
           <button type="button" onClick={onClose} aria-label="Close itinerary documents"
@@ -4104,7 +4147,7 @@ function buildTripHtml(trip) {
       const tm = ev.time ? `${esc(ev.time)}${ev.endTime ? '–' + esc(ev.endTime) : ''} ` : '';
       body += `<div class="ev"><strong>${tm}${esc(ev.title || '')}</strong> <span class="cat">${esc(ev.category || '')}</span>`;
       if (ev.location) body += `<div class="loc">📍 ${esc(ev.location)}</div>`;
-      if (ev.notes) body += `<div class="note">${esc(ev.notes)}</div>`;
+      /* notes removed from events */
       (ev.activities || []).forEach(a => { body += `<div class="act">• ${esc(a.text || '')}</div>`; });
       body += `</div>`;
     });
