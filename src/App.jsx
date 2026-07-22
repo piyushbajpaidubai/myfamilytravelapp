@@ -1278,7 +1278,9 @@ function PackingTab({ trip, update }) {
   const uncatted = (trip.packItems||[]).filter(p=>!PACK_CATS.includes(p.category));
 
   return (
-    <div>
+    // minHeight fills a short packing list with blank space so the tab is the
+    // same height as the others — the horizontal swipe frame won't jump.
+    <div style={{ minHeight:'72vh' }}>
       <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
         <div>
           <span style={{ fontWeight:600 }}>Packing List</span>
@@ -1548,56 +1550,37 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
 
   return (
     <div>
-      {shareUrl && (
-        <div style={{ marginBottom:16, background:'#F5EFE2', border:'1px dashed #D4BFB0', borderRadius:10, padding:'10px 14px' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
-            <span style={{ fontSize:12.5, color:'#8B5A3C', flex:1, minWidth:150, lineHeight:1.4 }}>Share a live, read-only link so anyone can follow this trip's status.</span>
-            <button onClick={copyShare} style={{ padding:'7px 14px', borderRadius:8, border:'none', background:'#6E1A10', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>{copied ? '✓ Link copied' : 'Share status'}</button>
-          </div>
-          {/* Traveler's opt-in: push a notification to followers on each status update */}
+      {/* Condensed status controls: notifications toggle + share link on one row */}
+      {(shareUrl || update) && (
+        <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap', marginBottom:14 }}>
           {update && (
-            <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:10, paddingTop:10, borderTop:'1px solid #E4D8C4' }}>
-              <span style={{ fontSize:12.5, color:'#8B5A3C', flex:1, minWidth:150, lineHeight:1.4 }}>
-                🔔 Notify followers when status changes
-                <span style={{ display:'block', fontSize:11, color:'#B0967A', marginTop:2 }}>{trip.notifyEnabled ? 'On — followers who tapped “Notify me” get a push.' : 'Off — followers can still open the link to check.'}</span>
+            <button onClick={()=>update({ notifyEnabled: !trip.notifyEnabled })}
+              title={trip.notifyEnabled ? 'Notifications on — followers who tapped “Notify me” get a push' : 'Notifications off — followers can still open the link to check'}
+              style={{ display:'inline-flex', alignItems:'center', gap:9, border:'none', background:'transparent', padding:0, cursor:'pointer' }}>
+              <span style={{ width:48, height:26, borderRadius:20, background: trip.notifyEnabled ? '#3C8A3C' : '#C9BCA6', position:'relative', transition:'background .2s', flexShrink:0, boxShadow:'inset 0 1px 2px rgba(0,0,0,.15)' }}>
+                <span style={{ position:'absolute', top:3, left: trip.notifyEnabled ? 25 : 3, width:20, height:20, borderRadius:'50%', background:'#fff', transition:'left .2s', boxShadow:'0 1px 2px rgba(0,0,0,.3)' }} />
               </span>
-              <button onClick={()=>update({ notifyEnabled: !trip.notifyEnabled })}
-                style={{ padding:'6px 14px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12.5, fontWeight:700, whiteSpace:'nowrap', color: trip.notifyEnabled ? '#fff' : '#8B5A3C', background: trip.notifyEnabled ? '#3C8A3C' : '#E4D3B4' }}>
-                {trip.notifyEnabled ? '✓ On' : 'Off'}
-              </button>
-            </div>
+              <span style={{ fontSize:14.5, fontWeight:800, color:'#B02A17' }}>Notifications</span>
+            </button>
+          )}
+          {shareUrl && (
+            <button onClick={copyShare} style={{ marginLeft:'auto', padding:'10px 16px', borderRadius:9, border:'none', background:'#6E1A10', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>{copied ? '✓ Link copied' : 'Share status'}</button>
           )}
         </div>
       )}
 
-      {/* ── Live location: who's on the move right now ── */}
-      {(onToggleShare || locations.length > 0) && (
-        <div style={{ marginBottom:18, background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:10, padding:'12px 14px' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', marginBottom: locations.length ? 8 : 0 }}>
-            <span style={{ fontSize:12.5, fontWeight:700, color:'#8B2A14', flex:1, minWidth:120 }}>📍 Live location</span>
-            {onToggleShare && (
-              <button onClick={onToggleShare}
-                style={{ border:'none', borderRadius:20, padding:'6px 14px', fontSize:12, fontWeight:700, cursor:'pointer',
-                  background: sharingLoc ? '#3C8A3C' : '#6E1A10', color:'#fff', display:'inline-flex', alignItems:'center', gap:6 }}>
-                {sharingLoc ? <><span style={{ width:7,height:7,borderRadius:'50%',background:'#fff',display:'inline-block' }} /> Sharing · Stop</> : 'Share my location'}
-              </button>
-            )}
-          </div>
-          {locations.length === 0
-            ? <div style={{ fontSize:11.5, color:'#9A8478', lineHeight:1.5 }}>{sharingLoc ? 'Getting a GPS fix… your followers will see you move shortly.' : (onToggleShare ? 'Turn this on while you drive so followers can watch your journey live.' : 'No one is sharing their location right now.')}</div>
-            : locations.map(loc => (
-                <div key={loc.user_id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderTop:'1px solid #E2D8C8' }}>
-                  <div style={{ width:30, height:30, borderRadius:'50%', overflow:'hidden', background:'#E8E2D4', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:12, fontWeight:700, color:'#8A6A50' }}>
-                    {picOf(loc.user_id) ? <img src={picOf(loc.user_id)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : ((nameForLoc(loc.user_id)||'?').trim().charAt(0)||'?').toUpperCase()}
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:600, color:'#6E1A10' }}>{nameForLoc(loc.user_id)}{session && loc.user_id===session.userId ? ' (you)' : ''}</div>
-                    <div style={{ fontSize:11, color:'#9A8478' }}>updated {timeAgo(loc.updated_at)}</div>
-                  </div>
-                  <a href={gmapsPinUrl(loc.lat, loc.lon)} target="_blank" rel="noopener noreferrer"
-                    style={{ fontSize:12, fontWeight:700, color:'#fff', background:'#1A73E8', borderRadius:8, padding:'7px 12px', textDecoration:'none', whiteSpace:'nowrap' }}>View on Map</a>
-                </div>
-              ))}
+      {/* Live location: compact self-toggle only. The full card (and the list of
+          other travellers' live positions) was removed in the minimal redesign;
+          this keeps the one control that starts/stops broadcasting on a drive. */}
+      {onToggleShare && (
+        <div style={{ marginBottom:18 }}>
+          <button onClick={onToggleShare}
+            style={{ border:'1px solid #E2D8C8', borderRadius:20, padding:'8px 15px', fontSize:12.5, fontWeight:700, cursor:'pointer',
+              background: sharingLoc ? '#3C8A3C' : '#F5EFE2', color: sharingLoc ? '#fff' : '#8B2A14', display:'inline-flex', alignItems:'center', gap:7 }}>
+            {sharingLoc
+              ? <><span style={{ width:8,height:8,borderRadius:'50%',background:'#fff',display:'inline-block' }} /> Sharing location · Stop</>
+              : '📍 Share my location'}
+          </button>
         </div>
       )}
 
@@ -3243,18 +3226,35 @@ function MainApp() {
   return (
     <div style={{ fontFamily:"var(--font-body)",maxWidth:680,margin:"0 auto",minHeight:"100vh",background:"#F0EBE0",paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
       {/* Header */}
-      <div style={{ background:"#5C1A1A",borderBottom:"none",boxShadow:"0 2px 12px rgba(0,0,0,0.18)" }}>
-        {/* Row 1: logo + title */}
-        <div style={{ display:"flex",alignItems:"center",padding:"calc(env(safe-area-inset-top, 0px) + 16px) 20px 0" }}>
-          {/* Logo + Title */}
-          <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-            <img src="/logo-travelhub.png" alt="My Travel Hub" width="38" height="38" style={{ flexShrink:0, borderRadius:9, display:"block" }} />
-            <div>
-              <h1 style={{ margin:0,fontSize:20,fontWeight:800,color:"#F5ECD7",letterSpacing:"0.03em",lineHeight:1.15,textTransform:"uppercase" }}>My Travel Hub</h1>
-              <p style={{ margin:0,fontSize:10.5,color:"rgba(245,236,215,0.6)",letterSpacing:"0.08em",textTransform:"uppercase",fontWeight:500,marginTop:3 }}>Every trip, every document, everyone — in one place</p>
+      <div style={{ background:"#5C1A1A",borderBottom:"none",boxShadow:"0 2px 12px rgba(0,0,0,0.18)", position:"sticky", top:0, zIndex:30 }}>
+        {/* Row 1: compact trip card (replaces the old title/tagline) — only when a trip is open */}
+        {trip ? (
+          <div style={{ display:"flex",alignItems:"center",gap:10,padding:"calc(env(safe-area-inset-top, 0px) + 14px) 16px 0" }}>
+            <img src="/logo-travelhub.png" alt="" width="34" height="34" style={{ flexShrink:0, borderRadius:8, display:"block" }} />
+            <div style={{ minWidth:0, flex:1 }}>
+              <div style={{ fontSize:16, fontWeight:800, color:"#F5ECD7", lineHeight:1.15, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{trip.name || "Unnamed"}</div>
+              <div style={{ fontSize:10.5, color:"rgba(245,236,215,0.72)", marginTop:2, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                {editingDest ? (
+                  <input autoFocus value={destDraft} onChange={e=>setDestDraft(e.target.value)}
+                    onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); updateTrip(trip.id,{destination:destDraft.trim()}); setEditingDest(false); } if(e.key==='Escape'){ setEditingDest(false); } }}
+                    onBlur={()=>{ updateTrip(trip.id,{destination:destDraft.trim()}); setEditingDest(false); }}
+                    placeholder="e.g. Dubai - Delhi" onClick={e=>e.stopPropagation()}
+                    style={{ font:'inherit', fontSize:10.5, padding:'1px 5px', border:'1px solid rgba(245,236,215,0.4)', borderRadius:5, background:'rgba(0,0,0,0.2)', color:'#F5ECD7', outline:'none', maxWidth:'100%' }} />
+                ) : (
+                  <span onClick={()=>{ setDestDraft(trip.destination||''); setEditingDest(true); }} style={{ cursor:'text' }}>
+                    📍 {trip.destination || 'add destination'}{dateRange.start ? `  ·  ${fmtDate(dateRange.start)}${dateRange.end && dateRange.end!==dateRange.start ? ` → ${fmtDate(dateRange.end)}` : ''}` : ''}
+                  </span>
+                )}
+              </div>
             </div>
+            {isTripCreator(trip) && <button onClick={()=>deleteTrip(trip.id)} style={{ flexShrink:0, background:'rgba(245,236,215,0.12)', color:'#F0D9D6', border:'1px solid rgba(245,236,215,0.25)', borderRadius:9, fontSize:10.5, fontWeight:700, lineHeight:1.15, padding:'6px 9px', cursor:'pointer' }}>Delete<br/>Trip</button>}
           </div>
-        </div>
+        ) : (
+          <div style={{ display:"flex",alignItems:"center",gap:10,padding:"calc(env(safe-area-inset-top, 0px) + 16px) 20px 0" }}>
+            <img src="/logo-travelhub.png" alt="My Travel Hub" width="34" height="34" style={{ flexShrink:0, borderRadius:8, display:"block" }} />
+            <h1 style={{ margin:0,fontSize:19,fontWeight:800,color:"#F5ECD7",letterSpacing:"0.03em",lineHeight:1.15,textTransform:"uppercase" }}>My Travel Hub</h1>
+          </div>
+        )}
         {/* Row 2: action toolbar */}
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 20px 6px" }}>
             <button onClick={()=>setShowDashboard(true)} aria-label="Dashboard" title="Dashboard" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
@@ -3328,55 +3328,45 @@ function MainApp() {
                   : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>}
             </button>
           </div>
-        {/* Header note */}
-        <div style={{ padding:"0 20px 10px" }}>
-          <textarea value={headerNote} onChange={e=>setHeaderNote(e.target.value)} placeholder="Add a trip note or travel tagline…" rows={1} style={{ width:"100%",boxSizing:"border-box",resize:"none",padding:"7px 12px",border:"1px solid rgba(245,236,215,0.2)",borderRadius:7,background:"rgba(0,0,0,0.15)",color:"rgba(245,236,215,0.85)",fontSize:12,fontFamily:"inherit",outline:"none",lineHeight:1.5,letterSpacing:"0.01em" }} />
-        </div>
-        {/* Trip tabs */}
-        <div style={{ display:"flex",gap:2,overflowX:"auto",padding:"0 20px",paddingBottom:0 }}>
-          {visibleTrips.map(t=>(
-            <button key={t.id} onClick={()=>{ setActiveTrip(t.id); setActiveTab(tripStatusOf(t)==='active' ? 'Status' : 'Schedule'); }}
-              style={{
-                padding:"8px 16px",
-                borderRadius:"6px 6px 0 0",
-                border:"none",
-                borderTop: activeTrip===t.id?"2px solid rgba(245,236,215,0.7)":"2px solid transparent",
-                background: activeTrip===t.id?"#F0EBE0":"rgba(0,0,0,0.18)",
-                fontWeight: activeTrip===t.id?700:400,
-                fontSize:13,cursor:"pointer",
-                color: activeTrip===t.id?"#5C1A1A":"rgba(245,236,215,0.65)",
-                whiteSpace:"nowrap",
-                transition:"all 0.15s"
-              }}>
-              {tripStatusOf(t)!=='todo' && <span title={TRIP_STATUS[tripStatusOf(t)].label} style={{ display:"inline-block", width:7, height:7, borderRadius:"50%", background:TRIP_STATUS[tripStatusOf(t)].dot, marginRight:6, verticalAlign:"middle" }} />}
-              {t.name||"Unnamed"}
-            </button>
-          ))}
-          {/* New Trip tab — Trip Captains only */}
-          {myRole === 'captain' && (
-          <button
-            onClick={()=>setShowNewTrip(true)}
-            title="New Trip"
-            aria-label="New Trip"
-            style={{
-              padding:"8px 16px",
-              borderRadius:"6px 6px 0 0",
-              border:"none",
-              borderTop:"2px solid transparent",
-              background:"rgba(0,0,0,0.18)",
-              fontWeight:700,
-              fontSize:13,
-              lineHeight:1,
-              cursor:"pointer",
-              color:"rgba(245,236,215,0.75)",
-              whiteSpace:"nowrap",
-              flexShrink:0,
-              transition:"all 0.15s"
-            }}>
-            + Trip
-          </button>
-          )}
-        </div>
+        {/* Travellers + lifecycle pill, then the tab slider — both frozen in the header */}
+        {trip && (
+          <>
+            <div style={{ margin:"2px 10px 0", background:"#F0EBE0", borderRadius:11, boxShadow:"0 3px 9px rgba(0,0,0,0.2)", display:"flex", alignItems:"center", gap:8, padding:"8px 12px", position:"relative", top:6, flexWrap:"wrap" }}>
+              <button onClick={()=>setShowTravelers(true)} title="Travelers on this trip"
+                style={{ display:"inline-flex", alignItems:"center", gap:6, background:"transparent", border:"none", padding:0, fontSize:12.5, fontWeight:700, color:"#4E3D36", cursor:"pointer" }}>
+                <span style={{ fontSize:14 }}>👥</span>
+                {(() => { const n = (trip.members || []).length; return n > 0 ? <span><strong>{n}</strong> traveler{n===1?'':'s'}</span> : <span>Add travelers</span>; })()}
+              </button>
+              {(() => { const m = TRIP_STATUS[tripStatusOf(trip)]; return (
+                <span style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:11, fontWeight:700, letterSpacing:"0.03em", color:m.color }}>
+                  <span style={{ width:6, height:6, borderRadius:"50%", background:m.dot }} />{m.label.toUpperCase()}
+                </span>
+              ); })()}
+              {tripStatusOf(trip)==='todo' && (
+                <button onClick={()=>updateTrip(trip.id,{status:'active'})} style={{ marginLeft:"auto", border:"none", borderRadius:20, padding:"7px 13px", fontSize:11.5, fontWeight:700, cursor:"pointer", background:"#6E1A10", color:"#fff", whiteSpace:"nowrap" }}>▶ Start trip</button>
+              )}
+              {tripStatusOf(trip)==='active' && (
+                <button onClick={()=>updateTrip(trip.id,{status:'done'})} style={{ marginLeft:"auto", border:"none", borderRadius:20, padding:"7px 13px", fontSize:11.5, fontWeight:700, cursor:"pointer", background:"#3C8A3C", color:"#fff", whiteSpace:"nowrap" }}>✓ Complete trip</button>
+              )}
+              {tripStatusOf(trip)==='done' && (
+                <button onClick={()=>updateTrip(trip.id,{status:'active'})} style={{ marginLeft:"auto", border:"1px solid #C8B09A", borderRadius:20, padding:"7px 13px", fontSize:11.5, fontWeight:700, cursor:"pointer", background:"transparent", color:"#8B2A14", whiteSpace:"nowrap" }}>↺ Reopen</button>
+              )}
+            </div>
+            <div data-tabbar="" style={{ padding:"22px 12px 12px", background:"#F0EBE0" }}>
+              <div style={{ display:"flex", gap:3, background:"#E7E0D2", border:"1.5px solid #C4A882", borderRadius:11, padding:4 }}>
+                {TABS.map(tab=>(
+                  <button key={tab} onClick={()=>{ if (tab !== activeTab) setSlideTo({ tab, at: Date.now() }); }}
+                    style={{ flex:1, padding:"9px 2px", border:"none", borderRadius:8, fontSize:14.5, cursor:"pointer", fontWeight:600,
+                      background: activeTab===tab?"#FFFFFF":"transparent",
+                      color: activeTab===tab?"#6E1A10":"#B54030",
+                      boxShadow: activeTab===tab?"0 1px 3px rgba(0,0,0,.1)":"none" }}>
+                    {tab}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Trip content */}
@@ -3394,71 +3384,7 @@ function MainApp() {
         </div>
       ) : (
         <div style={{ padding:20 }}>
-          {/* Trip info */}
-          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20 }}>
-            <div>
-              <h2 style={{ margin:"0 0 2px",fontSize:18,fontWeight:700 }}>{trip.name}</h2>
-              <div style={{ fontSize:13,color:"#B54030" }}>
-                {editingDest ? (
-                  <input
-                    autoFocus
-                    value={destDraft}
-                    onChange={e=>setDestDraft(e.target.value)}
-                    onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); updateTrip(trip.id,{destination:destDraft.trim()}); setEditingDest(false); } if(e.key==='Escape'){ setEditingDest(false); } }}
-                    onBlur={()=>{ updateTrip(trip.id,{destination:destDraft.trim()}); setEditingDest(false); }}
-                    placeholder="e.g. Dubai - Delhi - Uttarakhand"
-                    style={{ font:'inherit', fontSize:13, padding:'2px 6px', border:'1px solid #C8B09A', borderRadius:5, background:'#F5EFE2', color:'#6E1A10', outline:'none', minWidth:220, maxWidth:'100%' }}
-                  />
-                ) : (
-                  <span onClick={()=>{ setDestDraft(trip.destination||''); setEditingDest(true); }} title="Click to edit destination" style={{ cursor:'text' }}>
-                    📍 {trip.destination || <span style={{ color:'#C0A090', fontStyle:'italic' }}>add destination</span>}
-                  </span>
-                )}
-                {dateRange.start && <span style={{ marginLeft:8 }}>🗓 {fmtDate(dateRange.start)}{dateRange.end && dateRange.end!==dateRange.start ? ` → ${fmtDate(dateRange.end)}` : ""}</span>}
-              </div>
-              {/* Travelers + trip lifecycle status */}
-              <div style={{ marginTop:8, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                <button onClick={()=>setShowTravelers(true)} title="Travelers on this trip"
-                  style={{ display:"inline-flex", alignItems:"center", gap:6, background:"#EDE7D9", border:"1px solid #D4BFB0", borderRadius:20, padding:"4px 12px", fontSize:12.5, color:"#6E1A10", cursor:"pointer" }}>
-                  <span style={{ fontSize:14 }}>👥</span>
-                  {(() => { const n = (trip.members || []).length; return n > 0
-                    ? <span><strong>{n}</strong> traveler{n===1?'':'s'}</span>
-                    : <span>Add travelers</span>; })()}
-                </button>
-                {(() => { const m = TRIP_STATUS[tripStatusOf(trip)]; return (
-                  <span style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:11, fontWeight:700, letterSpacing:"0.03em", color:m.color, background:m.bg, borderRadius:20, padding:"4px 10px" }}>
-                    <span style={{ width:7, height:7, borderRadius:"50%", background:m.dot }} />{m.label.toUpperCase()}
-                  </span>
-                ); })()}
-                {tripStatusOf(trip)==='todo' && (
-                  <button onClick={()=>updateTrip(trip.id,{status:'active'})} style={{ border:"none", borderRadius:20, padding:"5px 14px", fontSize:12, fontWeight:600, cursor:"pointer", background:"#6E1A10", color:"#fff" }}>▶ Start trip</button>
-                )}
-                {tripStatusOf(trip)==='active' && (
-                  <button onClick={()=>updateTrip(trip.id,{status:'done'})} style={{ border:"none", borderRadius:20, padding:"5px 14px", fontSize:12, fontWeight:600, cursor:"pointer", background:"#3C8A3C", color:"#fff" }}>✓ Complete trip</button>
-                )}
-                {tripStatusOf(trip)==='done' && (
-                  <button onClick={()=>updateTrip(trip.id,{status:'active'})} style={{ border:"1px solid #C8B09A", borderRadius:20, padding:"5px 14px", fontSize:12, fontWeight:600, cursor:"pointer", background:"transparent", color:"#8B2A14" }}>↺ Reopen</button>
-                )}
-              </div>
-            </div>
-            {isTripCreator(trip) && <Btn variant="danger" style={{ fontSize:12,padding:"4px 10px" }} onClick={()=>deleteTrip(trip.id)}>Delete Trip</Btn>}
-          </div>
-
-          {/* Inner tabs — sticky so you can switch tabs while scrolled down */}
-          <div data-tabbar="" style={{ position:"sticky", top:"env(safe-area-inset-top, 0px)", zIndex:20, background:"#F0EBE0", margin:"0 -20px 20px", padding:"8px 20px", borderBottom: activeTab==="Schedule" ? "none" : "2px solid #C4A882" }}>
-            <div style={{ display:"flex",gap:2,background:"#E8E2D4",borderRadius:8,padding:3 }}>
-              {TABS.map(tab=>(
-                <button key={tab} onClick={()=>{ if (tab !== activeTab) setSlideTo({ tab, at: Date.now() }); }}
-                  style={{ flex:1,padding:"6px 0",border:"none",borderRadius:6,fontSize:13,cursor:"pointer",fontWeight:500,
-                    background: activeTab===tab?"#F0EBE0":"transparent",
-                    color: activeTab===tab?"#6E1A10":"#B54030",
-                    boxShadow: activeTab===tab?"0 1px 3px rgba(0,0,0,.08)":"none" }}>
-                  {tab}
-                </button>
-              ))}
-            </div>
-          </div>
-
+          {/* Trip identity, travellers and tabs now live in the frozen header above */}
           <SwipeableTabPanels activeTab={activeTab} onChange={setActiveTab} renderTab={renderTripTab} slideTo={slideTo} />
           {activeTab === 'Status' && <div aria-hidden="true" style={{ height:72 }} />}
 
