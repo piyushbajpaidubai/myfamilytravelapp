@@ -346,6 +346,17 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
   // way the Status tab does — keeps a long trip compact. Tapping still overrides.
   const scheduleTodayISO = (() => { const p = n => String(n).padStart(2, '0'); const d = new Date(); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; })();
   const isPastDay = (day) => { const iso = (day.date || '').slice(0, 10); return !!iso && iso < scheduleTodayISO; };
+  // Traveller photos live in the profile directory, not on trip.members — load them
+  // so the schedule avatars show pictures instead of falling back to initials.
+  const [memberPics, setMemberPics] = useState({});
+  const memberKey = members.map(m => m.userId).join(',');
+  useEffect(() => {
+    let cancelled = false;
+    const ids = memberKey ? memberKey.split(',') : [];
+    if (ids.length) directoryGetProfiles(ids).then(map => { if (!cancelled) setMemberPics(map); });
+    return () => { cancelled = true; };
+  }, [memberKey]);
+  const picOf = (userId) => (memberPics[userId] || {}).pic || '';
   // A merged item belongs to a traveller if it is assigned to them, or to no one (everyone).
   const itemForMember = (it, uid) => {
     if (!uid) return true;
@@ -834,7 +845,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
     const expanded = !!expandedItems[detailKey];
     const roster = itemPeople(item);
     return <button type="button" aria-expanded={expanded} aria-label={`${expanded?'Collapse':'Expand'} ${item.title} details`} onClick={()=>toggleItemDetails(detailKey)} style={{ width:'100%',minHeight:48,border:'none',borderTop:'1px solid #D8C8B8',background:expanded?'#E4D7C8':'#E9DED1',padding:'8px 13px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8 }}>
-      <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} style={{ width:26,height:26,marginLeft:index===0?0:-6,borderRadius:'50%',overflow:'hidden',border:'2px solid #fff',boxShadow:'0 0 0 1px #CDBEAF',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:9,fontWeight:800,flexShrink:0 }}>{member.pic?<img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}<span style={{ marginLeft:7,color:'#7C675D',fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{itemPeopleLabel(item)}</span></span>
+      <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} style={{ width:26,height:26,marginLeft:index===0?0:-6,borderRadius:'50%',overflow:'hidden',border:'2px solid #fff',boxShadow:'0 0 0 1px #CDBEAF',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:9,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}<span style={{ marginLeft:7,color:'#7C675D',fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{itemPeopleLabel(item)}</span></span>
       <span style={{ color:'#6E2118',transform:expanded?'rotate(180deg)':'none',transition:'transform .15s',display:'grid',placeItems:'center',flexShrink:0 }}><NativeStatusIcon name="chevron" size={16}/></span>
     </button>;
   };
@@ -861,12 +872,12 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
           <span style={{ display:'block',marginTop:6,fontSize:14,fontWeight:850,textDecoration:status==='done'?'line-through':'none',opacity:status==='done'?0.65:1 }}>{task.text}</span>
         </button>
         <button type="button" disabled={!canEdit} aria-expanded={peopleOpen} aria-label={`${peopleOpen?'Close':'Edit'} tagged travelers for task ${task.text}`} onClick={()=>toggleTaskPeople(peopleKey)} style={{ width:'100%',minHeight:42,padding:'6px 13px',border:'none',borderTop:'1px solid #D6BDAA',background:peopleOpen?'#DFCDBE':'#E9DED1',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,textAlign:'left',cursor:canEdit?'pointer':'default',opacity:1 }}>
-          <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} style={{ width:24,height:24,marginLeft:index===0?0:-6,borderRadius:'50%',overflow:'hidden',border:'2px solid #fff',boxShadow:'0 0 0 1px #CDBEAF',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:8.5,fontWeight:800,flexShrink:0 }}>{member.pic?<img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}<span style={{ marginLeft:7,color:'#6F574C',fontSize:10.5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{peopleLabel}</span></span>
+          <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} style={{ width:24,height:24,marginLeft:index===0?0:-6,borderRadius:'50%',overflow:'hidden',border:'2px solid #fff',boxShadow:'0 0 0 1px #CDBEAF',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:8.5,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}<span style={{ marginLeft:7,color:'#6F574C',fontSize:10.5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{peopleLabel}</span></span>
           {canEdit&&<span style={{ color:'#6E2118',transform:peopleOpen?'rotate(180deg)':'none',transition:'transform .15s',display:'grid',placeItems:'center',flexShrink:0 }}><NativeStatusIcon name="chevron" size={15}/></span>}
         </button>
         {peopleOpen&&canEdit&&<div role="region" aria-label={`Traveler tags for task ${task.text}`} style={{ padding:'9px 10px 10px',borderTop:'1px solid #D6BDAA',background:'#F8F0E7',display:'flex',flexWrap:'wrap',gap:6 }}>
           <button type="button" aria-pressed={everyoneSelected} onClick={()=>setDayTaskAssignees(day.id,task.id,[])} style={{ minHeight:31,padding:'4px 9px',border:`1px solid ${everyoneSelected?'#8B2A14':'#D5C5B8'}`,borderRadius:18,background:everyoneSelected?'#8B2A14':'#fff',color:everyoneSelected?'#fff':'#6F574C',fontSize:10.5,fontWeight:750,cursor:'pointer' }}>Everyone</button>
-          {members.map(member=>{ const selected=selectedIds.includes(member.userId); return <button key={member.userId} type="button" aria-pressed={selected} onClick={()=>toggleMember(member.userId)} style={{ minHeight:31,padding:'3px 8px 3px 4px',border:`1px solid ${selected?'#8B2A14':'#D5C5B8'}`,borderRadius:18,background:selected?'#F3D9CB':'#fff',color:'#5E463C',fontSize:10.5,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5 }}><span style={{ width:22,height:22,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:8,fontWeight:800 }}>{member.pic?<img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>{(member.name||member.userId).split(' ')[0]}</button>;})}
+          {members.map(member=>{ const selected=selectedIds.includes(member.userId); return <button key={member.userId} type="button" aria-pressed={selected} onClick={()=>toggleMember(member.userId)} style={{ minHeight:31,padding:'3px 8px 3px 4px',border:`1px solid ${selected?'#8B2A14':'#D5C5B8'}`,borderRadius:18,background:selected?'#F3D9CB':'#fff',color:'#5E463C',fontSize:10.5,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5 }}><span style={{ width:22,height:22,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:8,fontWeight:800 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>{(member.name||member.userId).split(' ')[0]}</button>;})}
         </div>}
       </div>
     </article>;
@@ -961,7 +972,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
       <section aria-label="Itinerary summary" style={{ marginBottom:22 }}>
         <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:12 }}>
           <div><strong style={{ display:'block',fontSize:15,color:'#302521' }}>{(trip.days||[]).length} trip day{(trip.days||[]).length===1?'':'s'}</strong><span style={{ color:'#927F75',fontSize:10.5 }}>{(trip.days||[]).reduce((count,day)=>count+(day.events||[]).length+(day.tasks||[]).length,0)+(trip.spans||[]).length} itinerary items</span></div>
-          <div style={{ display:'flex',alignItems:'center',flexShrink:0 }}>{orderedMembers.slice(0,6).map((member,index)=>{ const on=focusMember===member.userId; return <button key={member.userId} type="button" aria-pressed={on} title={`Show only ${member.name||member.userId}'s schedule`} onClick={()=>setFocusMember(on?null:member.userId)} style={{ width:35,height:35,marginLeft:index===0?0:-8,borderRadius:'50%',overflow:'hidden',border:on?'2px solid #6E2118':'2px solid #F7F5F0',boxShadow:on?'0 0 0 2px #6E2118':'0 0 0 1px #CFC2B5',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:12,fontWeight:800,cursor:'pointer',padding:0,transform:on?'translateY(-2px)':'none',zIndex:on?2:1 }}>{member.pic?<img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</button>;})}{orderedMembers.length>6&&<button type="button" onClick={()=>setShowFocusPicker(true)} title="More travellers" style={{ marginLeft:6,width:32,height:32,borderRadius:'50%',border:'1px solid #CFC2B5',background:'#fff',color:'#6E2118',fontSize:16,fontWeight:800,cursor:'pointer',display:'grid',placeItems:'center',flexShrink:0 }}>+</button>}</div>
+          <div style={{ display:'flex',alignItems:'center',flexShrink:0 }}>{orderedMembers.slice(0,6).map((member,index)=>{ const on=focusMember===member.userId; return <button key={member.userId} type="button" aria-pressed={on} title={`Show only ${member.name||member.userId}'s schedule`} onClick={()=>setFocusMember(on?null:member.userId)} style={{ width:35,height:35,marginLeft:index===0?0:-8,borderRadius:'50%',overflow:'hidden',border:on?'2px solid #6E2118':'2px solid #F7F5F0',boxShadow:on?'0 0 0 2px #6E2118':'0 0 0 1px #CFC2B5',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:12,fontWeight:800,cursor:'pointer',padding:0,transform:on?'translateY(-2px)':'none',zIndex:on?2:1 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</button>;})}{orderedMembers.length>6&&<button type="button" onClick={()=>setShowFocusPicker(true)} title="More travellers" style={{ marginLeft:6,width:32,height:32,borderRadius:'50%',border:'1px solid #CFC2B5',background:'#fff',color:'#6E2118',fontSize:16,fontWeight:800,cursor:'pointer',display:'grid',placeItems:'center',flexShrink:0 }}>+</button>}</div>
         </div>
         {focusMember && (
           <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:8, background:'#F1E7DD', border:'1px solid #E0D2C5', borderRadius:12, padding:'7px 12px' }}>
@@ -980,7 +991,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
             <button type="button" onClick={()=>{ setFocusMember(null); setShowFocusPicker(false); }} style={{ textAlign:'left', border:'1px solid #E0D2C5', borderRadius:10, padding:'10px 12px', background: !focusMember?'#F1E7DD':'#fff', color:'#6E2118', fontSize:13, fontWeight:700, cursor:'pointer' }}>Everyone</button>
             {orderedMembers.map(m=>(
               <button key={m.userId} type="button" onClick={()=>{ setFocusMember(m.userId); setShowFocusPicker(false); }} style={{ display:'flex', alignItems:'center', gap:10, textAlign:'left', border:'1px solid #E0D2C5', borderRadius:10, padding:'8px 12px', background: focusMember===m.userId?'#F1E7DD':'#fff', color:'#5E463C', fontSize:13, fontWeight:700, cursor:'pointer' }}>
-                <span style={{ width:26,height:26,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:800,flexShrink:0 }}>{m.pic?<img src={m.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((m.name||m.userId||'?')[0]||'?').toUpperCase()}</span>
+                <span style={{ width:26,height:26,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:800,flexShrink:0 }}>{(picOf(m.userId)||m.pic)?<img src={picOf(m.userId)||m.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((m.name||m.userId||'?')[0]||'?').toUpperCase()}</span>
                 {m.name||m.userId}{m.userId===myId?' (you)':''}
               </button>
             ))}
@@ -1823,7 +1834,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                               );
                             })()
                           : <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
-                              {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} size={29} onClick={update && (canUpdateOthers || (session && mk.userId === session.userId)) ? ()=>cycleMemberStatus(it.ref, mk.userId, it.titleText, mk.name) : undefined} />)}
+                              {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} size={35} onClick={update && (canUpdateOthers || (session && mk.userId === session.userId)) ? ()=>cycleMemberStatus(it.ref, mk.userId, it.titleText, mk.name) : undefined} />)}
                             </div>)
                         : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
                       {it.travel && it.anyActive && (
@@ -2763,9 +2774,14 @@ function SwipeableTabPanels({ activeTab, onChange, renderTab, slideTo }) {
   const onPointerStart = (e) => {
     if (motion.animate || (e.pointerType === 'mouse' && e.button !== 0)) return;
     const target = e.target;
-    if (target && target.closest && target.closest('button, a, input, textarea, select, label, [data-no-tab-swipe]')) return;
-    if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
-    gestureRef.current = { pointerId:e.pointerId, x:e.clientX, y:e.clientY, at:Date.now(), axis:null, dx:0, targetIndex:null };
+    // Start tracking on ANY touch. Only skip surfaces where a horizontal drag has
+    // its own meaning (text fields, native selects, a modal/sheet or a
+    // horizontally-scrolling row marked data-no-tab-swipe). We do NOT skip plain
+    // buttons/cards here — otherwise a swipe could never begin on the dense
+    // Schedule/Status content. Capture is deferred until the drag proves horizontal
+    // (below), so ordinary taps still reach their button.
+    if (target && target.closest && target.closest('input, textarea, select, [data-no-tab-swipe]')) return;
+    gestureRef.current = { pointerId:e.pointerId, x:e.clientX, y:e.clientY, at:Date.now(), axis:null, dx:0, targetIndex:null, captured:false };
   };
   const onPointerMove = (e) => {
     const g = gestureRef.current;
@@ -2774,7 +2790,10 @@ function SwipeableTabPanels({ activeTab, onChange, renderTab, slideTo }) {
     const dy = e.clientY - g.y;
     if (!g.axis && Math.max(Math.abs(dx), Math.abs(dy)) > 8) g.axis = Math.abs(dx) > Math.abs(dy) * 1.15 ? 'x' : 'y';
     if (g.axis !== 'x') return;
-    e.preventDefault();
+    // Now it's a horizontal swipe: grab the pointer so the button under the finger
+    // doesn't also fire, and stop the page from scrolling sideways.
+    if (!g.captured && frameRef.current && frameRef.current.setPointerCapture) { try { frameRef.current.setPointerCapture(e.pointerId); } catch (_) {} g.captured = true; }
+    if (e.cancelable) e.preventDefault();
     const direction = dx < 0 ? 1 : -1;
     const targetIndex = activeIndex + direction;
     const validTarget = targetIndex >= 0 && targetIndex < TABS.length ? targetIndex : null;
@@ -2787,7 +2806,7 @@ function SwipeableTabPanels({ activeTab, onChange, renderTab, slideTo }) {
   const onPointerEnd = (e) => {
     const g = gestureRef.current;
     if (!g || (e && g.pointerId !== e.pointerId)) return;
-    if (e && e.currentTarget.releasePointerCapture && e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    if (e && g.captured && frameRef.current && frameRef.current.releasePointerCapture && frameRef.current.hasPointerCapture && frameRef.current.hasPointerCapture(e.pointerId)) frameRef.current.releasePointerCapture(e.pointerId);
     if (g.axis !== 'x') { gestureRef.current = null; resetMotion(); return; }
     const elapsed = Math.max(1, Date.now() - g.at);
     const velocity = Math.abs(g.dx) / elapsed;
@@ -2796,7 +2815,7 @@ function SwipeableTabPanels({ activeTab, onChange, renderTab, slideTo }) {
   };
   const targetIndex = motion.targetIndex;
   const targetSide = targetIndex == null ? 0 : (targetIndex > activeIndex ? 1 : -1);
-  const transition = motion.animate ? 'transform 230ms cubic-bezier(0.22, 0.72, 0.22, 1)' : 'none';
+  const transition = motion.animate ? 'transform 300ms cubic-bezier(0.22, 0.72, 0.22, 1)' : 'none';
   // At rest the panel must carry NO transform: a transformed element becomes the
   // containing block for its position:fixed children, which trapped every modal
   // opened from inside a tab (Add Task, Add Activity...) inside this clipped frame.
@@ -2809,10 +2828,13 @@ function SwipeableTabPanels({ activeTab, onChange, renderTab, slideTo }) {
         {renderTab(activeTab)}
       </div>
       {targetIndex != null && (
-        // The incoming tab carries a hairline edge and a soft shadow, so the seam
-        // between the two tabs reads as one page sliding over another.
+        // The incoming tab carries a clear vertical page-break line and a soft
+        // shadow at its leading edge, so the seam between the two tabs reads as
+        // one page sliding over another.
         <div aria-hidden="true" style={{ position:'absolute', inset:'0 0 auto', width:'100%', background:'#F0EBE0',
-          boxShadow: targetSide > 0 ? '-1px 0 0 #C4A882, -10px 0 22px rgba(74,44,32,0.13)' : '1px 0 0 #C4A882, 10px 0 22px rgba(74,44,32,0.13)',
+          borderLeft: targetSide > 0 ? '3px solid #C4A882' : 'none',
+          borderRight: targetSide < 0 ? '3px solid #C4A882' : 'none',
+          boxShadow: targetSide > 0 ? '-12px 0 26px rgba(74,44,32,0.18)' : '12px 0 26px rgba(74,44,32,0.18)',
           transform:`translate3d(${motion.offset + targetSide * frameWidth()}px,0,0)`, transition, willChange:'transform' }}>
           {renderTab(TABS[targetIndex])}
         </div>
