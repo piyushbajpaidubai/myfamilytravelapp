@@ -1308,16 +1308,25 @@ function BudgetTab({ trip, update, session }) {
 
 // ---- Packing Tab ----
 function PackingTab({ trip, update }) {
+  const members = trip.members || [];
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name:"", category:"Clothing" });
+  const [viewMode, setViewMode] = useState('item'); // 'item' | 'traveller'
+  const [form, setForm] = useState({ name:"", category:"Clothing", assignees:[] });
 
   const addItem = () => {
     if (!form.name) return;
     update({ packItems:[...(trip.packItems||[]), { id:uid(), packed:false, ...form }] });
-    setShowAdd(false); setForm({ name:"", category:"Clothing" });
+    setShowAdd(false); setForm({ name:"", category:"Clothing", assignees:[] });
   };
   const toggle = (id) => update({ packItems: trip.packItems.map(p=>p.id===id?{...p,packed:!p.packed}:p) });
   const del = (id) => update({ packItems: trip.packItems.filter(p=>p.id!==id) });
+  const itemRow = (item) => (
+    <div key={item.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #f3f4f6" }}>
+      <input type="checkbox" checked={item.packed} onChange={()=>toggle(item.id)} style={{ accentColor:"#6E1A10",width:15,height:15 }} />
+      <span style={{ flex:1,fontSize:13,textDecoration:item.packed?"line-through":"none",color:item.packed?"#D47060":"#6E1A10" }}>{item.name}</span>
+      <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>del(item.id)}>✕</Btn>
+    </div>
+  );
 
   const packed = (trip.packItems||[]).filter(p=>p.packed).length;
   const total = (trip.packItems||[]).length;
@@ -1337,35 +1346,58 @@ function PackingTab({ trip, update }) {
         <Btn onClick={()=>setShowAdd(true)}>+ Add Item</Btn>
       </div>
       {total>0 && (
-        <div style={{ height:4,background:"#DDD8CB",borderRadius:2,marginBottom:16,overflow:"hidden" }}>
+        <div style={{ height:4,background:"#DDD8CB",borderRadius:2,marginBottom:14,overflow:"hidden" }}>
           <div style={{ height:"100%",background:"#6E1A10",width:`${total?Math.round((packed/total)*100):0}%`,transition:"width .3s" }} />
         </div>
       )}
-      {total===0 && <p style={{ color:"#C86050",textAlign:"center",marginTop:40 }}>Nothing to pack yet!</p>}
-      {grouped.map(({ cat, items })=>(
-        <div key={cat} style={{ marginBottom:14 }}>
-          <div style={{ fontSize:12,fontWeight:600,color:"#B54030",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em" }}>{cat}</div>
-          {items.map(item=>(
-            <div key={item.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #f3f4f6" }}>
-              <input type="checkbox" checked={item.packed} onChange={()=>toggle(item.id)} style={{ accentColor:"#6E1A10",width:15,height:15 }} />
-              <span style={{ flex:1,fontSize:13,textDecoration:item.packed?"line-through":"none",color:item.packed?"#D47060":"#6E1A10" }}>{item.name}</span>
-              <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>del(item.id)}>✕</Btn>
-            </div>
+      {total>0 && members.length>0 && (
+        <div style={{ display:'flex', gap:4, background:'#E8E2D4', borderRadius:9, padding:4, marginBottom:16 }}>
+          {[['item','By Item'],['traveller','By Traveller']].map(([m,label])=>(
+            <button key={m} onClick={()=>setViewMode(m)} style={{ flex:1, padding:'7px 0', border:'none', borderRadius:6, cursor:'pointer', fontSize:12.5, fontWeight:700, background: viewMode===m?'#6E1A10':'transparent', color: viewMode===m?'#fff':'#8B2A14' }}>{label}</button>
           ))}
         </div>
-      ))}
-      {uncatted.map(item=>(
-        <div key={item.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #f3f4f6" }}>
-          <input type="checkbox" checked={item.packed} onChange={()=>toggle(item.id)} style={{ accentColor:"#6E1A10" }} />
-          <span style={{ flex:1,fontSize:13,textDecoration:item.packed?"line-through":"none",color:item.packed?"#D47060":"#6E1A10" }}>{item.name}</span>
-          <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>del(item.id)}>✕</Btn>
-        </div>
-      ))}
+      )}
+      {total===0 && <p style={{ color:"#C86050",textAlign:"center",marginTop:40 }}>Nothing to pack yet!</p>}
+
+      {(viewMode==='item' || members.length===0) ? (
+        <>
+          {grouped.map(({ cat, items })=>(
+            <div key={cat} style={{ marginBottom:14 }}>
+              <div style={{ fontSize:12,fontWeight:600,color:"#B54030",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em" }}>{cat}</div>
+              {items.map(itemRow)}
+            </div>
+          ))}
+          {uncatted.map(itemRow)}
+        </>
+      ) : (
+        <>
+          {members.map(member=>{
+            const items=(trip.packItems||[]).filter(p=>(p.assignees||[]).includes(member.userId));
+            if(!items.length) return null;
+            return <div key={member.userId} style={{ marginBottom:14 }}>
+              <div style={{ fontSize:12.5,fontWeight:700,color:"#6E1A10",marginBottom:6 }}>{member.name||member.userId}</div>
+              {items.map(itemRow)}
+            </div>;
+          })}
+          {(() => { const shared=(trip.packItems||[]).filter(p=>!(p.assignees||[]).length); return shared.length ? (
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:12.5,fontWeight:700,color:"#8B5A3C",marginBottom:6 }}>Shared · Everyone</div>
+              {shared.map(itemRow)}
+            </div>
+          ) : null; })()}
+        </>
+      )}
 
       {showAdd && (
         <Modal title="Add Item" onClose={()=>setShowAdd(false)}>
           <Input label="Item Name *" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} />
           <Select label="Category" options={PACK_CATS} value={form.category} onChange={e=>setForm({...form,category:e.target.value})} />
+          {members.length>0 && (
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:12, color:'#A83020', marginBottom:4 }}>Travelers</div>
+              <Assignees members={members} value={form.assignees} onChange={list=>setForm({...form,assignees:list})} />
+            </div>
+          )}
           <div style={{ display:"flex",gap:8,justifyContent:"flex-end" }}>
             <Btn variant="ghost" onClick={()=>setShowAdd(false)}>Cancel</Btn>
             <Btn onClick={addItem}>Add</Btn>
@@ -2100,6 +2132,12 @@ const AUTH_DOMAIN = 'users.mytravelhub.com';
 const AUTH_KEY = 'travelerAuth';
 const normUserId = (s) => (s || '').trim().toLowerCase();
 const userIdToEmail = (userId) => normUserId(userId) + '@' + AUTH_DOMAIN;
+// Testing convenience: profiles can be created with just a username (no password
+// typed). A deterministic password is derived from the username so GoTrue auth —
+// and therefore auth.uid() and all RLS — keeps working exactly as before. This is
+// NOT secure (the scheme is guessable) and is meant only for closed testing; the
+// real typed-password flow is still available and can be restored by removing this.
+const autoPassword = (userId) => 'mth_' + normUserId(userId) + '_tester9';
 const loadAuth = () => { try { const a = localStorage.getItem(AUTH_KEY); return a ? JSON.parse(a) : null; } catch(e){ return null; } };
 const saveAuth = (a) => { try { if (a) localStorage.setItem(AUTH_KEY, JSON.stringify(a)); else localStorage.removeItem(AUTH_KEY); } catch(e){} };
 
@@ -2632,7 +2670,7 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3C8A3C' }} /> LIVE
                   </span>
                 </div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: '#3D0C02', marginBottom: 10 }}>Family status</div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: '#3D0C02', marginBottom: 10 }}>Active Status Today</div>
                 {(hero.members || []).map(m => {
                   const s = memberNow(m);
                   const ini = ((m.name || m.userId || '?').trim().charAt(0) || '?').toUpperCase();
@@ -3592,9 +3630,11 @@ function ProfileModal({ initial, onSave, onClose, session }) {
 function AccountModal({ session, profile, startMode='login', onAuth, onLogout, onOpenDetails, onClose }) {
   const [mode, setMode] = useState(startMode); // 'login' | 'signup'
   const [userId, setUserId] = useState('');
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState(''); // optional now: blank → auto-password
   const [name, setName] = useState('');
   const [role, setRole] = useState('captain'); // profile type chosen at signup
+  const [picFile, setPicFile] = useState(null); // profile picture chosen at signup (optional)
+  const [picPreview, setPicPreview] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -3625,15 +3665,32 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
   }
 
   // ── Signed-out view: log in / sign up ──
+  const pickPic = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setPicFile(file);
+    try { setPicPreview(URL.createObjectURL(file)); } catch (_) {}
+  };
   const submit = async () => {
     setErr('');
     const uidv = userId.trim();
     if (!/^[a-zA-Z0-9._-]{3,20}$/.test(uidv)) { setErr('User ID must be 3–20 characters — letters, numbers, and . _ - only.'); return; }
-    if (password.length < 6) { setErr('Password must be at least 6 characters.'); return; }
-    if (mode === 'signup' && !name.trim()) { setErr('Please enter the traveler name.'); return; }
+    // Password is optional: a typed one is used as-is (existing accounts), a blank
+    // one falls back to the derived password (new test profiles).
+    const pw = password ? password : autoPassword(uidv);
     setBusy(true);
     try {
-      const s = mode === 'signup' ? await authSignUp(uidv, password, name.trim(), role) : await authSignIn(uidv, password);
+      let s;
+      if (mode === 'signup') {
+        s = await authSignUp(uidv, pw, name.trim() || uidv, role);
+        // Attach the chosen picture now that the account (and its session) exists.
+        if (picFile) {
+          try { const url = await uploadToStorage(s, picFile, 'profile'); await directorySaveProfile(s, s.name, { role: s.role, pic: url }); } catch (_) {}
+        }
+      } else {
+        s = await authSignIn(uidv, pw);
+      }
       onAuth(s);
     } catch(e) { setErr(e.message || 'Something went wrong.'); }
     setBusy(false);
@@ -3654,30 +3711,35 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
       </div>
 
       {mode === 'signup' && (
-        <>
-          <Input label="Traveler Name *" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Piyush Bajpai" />
-          <Select label="Profile type *" value={role} onChange={e=>setRole(e.target.value)}
-            options={['captain','traveler','viewer']}
-            renderOption={o => o==='captain' ? 'Trip Captain — plans & manages trips' : o==='traveler' ? 'Traveler — joins a captain’s trips' : 'Viewer — follows shared trips (view only)'} />
-        </>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom:14 }}>
+          <label style={{ cursor:'pointer', textAlign:'center' }}>
+            <div style={{ width:80, height:80, borderRadius:'50%', overflow:'hidden', background:'#E8E2D4', border:'2px dashed #C8B09A', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 6px' }}>
+              {picPreview ? <img src={picPreview} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <span style={{ fontSize:26, color:'#B7A08F' }}>＋</span>}
+            </div>
+            <span style={{ fontSize:12, color:'#8B5A3C', fontWeight:700 }}>{picPreview ? 'Change picture' : 'Add profile picture'}</span>
+            <input type="file" accept="image/*" onChange={pickPic} style={{ display:'none' }} />
+          </label>
+        </div>
       )}
-      <Input label="User ID *" value={userId}
+      <Input label="Username *" value={userId}
         autoCapitalize="none" autoCorrect="off" spellCheck={false}
         onChange={e=>setUserId(e.target.value)}
         onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
-        placeholder="unique handle, e.g. piyush_b" />
-      <Input label="Password *" type="password" value={password}
-        onChange={e=>setPassword(e.target.value)}
-        onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
-        placeholder={mode==='signup' ? 'at least 6 characters' : '••••••'} />
+        placeholder="unique handle, e.g. lion" />
+      {mode === 'login' && (
+        <Input label="Password" type="password" value={password}
+          onChange={e=>setPassword(e.target.value)}
+          onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
+          placeholder="leave blank for test profiles" />
+      )}
 
       {err && <div style={{ fontSize:12.5, color:'#B3261E', background:'#FBEAE7', border:'1px solid #F1C6C0', borderRadius:7, padding:'8px 10px', marginBottom:12 }}>{err}</div>}
 
       <Btn onClick={submit} disabled={busy} style={{ width:'100%', opacity: busy?0.6:1 }}>
-        {busy ? 'Please wait…' : (mode==='signup' ? 'Create Account' : 'Log In')}
+        {busy ? 'Please wait…' : (mode==='signup' ? 'Create Profile' : 'Log In')}
       </Btn>
       <p style={{ fontSize:11.5, color:'#9A8478', textAlign:'center', marginTop:12, lineHeight:1.5 }}>
-        {mode==='signup' ? 'Just a User ID & password for now — no email needed.' : 'New here? Tap “Sign Up”.'}
+        {mode==='signup' ? 'Just a username & picture — no password needed for now.' : 'New here? Tap “Sign Up”. Existing accounts: enter your password.'}
       </p>
     </Modal>
   );
