@@ -342,6 +342,10 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
   const [focusMember, setFocusMember] = useState(null);
   const [showFocusPicker, setShowFocusPicker] = useState(false);
   const focusName = focusMember ? ((members.find(m => m.userId === focusMember) || {}).name || focusMember) : null;
+  // Days already travelled start collapsed (today and future stay open), the same
+  // way the Status tab does — keeps a long trip compact. Tapping still overrides.
+  const scheduleTodayISO = (() => { const p = n => String(n).padStart(2, '0'); const d = new Date(); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; })();
+  const isPastDay = (day) => { const iso = (day.date || '').slice(0, 10); return !!iso && iso < scheduleTodayISO; };
   // A merged item belongs to a traveller if it is assigned to them, or to no one (everyone).
   const itemForMember = (it, uid) => {
     if (!uid) return true;
@@ -957,7 +961,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
       <section aria-label="Itinerary summary" style={{ marginBottom:22 }}>
         <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:12 }}>
           <div><strong style={{ display:'block',fontSize:15,color:'#302521' }}>{(trip.days||[]).length} trip day{(trip.days||[]).length===1?'':'s'}</strong><span style={{ color:'#927F75',fontSize:10.5 }}>{(trip.days||[]).reduce((count,day)=>count+(day.events||[]).length+(day.tasks||[]).length,0)+(trip.spans||[]).length} itinerary items</span></div>
-          <div style={{ display:'flex',alignItems:'center',flexShrink:0 }}>{orderedMembers.slice(0,6).map((member,index)=>{ const on=focusMember===member.userId; return <button key={member.userId} type="button" aria-pressed={on} title={`Show only ${member.name||member.userId}'s schedule`} onClick={()=>setFocusMember(on?null:member.userId)} style={{ width:29,height:29,marginLeft:index===0?0:-7,borderRadius:'50%',overflow:'hidden',border:on?'2px solid #6E2118':'2px solid #F7F5F0',boxShadow:on?'0 0 0 2px #6E2118':'0 0 0 1px #CFC2B5',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:800,cursor:'pointer',padding:0,transform:on?'translateY(-2px)':'none',zIndex:on?2:1 }}>{member.pic?<img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</button>;})}{orderedMembers.length>6&&<button type="button" onClick={()=>setShowFocusPicker(true)} title="More travellers" style={{ marginLeft:5,width:27,height:27,borderRadius:'50%',border:'1px solid #CFC2B5',background:'#fff',color:'#6E2118',fontSize:14,fontWeight:800,cursor:'pointer',display:'grid',placeItems:'center',flexShrink:0 }}>+</button>}</div>
+          <div style={{ display:'flex',alignItems:'center',flexShrink:0 }}>{orderedMembers.slice(0,6).map((member,index)=>{ const on=focusMember===member.userId; return <button key={member.userId} type="button" aria-pressed={on} title={`Show only ${member.name||member.userId}'s schedule`} onClick={()=>setFocusMember(on?null:member.userId)} style={{ width:35,height:35,marginLeft:index===0?0:-8,borderRadius:'50%',overflow:'hidden',border:on?'2px solid #6E2118':'2px solid #F7F5F0',boxShadow:on?'0 0 0 2px #6E2118':'0 0 0 1px #CFC2B5',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:12,fontWeight:800,cursor:'pointer',padding:0,transform:on?'translateY(-2px)':'none',zIndex:on?2:1 }}>{member.pic?<img src={member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</button>;})}{orderedMembers.length>6&&<button type="button" onClick={()=>setShowFocusPicker(true)} title="More travellers" style={{ marginLeft:6,width:32,height:32,borderRadius:'50%',border:'1px solid #CFC2B5',background:'#fff',color:'#6E2118',fontSize:16,fontWeight:800,cursor:'pointer',display:'grid',placeItems:'center',flexShrink:0 }}>+</button>}</div>
         </div>
         {focusMember && (
           <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:8, background:'#F1E7DD', border:'1px solid #E0D2C5', borderRadius:12, padding:'7px 12px' }}>
@@ -989,7 +993,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
       )}
 
       <div aria-label="All itinerary days">{(trip.days||[]).map((day,dayIndex)=>{
-        const items=mergedDayItems(day).filter(it=>itemForMember(it,focusMember)); const collapsed=!!collapsedDays[day.id]; const weekday=new Date(`${day.date}T00:00:00`).toLocaleDateString('en-GB',{weekday:'long'});
+        const items=mergedDayItems(day).filter(it=>itemForMember(it,focusMember)); const collapsed=day.id in collapsedDays ? collapsedDays[day.id] : isPastDay(day); const weekday=new Date(`${day.date}T00:00:00`).toLocaleDateString('en-GB',{weekday:'long'});
         return <section key={day.id} aria-label={`Day ${dayIndex+1}: ${day.label||'Untitled day'}`} style={{ marginTop:dayIndex===0?0:28,paddingTop:dayIndex===0?0:24,borderTop:dayIndex===0?'none':'1px dashed #D7CCC0' }}>
           <div style={{ display:'grid',gridTemplateColumns:canEdit?'58px minmax(0,1fr) 96px':'58px minmax(0,1fr)',alignItems:'stretch',gap:10,minHeight:82,marginBottom:14 }}>
             <button type="button" aria-label={collapsed?'Expand day':'Collapse day'} onClick={()=>toggleDayCollapse(day.id)} style={{ width:58,minHeight:82,border:'none',borderRadius:16,background:'#6E2118',color:'#fff',cursor:'pointer',alignSelf:'stretch' }}><strong style={{ display:'block',fontSize:20 }}>{compactDate(day.date).d}</strong><span style={{ display:'block',marginTop:3,fontSize:9.5,letterSpacing:'0.08em' }}>{compactDate(day.date).mon}</span></button>
@@ -1819,7 +1823,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                               );
                             })()
                           : <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
-                              {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} onClick={update && (canUpdateOthers || (session && mk.userId === session.userId)) ? ()=>cycleMemberStatus(it.ref, mk.userId, it.titleText, mk.name) : undefined} />)}
+                              {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} size={29} onClick={update && (canUpdateOthers || (session && mk.userId === session.userId)) ? ()=>cycleMemberStatus(it.ref, mk.userId, it.titleText, mk.name) : undefined} />)}
                             </div>)
                         : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
                       {it.travel && it.anyActive && (
