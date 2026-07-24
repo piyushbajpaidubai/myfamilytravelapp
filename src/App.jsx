@@ -1886,19 +1886,18 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:9, flexWrap:'wrap' }}>
                                     <div style={{ display:'flex', alignItems:'center', minWidth:0 }}>
                                       {it.marks.slice(0, 4).map((mark, mi) => (
-                                        <span key={mark.userId} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}`} style={{ width:23, height:23, marginLeft:mi===0?0:-6, borderRadius:'50%', border:'2px solid #F0EBE0', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:9.5, fontWeight:700, color:'#7B675A', zIndex:5-mi }}>
+                                        <span key={mark.userId} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}`} style={{ width:30, height:30, marginLeft:mi===0?0:-7, borderRadius:'50%', border:'2px solid #F0EBE0', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#7B675A', zIndex:5-mi }}>
                                           {picOf(mark.userId) ? <img src={picOf(mark.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : ((mark.name||mark.userId||'?').trim().charAt(0)||'?').toUpperCase()}
                                         </span>
                                       ))}
-                                      {it.marks.length>4 && <span style={{ marginLeft:6, color:'#8A7A6D', fontSize:10.5, fontWeight:700 }}>+{it.marks.length-4}</span>}
+                                      {it.marks.length>4 && <span style={{ marginLeft:6, color:'#8A7A6D', fontSize:11, fontWeight:700 }}>+{it.marks.length-4}</span>}
+                                      {canEdit && <button type="button" aria-label="Update travellers' status" title="Update status" onClick={()=>setStatusModal({ ref: it.ref, title: it.titleText, members: it.marks.map(m => ({ userId:m.userId, name:m.name })) })} style={{ marginLeft:8, width:30, height:30, borderRadius:'50%', border:'none', background:'#6E1A10', color:'#fff', fontSize:19, fontWeight:800, lineHeight:1, cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>+</button>}
                                     </div>
                                     <div style={{ display:'flex', gap:7, alignItems:'center', flexWrap:'wrap', fontSize:10.5 }}>
                                       <span style={{ color:STATUS_META.done.color }}>{counts.done} complete</span>
                                       <span style={{ color:STATUS_META.active.color }}>{counts.active} ongoing</span>
                                       <span style={{ color:STATUS_META.todo.color }}>{counts.todo} pending</span>
-                                      {canEdit
-                                        ? <button type="button" onClick={()=>setStatusModal({ ref: it.ref, title: it.titleText, members: it.marks.map(m => ({ userId:m.userId, name:m.name })) })} style={{ border:'none', background:'transparent', color:'#8B2A14', padding:0, fontSize:10.5, fontWeight:700, textDecoration:'underline', cursor:'pointer' }}>Update</button>
-                                        : <button type="button" onClick={()=>setLargeGroupView('travelers')} style={{ border:'none', background:'transparent', color:'#8B2A14', padding:0, fontSize:10.5, fontWeight:700, textDecoration:'underline', cursor:'pointer' }}>View list</button>}
+                                      {!canEdit && <button type="button" onClick={()=>setLargeGroupView('travelers')} style={{ border:'none', background:'transparent', color:'#8B2A14', padding:0, fontSize:10.5, fontWeight:700, textDecoration:'underline', cursor:'pointer' }}>View list</button>}
                                     </div>
                                   </div>
                                 </div>
@@ -3495,11 +3494,11 @@ function MainApp() {
                 <button onClick={()=>updateTrip(trip.id,{status:'active'})} style={{ marginLeft:"auto", border:"1px solid #C8B09A", borderRadius:20, padding:"7px 13px", fontSize:11.5, fontWeight:700, cursor:"pointer", background:"transparent", color:"#8B2A14", whiteSpace:"nowrap" }}>↺ Reopen</button>
               )}
             </div>
-            <div data-tabbar="" style={{ padding:"22px 12px 12px", background:"#F0EBE0" }}>
-              <div style={{ display:"flex", gap:3, background:"#E7E0D2", border:"1.5px solid #C4A882", borderRadius:11, padding:4 }}>
+            <div data-tabbar="" style={{ padding:"14px 12px 10px", background:"#F0EBE0" }}>
+              <div style={{ display:"flex", gap:3, background:"#E7E0D2", border:"1.5px solid #C4A882", borderRadius:10, padding:3 }}>
                 {TABS.map(tab=>(
                   <button key={tab} onClick={()=>{ if (tab !== activeTab) setSlideTo({ tab, at: Date.now() }); }}
-                    style={{ flex:1, padding:"9px 2px", border:"none", borderRadius:8, fontSize:14.5, cursor:"pointer", fontWeight:600,
+                    style={{ flex:1, padding:"6px 2px", border:"none", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:600,
                       background: activeTab===tab?"#FFFFFF":"transparent",
                       color: activeTab===tab?"#6E1A10":"#B54030",
                       boxShadow: activeTab===tab?"0 1px 3px rgba(0,0,0,.1)":"none" }}>
@@ -4043,76 +4042,74 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
               {day.label && <span style={{ fontSize:14, fontWeight:600, color:'#6E1A10' }}>{day.label}</span>}
             </div>
 
-            {(day.events||[]).length === 0 && spansOnDay(trip, todayISO).length === 0 && <p style={{ color:'#C05040', fontSize:13 }}>No events for today.</p>}
-
-            {/* ── Multi-day spans (hotel / travel) active today ── */}
-            {spansOnDay(trip, todayISO).filter(showItem).map(s => (
-              <div key={s.id} style={{ display:'flex', gap:12, padding:'12px 0', borderTop:'1px solid #E2D8C8', background:'#F5EEDC' }}>
-                <StatusBox status={spStatus(s, todayISO)} onClick={()=>toggleSpan(trip.id, s.id, todayISO)} size={18} style={{ marginTop:2 }} />
-                <div style={{ flex:1, minWidth:0 }}>
+            {(() => {
+              // Merge spans, events and tasks into ONE list sorted by time, so the
+              // day reads top-to-bottom in order (a 19:00 drive sits at the end).
+              const items = [
+                ...spansOnDay(trip, todayISO).filter(showItem).map(s => ({ kind:'span', s, t: todayISO===s.startDate ? (s.startTime||'') : todayISO===s.endDate ? (s.endTime||'') : '' })),
+                ...(day.events||[]).filter(showItem).map(ev => ({ kind:'event', ev, t: ev.time||'' })),
+                ...(day.tasks||[]).filter(showItem).map(tk => ({ kind:'task', tk, t: tk.time||'' })),
+              ].sort((a,b) => (!a.t && !b.t) ? 0 : !a.t ? -1 : !b.t ? 1 : (a.t > b.t ? 1 : a.t < b.t ? -1 : 0));
+              if (!items.length) return <p style={{ color:'#C05040', fontSize:13 }}>Nothing for today{focus?' for this traveller':''}.</p>;
+              const done = (st) => ({ textDecoration: st==='done'?'line-through':'none', opacity: st==='done'?0.55:1 });
+              const stop = (node) => node ? <div onClick={e=>e.stopPropagation()}>{node}</div> : null;
+              // Each item is one large box; tapping anywhere on it cycles the status.
+              const card = (k, st, onTap, body) => (
+                <div key={k} onClick={onTap} role="button" style={{ background:'#fff', border:'1px solid #E2D8C8', borderRadius:14, padding:'12px 14px', marginBottom:10, cursor:'pointer', boxShadow:'0 1px 3px rgba(74,44,32,0.06)', display:'flex', gap:12 }}>
+                  <StatusBox status={st} size={22} style={{ marginTop:1, flexShrink:0 }} />
+                  <div style={{ flex:1, minWidth:0 }}>{body}</div>
+                </div>
+              );
+              return items.map(it => {
+                if (it.kind === 'span') { const s=it.s, st=spStatus(s, todayISO); return card('sp'+s.id, st, ()=>toggleSpan(trip.id, s.id, todayISO), <>
                   <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                     <span style={{ fontSize:16 }}>{spanIcon(s)}</span>
-                    <span style={{ fontSize:14, fontWeight:700, color:'#2E2320', textDecoration: spStatus(s, todayISO)==='done'?'line-through':'none', opacity: spStatus(s, todayISO)==='done'?0.55:1 }}>{s.title || '(untitled)'}</span>
+                    <span style={{ fontSize:14.5, fontWeight:700, color:'#2E2320', ...done(st) }}>{s.title || '(untitled)'}</span>
                     <span style={{ fontSize:11, background:'#E4D3B4', borderRadius:4, padding:'1px 6px', color:'#7A4A1A', fontWeight:700 }}>{spanSegLabel(s, todayISO)}</span>
-                    <StatusBadge status={spStatus(s, todayISO)} />
+                    <StatusBadge status={st} />
                     {assignedAvatars(s)}
                   </div>
                   {spanLocationText(s) && <div style={{ fontSize:12.5, color:'#A83020', marginTop:3 }}>📍 {spanLocationText(s)}</div>}
-                  {/* notes removed */}
-                  {docLinks(s.docs)}
-                </div>
-              </div>
-            ))}
-
-            {(day.events||[]).filter(showItem).map(ev => (
-              <div key={ev.id} style={{ display:'flex', gap:12, padding:'12px 0', borderTop:'1px solid #E2D8C8' }}>
-                <StatusBox status={evStatus(ev)} onClick={()=>cycleEvent(trip.id, day.id, ev.id)} size={18} style={{ marginTop:2 }} />
-                <div style={{ flex:1, minWidth:0 }}>
+                  {stop(docLinks(s.docs))}
+                </>); }
+                if (it.kind === 'task') { const tk=it.tk, st=evStatus(tk); return card('tk'+tk.id, st, ()=>cycleTask(trip.id, day.id, tk.id), <>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                    {tk.time && <span style={{ fontSize:12.5, fontWeight:600, color:'#B54030' }}>{tk.time}</span>}
+                    <span style={{ fontSize:11, background:'#F0D9D0', borderRadius:4, padding:'1px 6px', color:'#8B0015', fontWeight:700 }}>TASK</span>
+                    <span style={{ fontSize:14.5, fontWeight:600, color:'#2E2320', ...done(st) }}>{tk.text || '(task)'}</span>
+                    <StatusBadge status={st} />
+                    {assignedAvatars(tk)}
+                  </div>
+                </>); }
+                const ev=it.ev, st=evStatus(ev); return card('ev'+ev.id, st, ()=>cycleEvent(trip.id, day.id, ev.id), <>
                   <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                     {(ev.time || ev.endTime) && <span style={{ fontSize:12.5, fontWeight:600, color:'#B54030' }}>{ev.time}{ev.endTime?` – ${ev.endTime}`:''}</span>}
-                    <span style={{ fontSize:14, fontWeight:600, color:'#2E2320', textDecoration: evStatus(ev)==='done'?'line-through':'none', opacity: evStatus(ev)==='done'?0.55:1 }}>{ev.title || '(untitled)'}</span>
+                    <span style={{ fontSize:14.5, fontWeight:600, color:'#2E2320', ...done(st) }}>{ev.title || '(untitled)'}</span>
                     {ev.category && <span style={{ fontSize:11, background:'#E4DED0', borderRadius:4, padding:'1px 6px', color:'#8B2A14' }}>{ev.category}</span>}
-                    <StatusBadge status={evStatus(ev)} />
+                    <StatusBadge status={st} />
                     {assignedAvatars(ev)}
                   </div>
                   {ev.location && <div style={{ fontSize:12.5, color:'#A83020', marginTop:3 }}>📍 {ev.location}</div>}
-                  {/* notes removed */}
-                  {docLinks(ev.docs)}
+                  {stop(docLinks(ev.docs))}
                   {(ev.activities||[]).filter(showItem).length > 0 && (
                     <div style={{ marginTop:10, borderLeft:'2px solid #E2D8C8' }}>
-                      {(ev.activities||[]).filter(showItem).map(act => (
-                        <div key={act.id} style={{ display:'flex', gap:10, alignItems:'flex-start', paddingLeft:8, marginBottom:8 }}>
-                          <StatusBox status={evStatus(act)} onClick={()=>toggleAct(trip.id, day.id, ev.id, act.id)} size={14} style={{ marginTop:2 }} />
+                      {(ev.activities||[]).filter(showItem).map(act => { const ast=evStatus(act); return (
+                        <div key={act.id} onClick={e=>e.stopPropagation()} style={{ display:'flex', gap:10, alignItems:'flex-start', paddingLeft:8, marginBottom:8 }}>
+                          <StatusBox status={ast} onClick={()=>toggleAct(trip.id, day.id, ev.id, act.id)} size={16} style={{ marginTop:2 }} />
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                              <span style={{ fontSize:13.5, color:'#2E2320', textDecoration: evStatus(act)==='done'?'line-through':'none', opacity: evStatus(act)==='done'?0.55:1 }}>{act.text || '(task)'}</span>
+                              <span style={{ fontSize:13.5, color:'#2E2320', ...done(ast) }}>{act.text || '(task)'}</span>
                               {assignedAvatars(act)}
                             </div>
                             {docLinks(act.docs)}
                           </div>
                         </div>
-                      ))}
+                      ); })}
                     </div>
                   )}
-                </div>
-              </div>
-            ))}
-
-            {/* ── Independent day tasks (shown with the same tap-to-update box) ── */}
-            {(day.tasks||[]).filter(showItem).map(tk => (
-              <div key={tk.id} style={{ display:'flex', gap:12, padding:'12px 0', borderTop:'1px solid #E2D8C8' }}>
-                <StatusBox status={evStatus(tk)} onClick={()=>cycleTask(trip.id, day.id, tk.id)} size={18} style={{ marginTop:2 }} />
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                    {tk.time && <span style={{ fontSize:12.5, fontWeight:600, color:'#B54030' }}>{tk.time}</span>}
-                    <span style={{ fontSize:11, background:'#F0D9D0', borderRadius:4, padding:'1px 6px', color:'#8B0015', fontWeight:700 }}>TASK</span>
-                    <span style={{ fontSize:14, fontWeight:600, color:'#2E2320', textDecoration: evStatus(tk)==='done'?'line-through':'none', opacity: evStatus(tk)==='done'?0.55:1 }}>{tk.text || '(task)'}</span>
-                    <StatusBadge status={evStatus(tk)} />
-                    {assignedAvatars(tk)}
-                  </div>
-                </div>
-              </div>
-            ))}
+                </>);
+              });
+            })()}
           </div>
         ))}
       </div>
