@@ -306,7 +306,7 @@ function NativeStatusIcon({ name, size=20, stroke='currentColor' }) {
   );
 }
 
-function ScheduleTab({ trip, update, session, canEdit=true }) {
+function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, onToggleShare=null }) {
   const myId = session ? session.userId : null;
   // The status the current user sees/toggles on an item (per-traveler when logged in, else legacy shared)
   const evStatus = (item) => myId ? memStOf(item, myId) : stOf(item);
@@ -1082,7 +1082,13 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
               <Input label="Location" value={evForm.location} onChange={e=>setEvForm({...evForm,location:e.target.value})} placeholder="e.g. Kedarnath Temple" />
               <Select label="Category" value={evForm.category} onChange={e=>setEvForm({...evForm,category:e.target.value})}
                 options={["Sightseeing","Transport","Food","Accommodation","Activity","Other"]} />
-              <div style={{ marginBottom:12 }}><div style={{ fontSize:12, color:'#A83020', marginBottom:4 }}>Travelers</div><Assignees members={members} value={evForm.assignees} onChange={list=>setEvForm({...evForm,assignees:list})} /></div>
+              <div style={{ marginBottom:12 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
+                  <div style={{ fontSize:12, color:'#A83020' }}>Travelers</div>
+                  {onToggleShare && <button type="button" onClick={onToggleShare} title="Broadcast my live location while travelling" style={{ marginLeft:'auto', border:'1px solid #E2D8C8', borderRadius:20, padding:'5px 11px', fontSize:11, fontWeight:700, cursor:'pointer', background: sharingLoc ? '#3C8A3C' : '#F5EFE2', color: sharingLoc ? '#fff' : '#8B2A14', display:'inline-flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}>{sharingLoc ? <><span style={{ width:7,height:7,borderRadius:'50%',background:'#fff',display:'inline-block' }} /> Sharing · Stop</> : '📍 Share my location'}</button>}
+                </div>
+                <Assignees members={members} value={evForm.assignees} onChange={list=>setEvForm({...evForm,assignees:list})} />
+              </div>
               {expenseFields}
               <div style={{ display:"flex",gap:8,marginTop:8 }}>
                 <Btn onClick={()=>addEvent(showEvent)}>Add Event</Btn>
@@ -1128,7 +1134,13 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
                   {estimateMsg && <div style={{ fontSize:11.5, color:'#8A7A6D', marginTop:6, lineHeight:1.4 }}>{estimateMsg}</div>}
                 </div>
               )}
-              <div style={{ marginBottom:12 }}><div style={{ fontSize:12, color:'#A83020', marginBottom:4 }}>Travelers</div><Assignees members={members} value={evForm.assignees} onChange={list=>setEvForm({...evForm,assignees:list})} /></div>
+              <div style={{ marginBottom:12 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
+                  <div style={{ fontSize:12, color:'#A83020' }}>Travelers</div>
+                  {onToggleShare && <button type="button" onClick={onToggleShare} title="Broadcast my live location while travelling" style={{ marginLeft:'auto', border:'1px solid #E2D8C8', borderRadius:20, padding:'5px 11px', fontSize:11, fontWeight:700, cursor:'pointer', background: sharingLoc ? '#3C8A3C' : '#F5EFE2', color: sharingLoc ? '#fff' : '#8B2A14', display:'inline-flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}>{sharingLoc ? <><span style={{ width:7,height:7,borderRadius:'50%',background:'#fff',display:'inline-block' }} /> Sharing · Stop</> : '📍 Share my location'}</button>}
+                </div>
+                <Assignees members={members} value={evForm.assignees} onChange={list=>setEvForm({...evForm,assignees:list})} />
+              </div>
               {expenseFields}
               <div style={{ display:"flex",gap:8,marginTop:8 }}>
                 <Btn onClick={submitSpan}>Add</Btn>
@@ -1152,7 +1164,13 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
                   </div>
                   <Input label="Location" value={evForm.location} onChange={e=>setEvForm({...evForm,location:e.target.value})}
                     placeholder={evForm.type==='Accommodation' ? 'e.g. Laxman Jhula Rd' : 'Optional'} />
-                  <div style={{ marginBottom:12 }}><div style={{ fontSize:12, color:'#A83020', marginBottom:4 }}>Travelers</div><Assignees members={members} value={evForm.assignees} onChange={list=>setEvForm({...evForm,assignees:list})} /></div>
+                  <div style={{ marginBottom:12 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
+                  <div style={{ fontSize:12, color:'#A83020' }}>Travelers</div>
+                  {onToggleShare && <button type="button" onClick={onToggleShare} title="Broadcast my live location while travelling" style={{ marginLeft:'auto', border:'1px solid #E2D8C8', borderRadius:20, padding:'5px 11px', fontSize:11, fontWeight:700, cursor:'pointer', background: sharingLoc ? '#3C8A3C' : '#F5EFE2', color: sharingLoc ? '#fff' : '#8B2A14', display:'inline-flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}>{sharingLoc ? <><span style={{ width:7,height:7,borderRadius:'50%',background:'#fff',display:'inline-block' }} /> Sharing · Stop</> : '📍 Share my location'}</button>}
+                </div>
+                <Assignees members={members} value={evForm.assignees} onChange={list=>setEvForm({...evForm,assignees:list})} />
+              </div>
                 </>
               ); })()}
               {expenseFields}
@@ -1170,6 +1188,7 @@ function ScheduleTab({ trip, update, session, canEdit=true }) {
 
 function BudgetTab({ trip, update, session }) {
   const [showExp, setShowExp] = useState(false);
+  const [listView, setListView] = useState('category'); // 'category' | 'traveller' — how the expense list is grouped
   const myId = session ? session.userId : null;
   const members = trip.members || [];
   const [form, setForm] = useState({ desc:"", amount:"", category:"Food", travelerId:"" });
@@ -1268,22 +1287,55 @@ function BudgetTab({ trip, update, session }) {
         <Btn onClick={openAdd}>+ Add Expense</Btn>
       </div>
       {expenses.length===0 && <p style={{ color:"#C86050",textAlign:"center",marginTop:24 }}>No expenses logged yet. Add one here, or log it against an event in the Schedule tab.</p>}
-      {expenses.map(e=>(
-        <div key={e.id} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #E8E2D4" }}>
-          <div style={{ minWidth:0 }}>
-            <div style={{ fontSize:13,fontWeight:500 }}>{e.desc || e.category}</div>
-            <div style={{ fontSize:11,color:"#B54030" }}>
-              {e.category}
-              {e.travelerId && <span> · {nameOf(e.travelerId)}</span>}
-              {e.eventId && evTitle[e.eventId] && <span style={{ color:"#9A8478" }}> · {evTitle[e.eventId]}</span>}
+      {expenses.length>0 && members.length>0 && (
+        <div style={{ display:'flex', gap:4, background:'#E8E2D4', borderRadius:9, padding:4, marginBottom:12 }}>
+          {[['category','By Category'],['traveller','By Traveller']].map(([m,label])=>(
+            <button key={m} onClick={()=>setListView(m)} style={{ flex:1, padding:'7px 0', border:'none', borderRadius:6, cursor:'pointer', fontSize:12.5, fontWeight:700, background: listView===m?'#6E1A10':'transparent', color: listView===m?'#fff':'#8B2A14' }}>{label}</button>
+          ))}
+        </div>
+      )}
+      {(() => {
+        const expRow = (e) => (
+          <div key={e.id} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #E8E2D4" }}>
+            <div style={{ minWidth:0 }}>
+              <div style={{ fontSize:13,fontWeight:500 }}>{e.desc || e.category}</div>
+              <div style={{ fontSize:11,color:"#B54030" }}>
+                {e.category}
+                {e.travelerId && <span> · {nameOf(e.travelerId)}</span>}
+                {e.eventId && evTitle[e.eventId] && <span style={{ color:"#9A8478" }}> · {evTitle[e.eventId]}</span>}
+              </div>
+            </div>
+            <div style={{ display:"flex",alignItems:"center",gap:10,flexShrink:0 }}>
+              <span style={{ fontWeight:600 }}>{fmtMoney(e.amount, cur)}</span>
+              <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>delExp(e.id)}>✕</Btn>
             </div>
           </div>
-          <div style={{ display:"flex",alignItems:"center",gap:10,flexShrink:0 }}>
-            <span style={{ fontWeight:600 }}>{fmtMoney(e.amount, cur)}</span>
-            <Btn variant="danger" style={{ padding:"2px 8px",fontSize:12 }} onClick={()=>delExp(e.id)}>✕</Btn>
-          </div>
-        </div>
-      ))}
+        );
+        // Flat list when there are no travellers to group by.
+        if (members.length===0 || listView==='category') {
+          const cats = [...new Set(expenses.map(e=>e.category))];
+          return (members.length===0) ? expenses.map(expRow) : cats.map(cat => {
+            const items = expenses.filter(e=>e.category===cat);
+            const sub = items.reduce((s,e)=>s+parseFloat(e.amount||0),0);
+            return <div key={cat} style={{ marginBottom:10 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, fontWeight:700, color:'#B54030', margin:'6px 0 2px' }}><span>{cat}</span><span>{fmtMoney(sub, cur)}</span></div>
+              {items.map(expRow)}
+            </div>;
+          });
+        }
+        // By traveller: each member's expenses, then shared/unassigned.
+        const groups = [
+          ...members.map(m => ({ key:m.userId, label:m.name||m.userId, items:expenses.filter(e=>e.travelerId===m.userId) })),
+          { key:'__shared__', label:'Shared / unassigned', items:expenses.filter(e=>!e.travelerId || !members.some(m=>m.userId===e.travelerId)) },
+        ].filter(g => g.items.length>0);
+        return groups.map(g => {
+          const sub = g.items.reduce((s,e)=>s+parseFloat(e.amount||0),0);
+          return <div key={g.key} style={{ marginBottom:10 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, fontWeight:700, color:'#6E1A10', margin:'6px 0 2px' }}><span style={{ overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{g.label}</span><span>{fmtMoney(sub, cur)}</span></div>
+            {g.items.map(expRow)}
+          </div>;
+        });
+      })()}
 
       {showExp && (
         <Modal title="Add Expense" onClose={()=>setShowExp(false)}>
@@ -1649,20 +1701,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
         </div>
       )}
 
-      {/* Live location: compact self-toggle only. The full card (and the list of
-          other travellers' live positions) was removed in the minimal redesign;
-          this keeps the one control that starts/stops broadcasting on a drive. */}
-      {onToggleShare && (
-        <div style={{ marginBottom:18 }}>
-          <button onClick={onToggleShare}
-            style={{ border:'1px solid #E2D8C8', borderRadius:20, padding:'8px 15px', fontSize:12.5, fontWeight:700, cursor:'pointer',
-              background: sharingLoc ? '#3C8A3C' : '#F5EFE2', color: sharingLoc ? '#fff' : '#8B2A14', display:'inline-flex', alignItems:'center', gap:7 }}>
-            {sharingLoc
-              ? <><span style={{ width:8,height:8,borderRadius:'50%',background:'#fff',display:'inline-block' }} /> Sharing location · Stop</>
-              : '📍 Share my location'}
-          </button>
-        </div>
-      )}
+      {/* Share-my-location moved to the Schedule event form (next to Travelers). */}
 
       {/* Overall counts (aggregated across travelers) — small groups only */}
       {!largeGroup && totalItems>0 && (
@@ -2866,13 +2905,10 @@ function SwipeableTabPanels({ activeTab, onChange, renderTab, slideTo }) {
         {renderTab(activeTab)}
       </div>
       {targetIndex != null && (
-        // The incoming tab carries a clear vertical page-break line and a soft
-        // shadow at its leading edge, so the seam between the two tabs reads as
-        // one page sliding over another.
+        // The incoming tab carries only a soft shadow at its leading edge (no hard
+        // line) so the two tabs still read as separate pages while sliding.
         <div aria-hidden="true" style={{ position:'absolute', inset:'0 0 auto', width:'100%', background:'#F0EBE0',
-          borderLeft: targetSide > 0 ? '3px solid #C4A882' : 'none',
-          borderRight: targetSide < 0 ? '3px solid #C4A882' : 'none',
-          boxShadow: targetSide > 0 ? '-12px 0 26px rgba(74,44,32,0.18)' : '12px 0 26px rgba(74,44,32,0.18)',
+          boxShadow: targetSide > 0 ? '-12px 0 26px rgba(74,44,32,0.16)' : '12px 0 26px rgba(74,44,32,0.16)',
           transform:`translate3d(${motion.offset + targetSide * frameWidth()}px,0,0)`, transition, willChange:'transform' }}>
           {renderTab(TABS[targetIndex])}
         </div>
@@ -3218,7 +3254,7 @@ function MainApp() {
   const dateRange = trip ? tripDateRange(trip) : { start:"", end:"" };
   const renderTripTab = (tab) => {
     if (!trip) return null;
-    if (tab === 'Schedule') return <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} canEdit={isTripCaptain(trip)} />;
+    if (tab === 'Schedule') return <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} canEdit={isTripCaptain(trip)} sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)} />;
     if (tab === 'Budget') return <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} />;
     if (tab === 'Packing') return <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} />;
     return <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)}
@@ -3926,21 +3962,74 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
     </div>
   ) : null;
 
+  // Independent day task status (per-traveller when logged in) — same cycle as events.
+  const cycleTask = (tripId, dayId, taskId) => updateTrip(tripId, t => ({ days:(t.days||[]).map(d => d.id===dayId
+    ? { ...d, tasks:(d.tasks||[]).map(tk => {
+        if (tk.id!==taskId) return tk;
+        if (myId) return { ...tk, memberStatus:{ ...(tk.memberStatus||{}), [myId]: nextStatus(memStOf(tk, myId)) } };
+        return { ...tk, status: nextStatus(stOf(tk)) };
+      }) } : d) }));
+
+  // Travellers on today's trip(s), for the avatar string + per-traveller filter.
+  const allMembers = [];
+  matches.forEach(({ trip }) => (trip.members || []).forEach(m => { if (!allMembers.some(x => x.userId === m.userId)) allMembers.push(m); }));
+  const orderedMembers = myId ? [...allMembers].sort((a, b) => a.userId === myId ? -1 : b.userId === myId ? 1 : 0) : allMembers;
+  const [memberPics, setMemberPics] = useState({});
+  const memberKey = allMembers.map(m => m.userId).join(',');
+  useEffect(() => {
+    let cancelled = false;
+    const ids = memberKey ? memberKey.split(',') : [];
+    if (ids.length) directoryGetProfiles(ids).then(map => { if (!cancelled) setMemberPics(map); });
+    return () => { cancelled = true; };
+  }, [memberKey]);
+  const picOf = (uid) => (memberPics[uid] || {}).pic || '';
+  const [focus, setFocus] = useState(null); // filter to one traveller's plan
+  const [showFocusPicker, setShowFocusPicker] = useState(false);
+  const focusName = focus ? ((allMembers.find(m => m.userId === focus) || {}).name || focus) : null;
+  const assignedIds = (item) => (item && item.assignees && item.assignees.length) ? item.assignees : allMembers.map(m => m.userId);
+  const showItem = (item) => !focus || assignedIds(item).includes(focus);
+  const avatar = (m, i) => <span key={m.userId} title={m.name||m.userId} style={{ width:22, height:22, marginLeft:i===0?0:-6, borderRadius:'50%', overflow:'hidden', border:'2px solid #F0EBE0', background:'#A88977', color:'#fff', display:'grid', placeItems:'center', fontSize:8.5, fontWeight:800, flexShrink:0 }}>{picOf(m.userId) ? <img src={picOf(m.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : ((m.name||m.userId||'?')[0]||'?').toUpperCase()}</span>;
+  const assignedAvatars = (item) => {
+    const people = assignedIds(item).map(id => allMembers.find(m => m.userId === id)).filter(Boolean);
+    return people.length ? <span style={{ display:'inline-flex', alignItems:'center', marginLeft:2 }}>{people.slice(0,5).map(avatar)}</span> : null;
+  };
+
+  // Today's documents only (across today's spans / events / activities).
+  const [showDocs, setShowDocs] = useState(false);
+  const todayDocs = [];
+  matches.forEach(({ trip, day }) => {
+    spansOnDay(trip, todayISO).forEach(s => (s.docs||[]).forEach(dc => todayDocs.push({ ...dc, ctx: s.title || 'stay/travel' })));
+    (day.events||[]).forEach(ev => {
+      (ev.docs||[]).forEach(dc => todayDocs.push({ ...dc, ctx: ev.title || 'event' }));
+      (ev.activities||[]).forEach(a => (a.docs||[]).forEach(dc => todayDocs.push({ ...dc, ctx: (ev.title||'event') + ' · ' + (a.text||'task') })));
+    });
+  });
+
   return (
     <div style={{ position:'fixed', inset:0, zIndex:200, background:'#F0EBE0', overflowY:'auto', fontFamily:'var(--font-body)', color:'#6E1A10', paddingBottom:'env(safe-area-inset-bottom, 0px)' }}>
       <div style={{ background:'#5C1A1A', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', position:'sticky', top:0, zIndex:5 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:12, padding:'calc(env(safe-area-inset-top, 0px) + 14px) 18px 14px' }}>
-          <button onClick={onClose} aria-label="Back" style={{ width:38, height:38, borderRadius:9, border:'1.5px solid rgba(245,236,215,0.28)', background:'rgba(245,236,215,0.08)', color:'#F5ECD7', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, padding:0 }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'calc(env(safe-area-inset-top, 0px) + 9px) 16px 9px' }}>
+          <button onClick={onClose} aria-label="Back" style={{ width:34, height:34, borderRadius:9, border:'1.5px solid rgba(245,236,215,0.28)', background:'rgba(245,236,215,0.08)', color:'#F5ECD7', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, padding:0 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
           </button>
-          <div>
-            <div style={{ fontSize:17, fontWeight:800, color:'#F5ECD7', letterSpacing:'0.02em' }}>Today's Plan</div>
-            <div style={{ fontSize:12, color:'rgba(245,236,215,0.65)', marginTop:2 }}>{fmtDate(todayISO)}</div>
+          <div style={{ display:'flex', alignItems:'baseline', gap:8, minWidth:0 }}>
+            <div style={{ fontSize:16, fontWeight:800, color:'#F5ECD7', letterSpacing:'0.02em' }}>Today's Plan</div>
+            <div style={{ fontSize:11.5, color:'rgba(245,236,215,0.6)', whiteSpace:'nowrap' }}>{fmtDate(todayISO)}</div>
           </div>
         </div>
       </div>
 
-      <div style={{ maxWidth:680, margin:'0 auto', padding:'18px 20px' }}>
+      {matches.length > 0 && allMembers.length > 0 && (
+        <div style={{ maxWidth:680, margin:'0 auto', padding:'10px 16px 0', display:'flex', alignItems:'center', gap:8 }}>
+          <div style={{ display:'flex', alignItems:'center' }}>
+            {orderedMembers.slice(0,6).map((m,i) => { const on=focus===m.userId; return <button key={m.userId} type="button" aria-pressed={on} title={`Show only ${m.name||m.userId}'s plan`} onClick={()=>setFocus(on?null:m.userId)} style={{ width:34, height:34, marginLeft:i===0?0:-8, borderRadius:'50%', overflow:'hidden', border:on?'2px solid #6E1A10':'2px solid #F0EBE0', boxShadow:on?'0 0 0 2px #6E1A10':'0 0 0 1px #CFC2B5', background:'#A88977', color:'#fff', display:'grid', placeItems:'center', fontSize:12, fontWeight:800, cursor:'pointer', padding:0, transform:on?'translateY(-1px)':'none', zIndex:on?2:1 }}>{picOf(m.userId) ? <img src={picOf(m.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : ((m.name||m.userId||'?')[0]||'?').toUpperCase()}</button>; })}
+            {orderedMembers.length>6 && <button type="button" onClick={()=>setShowFocusPicker(true)} title="More travellers" style={{ marginLeft:6, width:32, height:32, borderRadius:'50%', border:'1px solid #CFC2B5', background:'#fff', color:'#6E1A10', fontSize:16, fontWeight:800, cursor:'pointer' }}>+</button>}
+          </div>
+          {focus && <button type="button" onClick={()=>setFocus(null)} style={{ marginLeft:'auto', border:'none', background:'transparent', color:'#8B2A14', fontSize:11.5, fontWeight:800, cursor:'pointer' }}>Show all ✕</button>}
+        </div>
+      )}
+
+      <div style={{ maxWidth:680, margin:'0 auto', padding:'14px 20px 90px' }}>
         {matches.length === 0 ? (
           <div style={{ textAlign:'center', padding:'60px 10px', color:'#B54030' }}>
             <div style={{ fontSize:44, marginBottom:12 }}>🗓️</div>
@@ -3957,7 +4046,7 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
             {(day.events||[]).length === 0 && spansOnDay(trip, todayISO).length === 0 && <p style={{ color:'#C05040', fontSize:13 }}>No events for today.</p>}
 
             {/* ── Multi-day spans (hotel / travel) active today ── */}
-            {spansOnDay(trip, todayISO).map(s => (
+            {spansOnDay(trip, todayISO).filter(showItem).map(s => (
               <div key={s.id} style={{ display:'flex', gap:12, padding:'12px 0', borderTop:'1px solid #E2D8C8', background:'#F5EEDC' }}>
                 <StatusBox status={spStatus(s, todayISO)} onClick={()=>toggleSpan(trip.id, s.id, todayISO)} size={18} style={{ marginTop:2 }} />
                 <div style={{ flex:1, minWidth:0 }}>
@@ -3966,6 +4055,7 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
                     <span style={{ fontSize:14, fontWeight:700, color:'#2E2320', textDecoration: spStatus(s, todayISO)==='done'?'line-through':'none', opacity: spStatus(s, todayISO)==='done'?0.55:1 }}>{s.title || '(untitled)'}</span>
                     <span style={{ fontSize:11, background:'#E4D3B4', borderRadius:4, padding:'1px 6px', color:'#7A4A1A', fontWeight:700 }}>{spanSegLabel(s, todayISO)}</span>
                     <StatusBadge status={spStatus(s, todayISO)} />
+                    {assignedAvatars(s)}
                   </div>
                   {spanLocationText(s) && <div style={{ fontSize:12.5, color:'#A83020', marginTop:3 }}>📍 {spanLocationText(s)}</div>}
                   {/* notes removed */}
@@ -3974,7 +4064,7 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
               </div>
             ))}
 
-            {(day.events||[]).map(ev => (
+            {(day.events||[]).filter(showItem).map(ev => (
               <div key={ev.id} style={{ display:'flex', gap:12, padding:'12px 0', borderTop:'1px solid #E2D8C8' }}>
                 <StatusBox status={evStatus(ev)} onClick={()=>cycleEvent(trip.id, day.id, ev.id)} size={18} style={{ marginTop:2 }} />
                 <div style={{ flex:1, minWidth:0 }}>
@@ -3983,17 +4073,21 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
                     <span style={{ fontSize:14, fontWeight:600, color:'#2E2320', textDecoration: evStatus(ev)==='done'?'line-through':'none', opacity: evStatus(ev)==='done'?0.55:1 }}>{ev.title || '(untitled)'}</span>
                     {ev.category && <span style={{ fontSize:11, background:'#E4DED0', borderRadius:4, padding:'1px 6px', color:'#8B2A14' }}>{ev.category}</span>}
                     <StatusBadge status={evStatus(ev)} />
+                    {assignedAvatars(ev)}
                   </div>
                   {ev.location && <div style={{ fontSize:12.5, color:'#A83020', marginTop:3 }}>📍 {ev.location}</div>}
                   {/* notes removed */}
                   {docLinks(ev.docs)}
-                  {(ev.activities||[]).length > 0 && (
+                  {(ev.activities||[]).filter(showItem).length > 0 && (
                     <div style={{ marginTop:10, borderLeft:'2px solid #E2D8C8' }}>
-                      {(ev.activities||[]).map(act => (
+                      {(ev.activities||[]).filter(showItem).map(act => (
                         <div key={act.id} style={{ display:'flex', gap:10, alignItems:'flex-start', paddingLeft:8, marginBottom:8 }}>
                           <StatusBox status={evStatus(act)} onClick={()=>toggleAct(trip.id, day.id, ev.id, act.id)} size={14} style={{ marginTop:2 }} />
                           <div style={{ flex:1, minWidth:0 }}>
-                            <span style={{ fontSize:13.5, color:'#2E2320', textDecoration: evStatus(act)==='done'?'line-through':'none', opacity: evStatus(act)==='done'?0.55:1 }}>{act.text || '(task)'}</span>
+                            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                              <span style={{ fontSize:13.5, color:'#2E2320', textDecoration: evStatus(act)==='done'?'line-through':'none', opacity: evStatus(act)==='done'?0.55:1 }}>{act.text || '(task)'}</span>
+                              {assignedAvatars(act)}
+                            </div>
                             {docLinks(act.docs)}
                           </div>
                         </div>
@@ -4003,9 +4097,79 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
                 </div>
               </div>
             ))}
+
+            {/* ── Independent day tasks (shown with the same tap-to-update box) ── */}
+            {(day.tasks||[]).filter(showItem).map(tk => (
+              <div key={tk.id} style={{ display:'flex', gap:12, padding:'12px 0', borderTop:'1px solid #E2D8C8' }}>
+                <StatusBox status={evStatus(tk)} onClick={()=>cycleTask(trip.id, day.id, tk.id)} size={18} style={{ marginTop:2 }} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                    {tk.time && <span style={{ fontSize:12.5, fontWeight:600, color:'#B54030' }}>{tk.time}</span>}
+                    <span style={{ fontSize:11, background:'#F0D9D0', borderRadius:4, padding:'1px 6px', color:'#8B0015', fontWeight:700 }}>TASK</span>
+                    <span style={{ fontSize:14, fontWeight:600, color:'#2E2320', textDecoration: evStatus(tk)==='done'?'line-through':'none', opacity: evStatus(tk)==='done'?0.55:1 }}>{tk.text || '(task)'}</span>
+                    <StatusBadge status={evStatus(tk)} />
+                    {assignedAvatars(tk)}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         ))}
       </div>
+
+      {showFocusPicker && (
+        <Modal title="Show whose plan?" onClose={()=>setShowFocusPicker(false)}>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            <button type="button" onClick={()=>{ setFocus(null); setShowFocusPicker(false); }} style={{ textAlign:'left', border:'1px solid #E0D2C5', borderRadius:10, padding:'10px 12px', background: !focus?'#F1E7DD':'#fff', color:'#6E1A10', fontSize:13, fontWeight:700, cursor:'pointer' }}>Everyone</button>
+            {orderedMembers.map(m=>(
+              <button key={m.userId} type="button" onClick={()=>{ setFocus(m.userId); setShowFocusPicker(false); }} style={{ display:'flex', alignItems:'center', gap:10, textAlign:'left', border:'1px solid #E0D2C5', borderRadius:10, padding:'8px 12px', background: focus===m.userId?'#F1E7DD':'#fff', color:'#5E463C', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                {avatar(m, 0)}{m.name||m.userId}{m.userId===myId?' (you)':''}
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
+
+      {matches.length > 0 && !showDocs && (
+        <button type="button" aria-label="Open today's documents" onClick={()=>setShowDocs(true)}
+          style={{ position:'fixed', left:'50%', bottom:'calc(env(safe-area-inset-bottom, 0px) + 10px)', transform:'translateX(-50%)', zIndex:210,
+            width:'min(calc(100% - 28px), 650px)', minHeight:54, border:'1px solid #D4BFB0', borderRadius:14, background:'#F5EFE2', color:'#6E1A10',
+            display:'flex', alignItems:'center', gap:10, padding:'8px 14px', boxShadow:'0 6px 22px rgba(61,12,2,0.18)', cursor:'pointer', textAlign:'left' }}>
+          <span aria-hidden="true" style={{ width:32, height:32, borderRadius:'50%', background:'#6E1A10', color:'#F5ECD7', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:16 }}>⌃</span>
+          <span style={{ minWidth:0, flex:1 }}>
+            <span style={{ display:'block', fontSize:13, fontWeight:700 }}>Today's Itinerary Documents</span>
+            <span style={{ display:'block', fontSize:11, color:'#8A7A6D' }}>{todayDocs.length} file{todayDocs.length===1?'':'s'} for today · pull up</span>
+          </span>
+        </button>
+      )}
+      {showDocs && (
+        <div onClick={()=>setShowDocs(false)} style={{ position:'fixed', inset:0, zIndex:220, background:'rgba(44,24,16,0.28)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+          <section role="dialog" aria-modal="true" aria-label="Today's Documents" onClick={e=>e.stopPropagation()}
+            style={{ width:'min(100%, 680px)', maxHeight:'80dvh', background:'#F0EBE0', borderRadius:'20px 20px 0 0', boxShadow:'0 -10px 34px rgba(44,24,16,0.24)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+            <div style={{ flexShrink:0, background:'#F5EFE2', borderBottom:'1px solid #D8CFC2', padding:'10px 16px' }}>
+              <div style={{ width:34, height:4, borderRadius:2, background:'#D0C2B2', margin:'0 auto 8px' }} />
+              <div style={{ display:'flex', alignItems:'center' }}>
+                <div style={{ fontSize:15, fontWeight:800, color:'#6E1A10' }}>Today's Documents</div>
+                <button onClick={()=>setShowDocs(false)} aria-label="Close" style={{ marginLeft:'auto', border:'none', background:'transparent', color:'#6E1A10', fontSize:16, cursor:'pointer' }}>✕</button>
+              </div>
+            </div>
+            <div style={{ overflowY:'auto', padding:'12px 16px 20px' }}>
+              {todayDocs.length === 0
+                ? <p style={{ fontSize:13, color:'#8A7A6D', textAlign:'center', padding:'20px 0' }}>No documents attached to today's plan.</p>
+                : todayDocs.map((dc, i) => (
+                  <a key={(dc.id||'')+i} href={dc.url || dc.data} target="_blank" rel="noopener noreferrer"
+                    style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 10px', background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:9, marginBottom:6, textDecoration:'none', color:'#6E1A10' }}>
+                    <span style={{ width:26, height:30, borderRadius:3, background:'#6E1A10', color:'#fff', fontSize:8, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>DOC</span>
+                    <span style={{ minWidth:0 }}>
+                      <span style={{ display:'block', fontSize:12.5, fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{dc.name}</span>
+                      <span style={{ display:'block', fontSize:10.5, color:'#8A7A6D' }}>{dc.ctx}</span>
+                    </span>
+                  </a>
+                ))}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
