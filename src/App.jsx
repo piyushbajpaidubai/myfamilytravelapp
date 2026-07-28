@@ -497,7 +497,8 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
 
   const blankForm = { duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", assignees:[], locationLink:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" };
   const [editingEvent, setEditingEvent] = useState(null); // { dayId, evId } when the modal is editing an existing activity
-  const closeModal = () => { setShowEvent(null); setEvForm(blankForm); setEditingEvent(null); };
+  const [editingSpan, setEditingSpan] = useState(null); // spanId when the modal is editing an existing travel/stay span
+  const closeModal = () => { setShowEvent(null); setEvForm(blankForm); setEditingEvent(null); setEditingSpan(null); };
   // Open "add" modal from a day; prefill span dates to that day + default the optional expense to the current traveler
   const openAddEvent = (day) => {
     const defTrav = (myId && members.some(m => m.userId === myId)) ? myId : (members[0] ? members[0].userId : '');
@@ -511,7 +512,19 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     setEvForm({ ...blankForm, duration:'single', type:'Activity', time:ev.time||'', endTime:ev.endTime||'', title:ev.title||'', location:ev.location||'', locationLink:ev.locationLink||'', category:ev.category||'Sightseeing', assignees:ev.assignees||[], startDate:day.date, endDate:day.date });
     setEstimateMsg('');
     setEditingEvent({ dayId:day.id, evId:ev.id });
+    setEditingSpan(null);
     setShowEvent(day.id);
+  };
+  // Open the same pop-up pre-filled to EDIT an existing travel/stay span.
+  const openEditSpan = (s) => {
+    const single = !!s.startDate && s.startDate === s.endDate;
+    setEvForm({ ...blankForm, duration: single ? 'single' : 'multi', type: s.type || 'Travel',
+      title: s.title||'', location: s.location||'', from: s.from||'', to: s.to||'', mode: s.mode||'By Road', flightNo: s.flightNo||'',
+      assignees: s.assignees||[], startDate: s.startDate||'', startTime: s.startTime||'', endDate: s.endDate||'', spanEndTime: s.endTime||'' });
+    setEstimateMsg('');
+    setEditingEvent(null);
+    setEditingSpan(s.id);
+    setShowEvent('span-edit'); // truthy so the modal opens; submitSpan ignores the day for spans
   };
   // Estimate driving time From→To and fill in the arrival date/time (By Road)
   const autoFillArrival = async () => {
@@ -572,6 +585,12 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     }
     const endDate = f.duration === 'single' ? f.startDate : f.endDate; // single-day travel stays same-day
     const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, mode:f.mode, flightNo:f.flightNo, assignees:f.assignees||[], startDate:f.startDate, startTime:f.startTime, endDate, endTime:f.spanEndTime };
+    // Editing an existing span: update in place, keeping its status history and docs.
+    if (editingSpan) {
+      update(t => ({ spans:(t.spans||[]).map(sp => sp.id===editingSpan ? { ...sp, ...fields } : sp) }));
+      closeModal();
+      return;
+    }
     const span = { id:uid(), ...fields, dayStatus:{}, docs:[] };
     const exp = expenseFromForm(span.id);
     update(t => ({
@@ -925,7 +944,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
           {canEdit && peoplePanelFor===detailKey && <div style={{ margin:'10px 0',padding:'10px',borderRadius:12,background:'#F3EFE9' }}><div style={{ marginBottom:7,fontSize:9,fontWeight:800,letterSpacing:'0.08em',color:'#8D7A70' }}>TRAVELERS</div><Assignees members={members} value={s.assignees} onChange={(list)=>setSpanAssignees(s.id,list)} /></div>}
           <DocList docs={s.docs||[]} onAdd={(file)=>attachSpanDoc(s.id,file)} onDel={canEdit?(docId)=>delSpanDoc(s.id,docId):null}/>
           <div style={{ display:'grid',gridTemplateColumns:canEdit?'repeat(3,1fr)':'1fr',gap:7,marginTop:11 }}>
-            {canEdit && <button type="button" onClick={()=>setEditingPanelFor(editingPanelFor===detailKey?null:detailKey)} style={nativeActionStyle()}>✎ Edit</button>}
+            {canEdit && <button type="button" onClick={()=>openEditSpan(s)} style={nativeActionStyle()}>✎ Edit</button>}
             <button type="button" onClick={()=>openExpense(s.id)} style={nativeActionStyle()}>▤ Expense</button>
             {canEdit && <button type="button" onClick={()=>setPeoplePanelFor(peoplePanelFor===detailKey?null:detailKey)} style={nativeActionStyle()}>♧ People</button>}
             {canEdit && <label style={nativeActionStyle()}><span>⌕ File</span><input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachSpanDoc(s.id,e.target.files[0]); e.target.value=''; }}/></label>}
@@ -1079,7 +1098,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
       )}
 
       {showEvent && (
-        <Modal title={editingEvent ? 'Edit Activity' : 'Add to Itinerary'} onClose={closeModal}>
+        <Modal title={(editingEvent || editingSpan) ? 'Edit Activity' : 'Add to Itinerary'} onClose={closeModal}>
           <Select label="Duration" value={evForm.duration}
             onChange={e=>{ const dur=e.target.value; setEvForm({...evForm, duration:dur, type: dur==='single' ? 'Activity' : 'Accommodation'}); }}
             options={["single","multi"]}
@@ -1113,7 +1132,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
               <div style={{ marginBottom:12 }}><div style={{ fontSize:12, color:'#A83020', marginBottom:4 }}>Travelers</div><Assignees members={members} value={evForm.assignees} onChange={list=>setEvForm({...evForm,assignees:list})} /></div>
               {expenseFields}
               <div style={{ display:"flex",gap:8,marginTop:8 }}>
-                <Btn onClick={()=>addEvent(showEvent)}>{editingEvent ? 'Save Changes' : 'Add Event'}</Btn>
+                <Btn onClick={()=>addEvent(showEvent)}>{(editingEvent || editingSpan) ? 'Save Changes' : 'Add Event'}</Btn>
                 <Btn variant="ghost" onClick={closeModal}>Cancel</Btn>
               </div>
             </>
@@ -1159,7 +1178,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
               <div style={{ marginBottom:12 }}><div style={{ fontSize:12, color:'#A83020', marginBottom:4 }}>Travelers</div><Assignees members={members} value={evForm.assignees} onChange={list=>setEvForm({...evForm,assignees:list})} /></div>
               {expenseFields}
               <div style={{ display:"flex",gap:8,marginTop:8 }}>
-                <Btn onClick={submitSpan}>Add</Btn>
+                <Btn onClick={submitSpan}>{(editingSpan || editingEvent) ? 'Save Changes' : 'Add'}</Btn>
                 <Btn variant="ghost" onClick={closeModal}>Cancel</Btn>
               </div>
             </>
@@ -1185,7 +1204,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
               ); })()}
               {expenseFields}
               <div style={{ display:"flex",gap:8,marginTop:8 }}>
-                <Btn onClick={submitSpan}>Add</Btn>
+                <Btn onClick={submitSpan}>{(editingSpan || editingEvent) ? 'Save Changes' : 'Add'}</Btn>
                 <Btn variant="ghost" onClick={closeModal}>Cancel</Btn>
               </div>
             </>
