@@ -306,7 +306,7 @@ function NativeStatusIcon({ name, size=20, stroke='currentColor' }) {
   );
 }
 
-function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, onToggleShare=null, focus=null }) {
+function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, onToggleShare=null, focus=[] }) {
   const myId = session ? session.userId : null;
   // The status the current user sees/toggles on an item (per-traveler when logged in, else legacy shared)
   const evStatus = (item) => myId ? memStOf(item, myId) : stOf(item);
@@ -339,7 +339,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
   // Tapping a traveller's icon narrows the schedule to their items. The signed-in
   // traveller sorts first so they can pick their own schedule at a glance.
   // The traveller filter is driven by the header circle string (global focus).
-  const focusMember = focus;
+  const focusMember = focus; // array of selected traveller ids ([] = everyone)
   // Days already travelled start collapsed (today and future stay open), the same
   // way the Status tab does — keeps a long trip compact. Tapping still overrides.
   const scheduleTodayISO = (() => { const p = n => String(n).padStart(2, '0'); const d = new Date(); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; })();
@@ -356,11 +356,11 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
   }, [memberKey]);
   const picOf = (userId) => (memberPics[userId] || {}).pic || '';
   // A merged item belongs to a traveller if it is assigned to them, or to no one (everyone).
-  const itemForMember = (it, uid) => {
-    if (!uid) return true;
+  const itemForMember = (it, sel) => {
+    if (!sel || !sel.length) return true;
     const u = it.s || it.ev || it.task;
     const ids = (u && u.assignees) || [];
-    return ids.length === 0 || ids.includes(uid);
+    return ids.length === 0 || ids.some(id => sel.includes(id));
   };
   const [expenseFor, setExpenseFor] = useState(null); // eventId
   const [expForm, setExpForm] = useState({ amount:"", category:"Food", travelerId:"", desc:"" });
@@ -1012,9 +1012,9 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
         <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:12 }}>
           <div><strong style={{ display:'block',fontSize:15,color:'#302521' }}>{(trip.days||[]).length} trip day{(trip.days||[]).length===1?'':'s'}</strong><span style={{ color:'#927F75',fontSize:10.5 }}>{(trip.days||[]).reduce((count,day)=>count+(day.events||[]).length+(day.tasks||[]).length,0)+(trip.spans||[]).length} itinerary items</span></div>
         </div>
-        {focusMember && (
+        {focusMember.length > 0 && (
           <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:8, background:'#F1E7DD', border:'1px solid #E0D2C5', borderRadius:12, padding:'7px 12px' }}>
-            <span style={{ fontSize:11.5, color:'#6E2118', fontWeight:700 }}>Showing {(members.find(m=>m.userId===focusMember)||{}).name || focusMember}'s schedule — pick from the header</span>
+            <span style={{ fontSize:11.5, color:'#6E2118', fontWeight:700 }}>Showing {focusMember.map(id => (members.find(m=>m.userId===id)||{}).name || id).join(', ')}'s schedule — pick from the header</span>
           </div>
         )}
         {canEdit && <div style={{ marginTop:12,marginLeft:40 }}>
@@ -1198,7 +1198,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
   );
 }
 
-function BudgetTab({ trip, update, session, focus=null }) {
+function BudgetTab({ trip, update, session, focus=[] }) {
   const [showExp, setShowExp] = useState(false);
   const myId = session ? session.userId : null;
   const members = trip.members || [];
@@ -1298,9 +1298,9 @@ function BudgetTab({ trip, update, session, focus=null }) {
         <Btn onClick={openAdd}>+ Add Expense</Btn>
       </div>
       {expenses.length===0 && <p style={{ color:"#C86050",textAlign:"center",marginTop:24 }}>No expenses logged yet. Add one here, or log it against an event in the Schedule tab.</p>}
-      {focus && (
+      {focus.length > 0 && (
         <div style={{ marginBottom:10, background:'#F1E7DD', border:'1px solid #E0D2C5', borderRadius:12, padding:'8px 12px', fontSize:11.5, fontWeight:700, color:'#6E2118' }}>
-          Showing {nameOf(focus)}'s expenses — pick from the header
+          Showing {focus.map(nameOf).join(', ')}'s expenses — pick from the header
         </div>
       )}
       {(() => {
@@ -1321,8 +1321,8 @@ function BudgetTab({ trip, update, session, focus=null }) {
           </div>
         );
         // Filter to the header-selected traveller, then group the list by category.
-        const shown = focus ? expenses.filter(e => e.travelerId===focus) : expenses;
-        if (!shown.length) return focus ? <p style={{ color:'#9A8478', fontSize:13, textAlign:'center', padding:'12px 0' }}>No expenses logged for {nameOf(focus)}.</p> : null;
+        const shown = focus.length ? expenses.filter(e => focus.includes(e.travelerId)) : expenses;
+        if (!shown.length) return focus.length ? <p style={{ color:'#9A8478', fontSize:13, textAlign:'center', padding:'12px 0' }}>No expenses logged for {focus.map(nameOf).join(', ')}.</p> : null;
         const cats = [...new Set(shown.map(e=>e.category))];
         return cats.map(cat => {
           const items = shown.filter(e=>e.category===cat);
@@ -1356,7 +1356,7 @@ function BudgetTab({ trip, update, session, focus=null }) {
 }
 
 // ---- Packing Tab ----
-function PackingTab({ trip, update, focus=null }) {
+function PackingTab({ trip, update, focus=[] }) {
   const members = trip.members || [];
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name:"", category:"Clothing", assignees:[] });
@@ -1398,16 +1398,16 @@ function PackingTab({ trip, update, focus=null }) {
           <div style={{ height:"100%",background:"#6E1A10",width:`${total?Math.round((packed/total)*100):0}%`,transition:"width .3s" }} />
         </div>
       )}
-      {focus && (
+      {focus.length > 0 && (
         <div style={{ marginBottom:12, background:'#F1E7DD', border:'1px solid #E0D2C5', borderRadius:12, padding:'8px 12px', fontSize:11.5, fontWeight:700, color:'#6E2118' }}>
-          Showing {(members.find(m=>m.userId===focus)||{}).name || focus}'s packing — pick from the header
+          Showing {focus.map(id => (members.find(m=>m.userId===id)||{}).name || id).join(', ')}'s packing — pick from the header
         </div>
       )}
       {total===0 && <p style={{ color:"#C86050",textAlign:"center",marginTop:40 }}>Nothing to pack yet!</p>}
 
       {(() => {
         // A shared item (no assignees) applies to everyone, so it shows under any focus.
-        const applies = (p) => !focus || !(p.assignees||[]).length || (p.assignees||[]).includes(focus);
+        const applies = (p) => !focus.length || !(p.assignees||[]).length || (p.assignees||[]).some(id => focus.includes(id));
         const shown = (trip.packItems||[]).filter(applies);
         if (focus && !shown.length) return <p style={{ color:'#9A8478', fontSize:13, textAlign:'center', padding:'12px 0' }}>Nothing assigned to this traveller.</p>;
         const grp = PACK_CATS.map(c=>({ cat:c, items:shown.filter(p=>p.category===c) })).filter(x=>x.items.length>0);
@@ -1480,10 +1480,12 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
 }
 
 // ---- Status Tab ----  (per-traveler rollup of event/activity/span statuses per day)
-function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focusUserId=null, sharingLoc=false, onToggleShare=null, shareToken=null }) {
+function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focusUserId=null, focusIds=[], sharingLoc=false, onToggleShare=null, shareToken=null }) {
   const days = trip.days || [];
-  // focusUserId (from a traveler's share link) narrows the view to that traveler only
-  const roster = focusUserId ? (trip.members || []).filter(m => m.userId === focusUserId) : (trip.members || []);
+  // focusUserId (a traveler's share link) is one traveller; focusIds (header string)
+  // may be several. Either narrows the roster to just the selected travellers.
+  const focusSet = focusUserId ? [focusUserId] : (focusIds || []);
+  const roster = focusSet.length ? (trip.members || []).filter(m => focusSet.includes(m.userId)) : (trip.members || []);
   const perTraveler = roster.length > 0; // group trips show a marker per traveler; solo/legacy show one status
   const largeGroup = perTraveler && roster.length >= 6; // compact summary view once a trip has 6+ travelers
   const [largeGroupView, setLargeGroupView] = useState('events'); // 'events' | 'travelers'
@@ -1728,9 +1730,9 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
 
       {/* The Events/Travelers toggle was removed — pick a traveller from the header
           circle string to see their filtered timeline; otherwise everyone shows. */}
-      {focusUserId && (
+      {focusSet.length > 0 && (
         <div style={{ marginBottom:14, display:'flex', alignItems:'center', gap:8, background:'#F1E7DD', border:'1px solid #E0D2C5', borderRadius:12, padding:'8px 13px' }}>
-          <span style={{ fontSize:12.5, color:'#6E2118', fontWeight:700 }}>Showing {(roster[0] && (roster[0].name||roster[0].userId)) || 'traveller'}'s status</span>
+          <span style={{ fontSize:12.5, color:'#6E2118', fontWeight:700 }}>Showing {roster.map(m => m.name||m.userId).join(', ') || 'traveller'}{roster.length===1?"'s":"'"} status</span>
         </div>
       )}
 
@@ -1805,8 +1807,8 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
       )}
 
       {(!largeGroup || largeGroupView==='events') && days.map((day, di) => {
-        // When filtered to one traveller (header circle), show only items they're on.
-        const items = dayItems(day).filter(it => !focusUserId || !it.marks || it.marks.length > 0);
+        // When filtered to selected travellers (header string), show only their items.
+        const items = dayItems(day).filter(it => !focusSet.length || !it.marks || it.marks.length > 0);
         const t = parseDay(day.date);
         const dayNum = (baseMs != null && t != null) ? Math.round((t - baseMs) / 86400000) + 1 : (di + 1);
         const past = isPastDay(day);
@@ -2485,7 +2487,7 @@ function ViewerHome({ session, profile, trips, onOpenAccount }) {
 }
 
 // ---- Dashboard: landing page after sign-in (hero trip, journeys, family status, to-dos, note) ----
-function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpenStatus, onSetTripStatus, onNewTrip, onOpenAccount, onMyTrips, onCalendar, onSaveData }) {
+function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpenStatus, onSetTripStatus, onAddTraveller, onNewTrip, onOpenAccount, onMyTrips, onCalendar, onSaveData }) {
   const [notes, setNotes] = useState('');
   const [editingNote, setEditingNote] = useState(false);
   const [todoInput, setTodoInput] = useState('');
@@ -2719,6 +2721,7 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
                       <span>👥 {(t.members || []).length || 1} traveler{((t.members || []).length || 1) === 1 ? '' : 's'}</span>
                     </span>
                   </span>
+                  {canCreate && onAddTraveller && <button onClick={(e)=>{ e.stopPropagation(); onAddTraveller(t.id); }} title="Add traveller" style={{ flexShrink:0, border:'1px solid #D4BFB0', borderRadius:20, width:34, height:34, fontSize:15, fontWeight:800, cursor:'pointer', background:'#fff', color:'#6E1A10' }}>＋</button>}
                   {canCreate && onSetTripStatus && (() => { const st = tripStatusOf(t); const cfg = st==='active' ? { label:'✓ Complete', to:'done', bg:'#3C8A3C', color:'#fff' } : st==='done' ? { label:'↺ Reopen', to:'active', bg:'transparent', color:'#8B2A14', border:'1px solid #C8B09A' } : { label:'▶ Start', to:'active', bg:'#6E1A10', color:'#fff' };
                     return <button onClick={(e)=>{ e.stopPropagation(); onSetTripStatus(t.id, cfg.to); }} style={{ flexShrink:0, border: cfg.border||'none', borderRadius:20, padding:'6px 12px', fontSize:11, fontWeight:700, cursor:'pointer', background:cfg.bg, color:cfg.color, whiteSpace:'nowrap' }}>{cfg.label}</button>; })()}
                   <span style={{ width: 34, height: 34, borderRadius: '50%', border: '1.5px solid #D4BFB0', color: '#8B2A14', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>→</span>
@@ -2743,6 +2746,9 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
                 <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:10 }}>
                   <span style={{ display:'inline-flex', alignItems:'center', gap:5, fontSize:12, fontWeight:700, color:'#3D0C02' }}>👥 <strong>{(hero.members||[]).length}</strong>&nbsp;traveller{(hero.members||[]).length===1?'':'s'}</span>
                   {(() => { const m = TRIP_STATUS[tripStatusOf(hero)]; return <span style={{ display:'inline-flex', alignItems:'center', gap:5, fontSize:11, fontWeight:700, letterSpacing:'0.03em', color:m.color }}><span style={{ width:6, height:6, borderRadius:'50%', background:m.dot }} />{m.label.toUpperCase()}</span>; })()}
+                  {canCreate && onAddTraveller && (
+                    <button onClick={()=>onAddTraveller(hero.id)} style={{ border:'1px solid #D4BFB0', borderRadius:20, padding:'6px 12px', fontSize:11.5, fontWeight:700, cursor:'pointer', background:'#fff', color:'#6E1A10', whiteSpace:'nowrap' }}>＋ Add traveller</button>
+                  )}
                   {canCreate && onSetTripStatus && tripStatusOf(hero)==='active' && (
                     <button onClick={()=>onSetTripStatus(hero.id,'done')} style={{ marginLeft:'auto', border:'none', borderRadius:20, padding:'6px 13px', fontSize:11.5, fontWeight:700, cursor:'pointer', background:'#3C8A3C', color:'#fff', whiteSpace:'nowrap' }}>✓ Complete trip</button>
                   )}
@@ -3286,10 +3292,12 @@ function MainApp() {
 
   const trip = visibleTrips.find(t=>t.id===activeTrip);
 
-  // Global traveller filter: the circle string in the header. When set, every tab
-  // (Status/Schedule/Budget/Packing) narrows to that one traveller; null = everyone.
-  const [focusTraveller, setFocusTraveller] = useState(null);
-  useEffect(() => { setFocusTraveller(null); }, [activeTrip]); // clear when switching trips
+  // Global traveller filter: the circle string in the header. A set of selected
+  // travellers — every tab narrows to whoever is selected; empty = everyone.
+  const [focusTravellers, setFocusTravellers] = useState([]);
+  const [showTravPicker, setShowTravPicker] = useState(false);
+  useEffect(() => { setFocusTravellers([]); }, [activeTrip]); // clear when switching trips
+  const toggleFocus = (uid) => setFocusTravellers(prev => prev.includes(uid) ? prev.filter(x=>x!==uid) : [...prev, uid]);
   const [hdrPics, setHdrPics] = useState({});
   const hdrKey = trip ? (trip.members || []).map(m => m.userId).join(',') : '';
   useEffect(() => {
@@ -3305,10 +3313,10 @@ function MainApp() {
   const dateRange = trip ? tripDateRange(trip) : { start:"", end:"" };
   const renderTripTab = (tab) => {
     if (!trip) return null;
-    if (tab === 'Schedule') return <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} canEdit={isTripCaptain(trip)} sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)} focus={focusTraveller} />;
-    if (tab === 'Budget') return <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} focus={focusTraveller} />;
-    if (tab === 'Packing') return <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} focus={focusTraveller} />;
-    return <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)} focusUserId={focusTraveller}
+    if (tab === 'Schedule') return <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} canEdit={isTripCaptain(trip)} sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)} focus={focusTravellers} />;
+    if (tab === 'Budget') return <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} focus={focusTravellers} />;
+    if (tab === 'Packing') return <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} focus={focusTravellers} />;
+    return <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)} focusIds={focusTravellers}
       sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)}
       shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${trip.shareToken ? `&k=${encodeURIComponent(trip.shareToken)}` : ''}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />;
   };
@@ -3400,6 +3408,7 @@ function MainApp() {
           onOpenTrip={goToTrip}
           onOpenStatus={(id)=>{ setActiveTrip(id); setActiveTab('Status'); setShowDashboard(false); }}
           onSetTripStatus={(id, status)=>updateTrip(id, { status })}
+          onAddTraveller={(id)=>{ setActiveTrip(id); setShowDashboard(false); setShowTravelers(true); }}
           onMyTrips={()=>setShowDashboard(false)}
           onCalendar={()=>{ setShowDashboard(false); setShowToday(true); }}
           onNewTrip={()=>{ setShowDashboard(false); setShowNewTrip(true); }}
@@ -3526,24 +3535,29 @@ function MainApp() {
         {/* Travellers + lifecycle pill, then the tab slider — both frozen in the header */}
         {trip && (
           <>
-            {/* Traveller circle string — the global filter. Tap a face to narrow every
-                tab to that traveller; tap it again (or "All") to show everyone. The
-                travellers count / status / Complete-trip button moved to the Dashboard. */}
+            {/* Traveller circle string — the global multi-select filter. Tap faces to
+                add/remove travellers; every tab narrows to whoever is selected. With
+                6 or fewer, tap circles directly; with more, a "+" opens a picker. */}
             <div style={{ margin:"2px 10px 0", background:"#F0EBE0", borderRadius:11, boxShadow:"0 3px 9px rgba(0,0,0,0.2)", display:"flex", alignItems:"center", gap:0, padding:"7px 12px", position:"relative", top:6, overflowX:"auto" }}>
               {(() => {
                 const mem = trip.members || [];
                 if (!mem.length) return <button onClick={()=>setShowTravelers(true)} style={{ display:"inline-flex", alignItems:"center", gap:6, background:"transparent", border:"none", padding:0, fontSize:12.5, fontWeight:700, color:"#4E3D36", cursor:"pointer" }}><span style={{ fontSize:14 }}>👥</span> Add travellers</button>;
                 const me = session ? session.userId : null;
                 const ordered = me ? [...mem].sort((a,b)=> a.userId===me ? -1 : b.userId===me ? 1 : 0) : mem;
+                const over = ordered.length > 6;
+                const shown = over ? ordered.slice(0,5) : ordered;
+                const hiddenSelected = over ? focusTravellers.filter(id => !shown.some(m=>m.userId===id)).length : 0;
+                const circle = (m,i) => { const on = focusTravellers.includes(m.userId); return (
+                  <button key={m.userId} type="button" aria-pressed={on} title={`${on?'Remove':'Add'} ${(m.name||m.userId)}${m.userId===me?' (you)':''}`}
+                    onClick={()=>toggleFocus(m.userId)}
+                    style={{ width:38, height:38, marginLeft:i===0?0:-8, borderRadius:"50%", overflow:"hidden", border:on?"2px solid #6E1A10":"2px solid #F0EBE0", boxShadow:on?"0 0 0 2px #6E1A10":"0 0 0 1px #CFC2B5", background:"#A88977", color:"#fff", display:"grid", placeItems:"center", fontSize:13, fontWeight:800, cursor:"pointer", padding:0, transform:on?"translateY(-2px)":"none", zIndex:on?30:20-i, flexShrink:0 }}>
+                    {hdrPicOf(m.userId) ? <img src={hdrPicOf(m.userId)} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/> : ((m.name||m.userId||'?')[0]||'?').toUpperCase()}
+                  </button>
+                ); };
                 return (<>
-                  {ordered.map((m,i) => { const on = focusTraveller===m.userId; return (
-                    <button key={m.userId} type="button" aria-pressed={on} title={`Show ${(m.name||m.userId)}${m.userId===me?' (you)':''}`}
-                      onClick={()=>setFocusTraveller(on?null:m.userId)}
-                      style={{ width:38, height:38, marginLeft:i===0?0:-8, borderRadius:"50%", overflow:"hidden", border:on?"2px solid #6E1A10":"2px solid #F0EBE0", boxShadow:on?"0 0 0 2px #6E1A10":"0 0 0 1px #CFC2B5", background:"#A88977", color:"#fff", display:"grid", placeItems:"center", fontSize:13, fontWeight:800, cursor:"pointer", padding:0, transform:on?"translateY(-2px)":"none", zIndex:on?30:20-i, flexShrink:0 }}>
-                      {hdrPicOf(m.userId) ? <img src={hdrPicOf(m.userId)} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/> : ((m.name||m.userId||'?')[0]||'?').toUpperCase()}
-                    </button>
-                  ); })}
-                  {focusTraveller && <button type="button" onClick={()=>setFocusTraveller(null)} title="Show everyone" style={{ marginLeft:10, height:30, borderRadius:15, border:"1px solid #CFC2B5", background:"#fff", color:"#6E1A10", fontSize:11.5, fontWeight:700, padding:"0 12px", cursor:"pointer", flexShrink:0, whiteSpace:"nowrap" }}>All ✕</button>}
+                  {shown.map(circle)}
+                  {over && <button type="button" onClick={()=>setShowTravPicker(true)} title="Select travellers" style={{ position:"relative", width:38, height:38, marginLeft:-8, borderRadius:"50%", border:"none", background:"#6E1A10", color:"#fff", fontSize:20, fontWeight:800, lineHeight:1, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", flexShrink:0, zIndex:1 }}>+{hiddenSelected>0 && <span style={{ position:"absolute", top:-2, right:-2, minWidth:16, height:16, borderRadius:8, background:"#3C8A3C", color:"#fff", fontSize:9, fontWeight:800, display:"grid", placeItems:"center", padding:"0 3px" }}>{hiddenSelected}</span>}</button>}
+                  {focusTravellers.length>0 && <button type="button" onClick={()=>setFocusTravellers([])} title="Show everyone" style={{ marginLeft:10, height:30, borderRadius:15, border:"1px solid #CFC2B5", background:"#fff", color:"#6E1A10", fontSize:11.5, fontWeight:700, padding:"0 12px", cursor:"pointer", flexShrink:0, whiteSpace:"nowrap" }}>All ✕</button>}
                 </>);
               })()}
             </div>
@@ -3630,6 +3644,21 @@ function MainApp() {
         />
       )}
 
+      {showTravPicker && trip && (
+        <Modal title="Filter by travellers" onClose={()=>setShowTravPicker(false)}>
+          <div style={{ fontSize:12, color:'#8A7A6D', marginBottom:10 }}>Select one or more; every tab shows just them. None = everyone.</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:'55vh', overflowY:'auto' }}>
+            <button type="button" onClick={()=>{ setFocusTravellers([]); }} style={{ textAlign:'left', border:'1px solid #E0D2C5', borderRadius:10, padding:'10px 12px', background: focusTravellers.length===0?'#F1E7DD':'#fff', color:'#6E1A10', fontSize:13, fontWeight:700, cursor:'pointer' }}>Everyone</button>
+            {(trip.members||[]).map(m => { const on = focusTravellers.includes(m.userId); return (
+              <button key={m.userId} type="button" onClick={()=>toggleFocus(m.userId)} style={{ display:'flex', alignItems:'center', gap:10, textAlign:'left', border:'1px solid '+(on?'#6E1A10':'#E0D2C5'), borderRadius:10, padding:'8px 12px', background: on?'#F1E7DD':'#fff', color:'#5E463C', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                <span style={{ width:28,height:28,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>{hdrPicOf(m.userId)?<img src={hdrPicOf(m.userId)} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((m.name||m.userId||'?')[0]||'?').toUpperCase()}</span>
+                <span style={{ flex:1, minWidth:0 }}>{m.name||m.userId}{session && m.userId===session.userId?' (you)':''}</span>
+                <span style={{ width:20, height:20, borderRadius:5, border:'2px solid '+(on?'#3C8A3C':'#CFC2B5'), background:on?'#3C8A3C':'#fff', color:'#fff', display:'grid', placeItems:'center', fontSize:13, flexShrink:0 }}>{on?'✓':''}</span>
+              </button>
+            ); })}
+          </div>
+        </Modal>
+      )}
       {showTravelers && trip && (
         <TravelersModal
           trip={trip}
