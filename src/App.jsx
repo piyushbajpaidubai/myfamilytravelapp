@@ -1877,8 +1877,8 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
               <div style={{ marginBottom:16 }}>{header}</div>
             )}
 
-            {/* Timeline below — indented so the vertical bar/dots sit under the centre of the DAY header */}
-            <div style={{ minWidth:0, marginBottom:30, paddingLeft:32, display: shut?'none':'block' }}>
+            {/* Timeline below — left-aligned with the DAY title so the row has full width for the traveller circles */}
+            <div style={{ minWidth:0, marginBottom:30, paddingLeft:0, display: shut?'none':'block' }}>
               {items.length===0 && <div style={{ fontSize:13, color:'#C05040', padding:'2px 0' }}>No events</div>}
               {items.map((it, idx) => {
                 const first = idx===0, last = idx===items.length-1;
@@ -1930,22 +1930,31 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                                     {counts.active>0 && <span style={{ width:`${counts.active/markTotal*100}%`, background:STATUS_META.active.ring }} />}
                                     {counts.todo>0 && <span style={{ width:`${counts.todo/markTotal*100}%`, background:STATUS_META.todo.ring }} />}
                                   </div>
-                                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:9, flexWrap:'wrap' }}>
-                                    <div style={{ display:'flex', alignItems:'center', minWidth:0 }}>
-                                      {it.marks.slice(0, 4).map((mark, mi) => (
-                                        <span key={mark.userId} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}`} style={{ width:36, height:36, marginLeft:mi===0?0:-8, borderRadius:'50%', border:'2.5px solid '+STATUS_META[mark.status].ring, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:12.5, fontWeight:700, color:'#7B675A', zIndex:5-mi }}>
-                                          {picOf(mark.userId) ? <img src={picOf(mark.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : ((mark.name||mark.userId||'?').trim().charAt(0)||'?').toUpperCase()}
-                                        </span>
-                                      ))}
-                                      {it.marks.length>4 && <span style={{ marginLeft:6, color:'#8A7A6D', fontSize:11, fontWeight:700 }}>+{it.marks.length-4}</span>}
-                                      {canEdit && <button type="button" aria-label="Update travellers' status" title="Update status" onClick={()=>setStatusModal({ ref: it.ref, title: it.titleText, members: it.marks.map(m => ({ userId:m.userId, name:m.name })) })} style={{ marginLeft:8, width:36, height:36, borderRadius:'50%', border:'none', background:'#6E1A10', color:'#fff', fontSize:22, fontWeight:800, lineHeight:1, cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>+</button>}
-                                    </div>
-                                    <div style={{ display:'flex', gap:7, alignItems:'center', flexWrap:'wrap', fontSize:10.5 }}>
-                                      <span style={{ color:STATUS_META.done.color }}>{counts.done} complete</span>
-                                      <span style={{ color:STATUS_META.active.color }}>{counts.active} ongoing</span>
-                                      <span style={{ color:STATUS_META.todo.color }}>{counts.todo} pending</span>
-                                      {!canEdit && <button type="button" onClick={()=>setLargeGroupView('travelers')} style={{ border:'none', background:'transparent', color:'#8B2A14', padding:0, fontSize:10.5, fontWeight:700, textDecoration:'underline', cursor:'pointer' }}>View list</button>}
-                                    </div>
+                                  {/* Always six circles: up to 6 traveller photos, or 5 + a "+" when there are more.
+                                      Tapping any circle (captains) opens the traveller status popup. */}
+                                  <div style={{ display:'flex', alignItems:'center', marginBottom:7 }}>
+                                    {(() => {
+                                      const AV = 43; // +20% on the previous 36px
+                                      const over = it.marks.length > 6;
+                                      const shown = over ? it.marks.slice(0, 5) : it.marks.slice(0, 6);
+                                      const openModal = () => setStatusModal({ ref: it.ref, title: it.titleText, members: it.marks.map(m => ({ userId:m.userId, name:m.name })) });
+                                      return (<>
+                                        {shown.map((mark, mi) => (
+                                          <button key={mark.userId} type="button" disabled={!canEdit} onClick={canEdit ? openModal : undefined} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}`} title={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}`}
+                                            style={{ width:AV, height:AV, marginLeft:mi===0?0:-10, borderRadius:'50%', border:'2.5px solid '+STATUS_META[mark.status].ring, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#7B675A', padding:0, cursor: canEdit?'pointer':'default', zIndex:7-mi }}>
+                                            {picOf(mark.userId) ? <img src={picOf(mark.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : ((mark.name||mark.userId||'?').trim().charAt(0)||'?').toUpperCase()}
+                                          </button>
+                                        ))}
+                                        {over && <button type="button" onClick={openModal} aria-label="Show all travellers" title={`+${it.marks.length-5} more — tap to see all`}
+                                          style={{ width:AV, height:AV, marginLeft:-10, borderRadius:'50%', border:'none', background:'#6E1A10', color:'#fff', fontSize:21, fontWeight:800, lineHeight:1, cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', zIndex:0 }}>+</button>}
+                                      </>);
+                                    })()}
+                                  </div>
+                                  <div style={{ display:'flex', gap:9, alignItems:'center', flexWrap:'wrap', fontSize:10.5 }}>
+                                    <span style={{ color:STATUS_META.done.color }}>{counts.done} complete</span>
+                                    <span style={{ color:STATUS_META.active.color }}>{counts.active} ongoing</span>
+                                    <span style={{ color:STATUS_META.todo.color }}>{counts.todo} pending</span>
+                                    {!canEdit && <button type="button" onClick={()=>setLargeGroupView('travelers')} style={{ border:'none', background:'transparent', color:'#8B2A14', padding:0, fontSize:10.5, fontWeight:700, textDecoration:'underline', cursor:'pointer' }}>View list</button>}
                                   </div>
                                 </div>
                               );
