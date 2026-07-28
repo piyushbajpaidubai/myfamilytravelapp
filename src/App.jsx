@@ -1734,25 +1734,25 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
       {/* Condensed status controls — three equal-height buttons in a row:
           Notifications toggle · Share Location toggle · Share-status icon (right). */}
       {(shareUrl || update) && (
-        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:14 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'nowrap', marginBottom:14 }}>
           {update && (
             <button onClick={()=>update({ notifyEnabled: !trip.notifyEnabled })}
               title={trip.notifyEnabled ? 'Notifications on — followers who tapped “Notify me” get a push' : 'Notifications off — followers can still open the link to check'}
-              style={{ height:42, boxSizing:'border-box', border:'1px solid #E2D8C8', borderRadius:21, padding:'0 15px', fontSize:12.5, fontWeight:700, cursor:'pointer',
-                background: trip.notifyEnabled ? '#3C8A3C' : '#F5EFE2', color: trip.notifyEnabled ? '#fff' : '#8B2A14', display:'inline-flex', alignItems:'center', gap:7, whiteSpace:'nowrap' }}>
-              {trip.notifyEnabled ? <><span style={{ width:8,height:8,borderRadius:'50%',background:'#fff',display:'inline-block' }} /> Notifications · On</> : '🔔 Notifications'}
+              style={{ height:40, boxSizing:'border-box', border:'1px solid #E2D8C8', borderRadius:20, padding:'0 11px', fontSize:11.5, fontWeight:700, cursor:'pointer', flexShrink:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                background: trip.notifyEnabled ? '#3C8A3C' : '#F5EFE2', color: trip.notifyEnabled ? '#fff' : '#8B2A14', display:'inline-flex', alignItems:'center', gap:5 }}>
+              {trip.notifyEnabled ? <><span style={{ width:7,height:7,borderRadius:'50%',background:'#fff',display:'inline-block',flexShrink:0 }} /> Notifications</> : '🔔 Notifications'}
             </button>
           )}
           {onToggleShare && (
             <button onClick={onToggleShare} title="Broadcast my live location while travelling"
-              style={{ height:42, boxSizing:'border-box', border:'1px solid #E2D8C8', borderRadius:21, padding:'0 15px', fontSize:12.5, fontWeight:700, cursor:'pointer',
-                background: sharingLoc ? '#3C8A3C' : '#F5EFE2', color: sharingLoc ? '#fff' : '#8B2A14', display:'inline-flex', alignItems:'center', gap:7, whiteSpace:'nowrap' }}>
-              {sharingLoc ? <><span style={{ width:8,height:8,borderRadius:'50%',background:'#fff',display:'inline-block' }} /> Sharing · Stop</> : '📍 Share Location'}
+              style={{ height:40, boxSizing:'border-box', border:'1px solid #E2D8C8', borderRadius:20, padding:'0 11px', fontSize:11.5, fontWeight:700, cursor:'pointer', flexShrink:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                background: sharingLoc ? '#3C8A3C' : '#F5EFE2', color: sharingLoc ? '#fff' : '#8B2A14', display:'inline-flex', alignItems:'center', gap:5 }}>
+              {sharingLoc ? <><span style={{ width:7,height:7,borderRadius:'50%',background:'#fff',display:'inline-block',flexShrink:0 }} /> Sharing</> : '📍 Share Location'}
             </button>
           )}
           {shareUrl && (
             <button onClick={copyShare} aria-label={copied ? 'Link copied' : 'Share status'} title={copied ? 'Link copied' : 'Share status link'}
-              style={{ marginLeft:'auto', width:42, height:42, boxSizing:'border-box', borderRadius:'50%', border:'none', background:'#6E1A10', color:'#F5ECD7', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              style={{ marginLeft:'auto', width:40, height:40, boxSizing:'border-box', borderRadius:'50%', border:'none', background:'#6E1A10', color:'#F5ECD7', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
               {copied
                 ? <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
                 : <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/></svg>}
