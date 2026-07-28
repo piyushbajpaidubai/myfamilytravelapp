@@ -1731,29 +1731,28 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
 
   return (
     <div>
-      {/* Condensed status controls: notifications toggle + share link on one row */}
+      {/* Condensed status controls — three equal-height buttons in a row:
+          Notifications toggle · Share Location toggle · Share-status icon (right). */}
       {(shareUrl || update) && (
-        <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap', marginBottom:14 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:14 }}>
           {update && (
             <button onClick={()=>update({ notifyEnabled: !trip.notifyEnabled })}
               title={trip.notifyEnabled ? 'Notifications on — followers who tapped “Notify me” get a push' : 'Notifications off — followers can still open the link to check'}
-              style={{ display:'inline-flex', alignItems:'center', gap:9, border:'none', background:'transparent', padding:0, cursor:'pointer' }}>
-              <span style={{ width:48, height:26, borderRadius:20, background: trip.notifyEnabled ? '#3C8A3C' : '#C9BCA6', position:'relative', transition:'background .2s', flexShrink:0, boxShadow:'inset 0 1px 2px rgba(0,0,0,.15)' }}>
-                <span style={{ position:'absolute', top:3, left: trip.notifyEnabled ? 25 : 3, width:20, height:20, borderRadius:'50%', background:'#fff', transition:'left .2s', boxShadow:'0 1px 2px rgba(0,0,0,.3)' }} />
-              </span>
-              <span style={{ fontSize:14.5, fontWeight:800, color:'#B02A17' }}>Notifications</span>
+              style={{ height:42, boxSizing:'border-box', border:'1px solid #E2D8C8', borderRadius:21, padding:'0 15px', fontSize:12.5, fontWeight:700, cursor:'pointer',
+                background: trip.notifyEnabled ? '#3C8A3C' : '#F5EFE2', color: trip.notifyEnabled ? '#fff' : '#8B2A14', display:'inline-flex', alignItems:'center', gap:7, whiteSpace:'nowrap' }}>
+              {trip.notifyEnabled ? <><span style={{ width:8,height:8,borderRadius:'50%',background:'#fff',display:'inline-block' }} /> Notifications · On</> : '🔔 Notifications'}
             </button>
           )}
           {onToggleShare && (
             <button onClick={onToggleShare} title="Broadcast my live location while travelling"
-              style={{ marginLeft:'auto', border:'1px solid #E2D8C8', borderRadius:20, padding:'8px 14px', fontSize:12.5, fontWeight:700, cursor:'pointer',
+              style={{ height:42, boxSizing:'border-box', border:'1px solid #E2D8C8', borderRadius:21, padding:'0 15px', fontSize:12.5, fontWeight:700, cursor:'pointer',
                 background: sharingLoc ? '#3C8A3C' : '#F5EFE2', color: sharingLoc ? '#fff' : '#8B2A14', display:'inline-flex', alignItems:'center', gap:7, whiteSpace:'nowrap' }}>
               {sharingLoc ? <><span style={{ width:8,height:8,borderRadius:'50%',background:'#fff',display:'inline-block' }} /> Sharing · Stop</> : '📍 Share Location'}
             </button>
           )}
           {shareUrl && (
             <button onClick={copyShare} aria-label={copied ? 'Link copied' : 'Share status'} title={copied ? 'Link copied' : 'Share status link'}
-              style={{ marginLeft: onToggleShare ? 0 : 'auto', width:44, height:44, borderRadius:'50%', border:'none', background:'#6E1A10', color:'#F5ECD7', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              style={{ marginLeft:'auto', width:42, height:42, boxSizing:'border-box', borderRadius:'50%', border:'none', background:'#6E1A10', color:'#F5ECD7', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
               {copied
                 ? <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
                 : <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/></svg>}
