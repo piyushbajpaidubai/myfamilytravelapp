@@ -1622,6 +1622,12 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
       update(t => ({ days:(t.days||[]).map(d => d.id===ref.dayId
         ? { ...d, events:(d.events||[]).map(e => e.id===ref.evId
             ? { ...e, activities:(e.activities||[]).map(a => a.id===ref.actId ? { ...a, memberStatus:{ ...(a.memberStatus||{}), [userId]: newStatus } } : a) } : e) } : d) }));
+    } else if (ref.kind === 'task') {
+      const d0 = (trip.days || []).find(d => d.id === ref.dayId) || {};
+      const tk0 = (d0.tasks || []).find(tk => tk.id === ref.taskId) || {};
+      newStatus = nextStatus(memStOf(tk0, userId));
+      update(t => ({ days:(t.days||[]).map(d => d.id===ref.dayId
+        ? { ...d, tasks:(d.tasks||[]).map(tk => tk.id===ref.taskId ? { ...tk, memberStatus:{ ...(tk.memberStatus||{}), [userId]: newStatus } } : tk) } : d) }));
     }
     // Tell the trip's followers, if this trip has notifications switched on.
     if (newStatus && itemTitle) {
@@ -1635,6 +1641,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
     if (!ref) return 'todo';
     if (ref.kind === 'span') { const s = (trip.spans||[]).find(x=>x.id===ref.spanId); return s ? spanMemStOf(s, userId, ref.dayISO) : 'todo'; }
     const d = (trip.days||[]).find(x=>x.id===ref.dayId);
+    if (ref.kind === 'task') { const tk = d && (d.tasks||[]).find(x=>x.id===ref.taskId); return tk ? memStOf(tk, userId) : 'todo'; }
     const e = d && (d.events||[]).find(x=>x.id===ref.evId);
     if (ref.kind === 'event') return e ? memStOf(e, userId) : 'todo';
     const a = e && (e.activities||[]).find(x=>x.id===ref.actId);
@@ -1649,6 +1656,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
       total[aggStatus(perTraveler ? assignedRoster(ev).map(m => memStOf(ev, m.userId)) : [stOf(ev)])]++;
       (ev.activities||[]).forEach(a => { total[aggStatus(perTraveler ? assignedRoster(a).map(m => memStOf(a, m.userId)) : [stOf(a)])]++; });
     });
+    (d.tasks||[]).forEach(tk => { total[aggStatus(perTraveler ? assignedRoster(tk).map(m => memStOf(tk, m.userId)) : [stOf(tk)])]++; });
   });
   const totalItems = total.todo + total.active + total.done;
 
@@ -1663,7 +1671,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
         if (applies(ev)) { const st = memStOf(ev, member.userId); counts[st]++; if (st==='active') ongoing.push({ t:ev.time||'', title:ev.title||'(untitled)' }); }
         (ev.activities || []).filter(applies).forEach(a => { const st = memStOf(a, member.userId); counts[st]++; if (st==='active') ongoing.push({ t:ev.time||'', title:a.text||'(task)' }); });
       });
-      (day.tasks || []).filter(applies).forEach(tk => { if (memStOf(tk, member.userId)==='active') ongoing.push({ t:tk.time||'', title:tk.text||'(task)' }); });
+      (day.tasks || []).filter(applies).forEach(tk => { const st = memStOf(tk, member.userId); counts[st]++; if (st==='active') ongoing.push({ t:tk.time||'', title:tk.text||'(task)' }); });
     });
     ongoing.sort((a,b) => (!a.t && !b.t) ? 0 : !a.t ? -1 : !b.t ? 1 : (a.t > b.t ? 1 : a.t < b.t ? -1 : 0));
     const t = counts.todo + counts.active + counts.done;
@@ -1699,11 +1707,19 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
         push(a.id, 'task', a.text || '(task)', perTraveler ? ar.map(m => memStOf(a, m.userId)) : [stOf(a)], { ref:{ kind:'activity', dayId:day.id, evId:ev.id, actId:a.id }, titleText: a.text || '(task)' }, ar);
       });
     };
-    // Interleave spans + events chronologically; each event's tasks follow it
+    // Independent day tasks (Schedule "＋ Task") — same per-traveller markers as events.
+    const pushTask = (tk) => {
+      const tr = assignedRoster(tk);
+      push('task_'+tk.id, tk.time || 'task', tk.text || '(task)',
+        perTraveler ? tr.map(m => memStOf(tk, m.userId)) : [stOf(tk)],
+        { ref:{ kind:'task', dayId:day.id, taskId:tk.id }, titleText: tk.text || '(task)' }, tr);
+    };
+    // Interleave spans + events + tasks chronologically.
     const spanT = (s) => day.date === s.startDate ? (s.startTime || '') : day.date === s.endDate ? (s.endTime || '') : '';
     [
       ...spansOnDay(trip, day.date).map(s => ({ t: spanT(s), fn: () => pushSpan(s) })),
       ...(day.events||[]).map(ev => ({ t: ev.time || '', fn: () => pushEvent(ev) })),
+      ...(day.tasks||[]).map(tk => ({ t: tk.time || '', fn: () => pushTask(tk) })),
     ].sort((a, b) => (!a.t && !b.t) ? 0 : !a.t ? -1 : !b.t ? 1 : (a.t > b.t ? 1 : a.t < b.t ? -1 : 0))
      .forEach(e => e.fn());
     return out;
