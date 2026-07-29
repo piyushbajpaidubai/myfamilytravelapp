@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Geolocation } from "@capacitor/geolocation";
 
-const TABS = ["Status", "Schedule", "Budget", "Packing"];
+const TABS = ["Status", "Schedule", "Budget", "Documents"];
 const CATEGORIES = ["Transport", "Hotel", "Food", "Sightseeing", "Other"];
 const BUDGET_CATS = ["Transport", "Accommodation", "Food", "Activities", "Shopping", "Other"];
 const PACK_CATS = ["Documents", "Clothing", "Toiletries", "Electronics", "Other"];
@@ -41,7 +41,7 @@ const tripDateRange = (trip) => {
 
 const defaultTrip = () => ({
   id: uid(), name: "", destination: "", startDate: "", endDate: "",
-  days: [], expenses: [], packItems: [],
+  days: [], expenses: [], packItems: [], docs: [],
   budget: "", ownerId: "", members: [], status: "todo", currency: "$", viewers: []
 });
 
@@ -2991,6 +2991,7 @@ function MainApp() {
   const [showSearch, setShowSearch] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [showDocsSheet, setShowDocsSheet] = useState(false);
+  const [showPacking, setShowPacking] = useState(false); // Packing moved from a tab to a header-icon overlay
   const [showProfile, setShowProfile] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [accountMode, setAccountMode] = useState('login'); // which tab the account modal opens on
@@ -3334,7 +3335,7 @@ function MainApp() {
     if (!trip) return null;
     if (tab === 'Schedule') return <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} canEdit={isTripCaptain(trip)} sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)} focus={focusTravellers} />;
     if (tab === 'Budget') return <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} focus={focusTravellers} />;
-    if (tab === 'Packing') return <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} focus={focusTravellers} />;
+    if (tab === 'Documents') return <DocumentsTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} canEdit={isTripCaptain(trip)} focus={focusTravellers} />;
     return <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)} focusIds={focusTravellers}
       sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)}
       shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${trip.shareToken ? `&k=${encodeURIComponent(trip.shareToken)}` : ''}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />;
@@ -3486,8 +3487,11 @@ function MainApp() {
             <button onClick={()=>setShowSearch(true)} aria-label="Search" title="Search" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
               <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
             </button>
-            <button onClick={()=>setShowDocs(true)} aria-label="Documents" title="Documents" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
+            <button onClick={()=>{ if(trip) setActiveTab('Documents'); }} aria-label="Documents" title="Documents" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
               <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            </button>
+            <button onClick={()=>{ if(trip) setShowPacking(true); }} aria-label="Packing" title="Packing list" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M17 6h-2V3a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3H7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm-6-2h2v2h-2V4zm2 15h-2v-9h2v9z"/></svg>
             </button>
             <button onClick={()=>{ if(trip) exportTripHtml(trip); }} aria-label="Export itinerary" title="Export itinerary" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
               <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
@@ -3650,6 +3654,21 @@ function MainApp() {
 
       {showToday && (
         <TodayView trips={trips} todayISO={todayISO} updateTrip={updateTrip} session={session} onClose={()=>setShowToday(false)} />
+      )}
+      {showPacking && trip && (
+        <div style={{ position:'fixed', inset:0, zIndex:200, background:'#F0EBE0', overflowY:'auto', fontFamily:'var(--font-body)', paddingBottom:'env(safe-area-inset-bottom, 0px)' }}>
+          <div style={{ background:'#5C1A1A', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', position:'sticky', top:0, zIndex:5 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12, padding:'calc(env(safe-area-inset-top, 0px) + 11px) 16px 11px' }}>
+              <button onClick={()=>setShowPacking(false)} aria-label="Back" style={{ width:34, height:34, borderRadius:9, border:'1.5px solid rgba(245,236,215,0.28)', background:'rgba(245,236,215,0.08)', color:'#F5ECD7', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, padding:0 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+              </button>
+              <div style={{ fontSize:16, fontWeight:800, color:'#F5ECD7', letterSpacing:'0.02em' }}>Packing</div>
+            </div>
+          </div>
+          <div style={{ maxWidth:640, margin:'0 auto', padding:'16px 16px 40px' }}>
+            <PackingTab trip={trip} update={p=>updateTrip(trip.id,p)} focus={focusTravellers} />
+          </div>
+        </div>
       )}
 
       {showAccount && (
@@ -4407,6 +4426,120 @@ function DocsSheet({ trip, onClose }) {
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+// ---- Documents TAB: every document across the trip, tagged & filterable by traveller ----
+function DocumentsTab({ trip, update, session, canEdit=true, focus=[] }) {
+  const members = trip.members || [];
+  const [memberPics, setMemberPics] = useState({});
+  const memberKey = members.map(m => m.userId).join(',');
+  useEffect(() => { let c=false; const ids = memberKey ? memberKey.split(',') : []; if (ids.length) directoryGetProfiles(ids).then(map => { if (!c) setMemberPics(map); }); return () => { c=true; }; }, [memberKey]);
+  const nameOf = (uid) => (members.find(m => m.userId === uid) || {}).name || uid;
+  const picOf = (uid) => (memberPics[uid] || {}).pic || '';
+
+  const [showUpload, setShowUpload] = useState(false);
+  const [upForm, setUpForm] = useState({ file:null, name:'', assignees:[] });
+  const [busy, setBusy] = useState(false);
+
+  // Gather every document. Schedule-attached docs inherit their item's travellers;
+  // trip-level uploads carry their own tags and sit under "General".
+  const all = [];
+  (trip.days || []).forEach(day => (day.events || []).forEach(ev => {
+    (ev.docs || []).forEach(d => all.push({ doc:d, travellers:ev.assignees||[], date:day.date, ctx:ev.title||'event', src:'event' }));
+    (ev.activities || []).forEach(a => (a.docs || []).forEach(d => all.push({ doc:d, travellers:a.assignees||[], date:day.date, ctx:`${ev.title||'event'} · ${a.text||'task'}`, src:'activity' })));
+  }));
+  (trip.spans || []).forEach(s => (s.docs || []).forEach(d => all.push({ doc:d, travellers:s.assignees||[], date:s.startDate, ctx:`${spanIcon(s)} ${s.title||s.type}`, src:'span' })));
+  (trip.docs || []).forEach(d => all.push({ doc:d, travellers:d.assignees||[], date:null, ctx:'General', src:'trip', tripDoc:true }));
+
+  // A document belongs to a traveller if untagged (everyone) or tagged to them.
+  const applies = (travellers) => !focus.length || !travellers.length || travellers.some(id => focus.includes(id));
+  const shown = all.filter(x => applies(x.travellers));
+
+  // Group by date; undated (general uploads) last.
+  const byDate = {};
+  shown.forEach(x => { const key = (x.date || '').slice(0,10) || '__general__'; (byDate[key] = byDate[key] || []).push(x); });
+  const dates = Object.keys(byDate).sort((a,b) => a==='__general__' ? 1 : b==='__general__' ? -1 : (a>b?1:-1));
+
+  const doUpload = async () => {
+    if (!upForm.file) { alert('Pick a file first.'); return; }
+    setBusy(true);
+    try {
+      const url = await uploadToStorage(session, upForm.file, 'docs');
+      const doc = { id:uid(), name:(upForm.name.trim() || upForm.file.name), size:upForm.file.size, type:upForm.file.type, url, assignees:upForm.assignees||[] };
+      update(t => ({ docs:[...(t.docs||[]), doc] }));
+      setShowUpload(false); setUpForm({ file:null, name:'', assignees:[] });
+    } catch(e) { alert('Upload failed: ' + (e.message || e)); }
+    setBusy(false);
+  };
+  const delTripDoc = (docId) => {
+    const d = (trip.docs || []).find(x => x.id === docId);
+    if (d && d.url) deleteFromStorage(session, d.url);
+    update({ docs:(trip.docs || []).filter(x => x.id !== docId) });
+  };
+  const fmtSize = b => (b == null ? '' : b < 1024 ? b + 'B' : b < 1048576 ? (b/1024).toFixed(1) + 'KB' : (b/1048576).toFixed(1) + 'MB');
+
+  const tagChips = (travellers) => travellers.length === 0
+    ? <span style={{ fontSize:10, color:'#8A7A6D' }}>Everyone</span>
+    : <span style={{ display:'inline-flex', alignItems:'center', gap:4, flexWrap:'wrap' }}>{travellers.slice(0,4).map(id => (
+        <span key={id} title={nameOf(id)} style={{ display:'inline-flex', alignItems:'center', gap:4, background:'#EFE3CC', borderRadius:12, padding:'1px 7px 1px 2px', fontSize:10, color:'#6E1A10', fontWeight:700 }}>
+          <span style={{ width:16, height:16, borderRadius:'50%', overflow:'hidden', background:'#A88977', color:'#fff', display:'grid', placeItems:'center', fontSize:8, fontWeight:800 }}>{picOf(id) ? <img src={picOf(id)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : ((nameOf(id)||'?')[0]||'?').toUpperCase()}</span>
+          {(nameOf(id)||id).split(' ')[0]}
+        </span>
+      ))}{travellers.length>4 && <span style={{ fontSize:10, color:'#8A7A6D' }}>+{travellers.length-4}</span>}</span>;
+
+  return (
+    <div style={{ width:'100%', maxWidth:640, margin:'0 auto', minHeight:'72vh' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:14 }}>
+        <div><strong style={{ fontSize:15, color:'#302521' }}>Documents</strong><div style={{ fontSize:10.5, color:'#927F75' }}>{shown.length} file{shown.length===1?'':'s'}{focus.length ? ' · filtered' : ''}</div></div>
+        {canEdit && <button type="button" onClick={()=>setShowUpload(true)} style={{ border:'none', borderRadius:11, background:'#6E1A10', color:'#fff', fontSize:12, fontWeight:800, padding:'9px 14px', cursor:'pointer' }}>⬆ Upload</button>}
+      </div>
+
+      {focus.length > 0 && (
+        <div style={{ marginBottom:12, background:'#F1E7DD', border:'1px solid #E0D2C5', borderRadius:12, padding:'8px 12px', fontSize:11.5, fontWeight:700, color:'#6E2118' }}>
+          Showing {focus.map(nameOf).join(', ')}'s documents — pick from the header
+        </div>
+      )}
+
+      {shown.length === 0 && <p style={{ color:'#907D73', fontSize:12.5, textAlign:'center', padding:'34px 0' }}>{focus.length ? 'No documents for the selected traveller(s).' : 'No documents yet. Upload one, or attach files to activities in the Schedule tab.'}</p>}
+
+      {dates.map(key => (
+        <div key={key} style={{ marginBottom:16 }}>
+          <div style={{ fontSize:11, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', color:'#B07A4A', marginBottom:7 }}>{key==='__general__' ? 'Unscheduled / general' : fmtDate(key)}</div>
+          {byDate[key].map((x, i) => (
+            <div key={(x.doc.id||'')+'_'+i} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 10px', background:'#FAF7F2', border:'1px solid #E7DED2', borderRadius:11, marginBottom:7 }}>
+              <span style={{ width:28, height:32, borderRadius:4, background:'#6E1A10', color:'#fff', fontSize:8, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{((x.doc.type||'').includes('pdf')||/\.pdf$/i.test(x.doc.name||'')) ? 'PDF' : (/\.(jpg|jpeg|png|gif|webp|heic)$/i.test(x.doc.name||'') ? 'IMG' : 'DOC')}</span>
+              <div style={{ minWidth:0, flex:1 }}>
+                <a href={x.doc.url || x.doc.data} target="_blank" rel="noopener noreferrer" style={{ display:'block', fontSize:12.5, fontWeight:700, color:'#6E1A10', textDecoration:'none', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{x.doc.name}</a>
+                <div style={{ fontSize:10, color:'#8A7A6D', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{x.ctx}{x.doc.size ? ` · ${fmtSize(x.doc.size)}` : ''}</div>
+                <div style={{ marginTop:4 }}>{tagChips(x.travellers)}</div>
+              </div>
+              {x.tripDoc && canEdit && <button type="button" aria-label="Delete document" onClick={()=>delTripDoc(x.doc.id)} style={{ flexShrink:0, width:28, height:28, border:'none', borderRadius:8, background:'#F5DFDA', color:'#A43828', cursor:'pointer', fontSize:13 }}>✕</button>}
+            </div>
+          ))}
+        </div>
+      ))}
+
+      {showUpload && (
+        <Modal title="Upload document" onClose={()=>{ setShowUpload(false); setUpForm({ file:null, name:'', assignees:[] }); }}>
+          <label style={{ display:'block', border:'1px dashed #C8B09A', borderRadius:10, padding:'14px', textAlign:'center', cursor:'pointer', marginBottom:12, background:'#F5EFE2', color:'#6E1A10', fontSize:12.5, fontWeight:700 }}>
+            {upForm.file ? `📎 ${upForm.file.name}` : '📎 Choose a file'}
+            <input type="file" style={{ display:'none' }} onChange={e=>{ const f = e.target.files[0]; if (f) setUpForm(u => ({ ...u, file:f, name: u.name || f.name })); }} />
+          </label>
+          <Input label="Document name" value={upForm.name} onChange={e=>setUpForm({ ...upForm, name:e.target.value })} placeholder="e.g. Hotel booking" />
+          {members.length > 0 && (
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:12, color:'#A83020', marginBottom:4 }}>Travelers</div>
+              <Assignees members={members} value={upForm.assignees} onChange={list=>setUpForm({ ...upForm, assignees:list })} />
+            </div>
+          )}
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+            <Btn variant="ghost" onClick={()=>{ setShowUpload(false); setUpForm({ file:null, name:'', assignees:[] }); }}>Cancel</Btn>
+            <Btn onClick={doUpload} disabled={busy} style={{ opacity: busy?0.6:1 }}>{busy ? 'Uploading…' : 'Upload'}</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
