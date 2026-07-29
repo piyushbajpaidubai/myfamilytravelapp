@@ -1030,11 +1030,30 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
       <div aria-label="All itinerary days">{(trip.days||[]).map((day,dayIndex)=>{
         const items=mergedDayItems(day).filter(it=>itemForMember(it,focusMember)); const collapsed=day.id in collapsedDays ? collapsedDays[day.id] : isPastDay(day); const weekday=new Date(`${day.date}T00:00:00`).toLocaleDateString('en-GB',{weekday:'long'});
         return <section key={day.id} aria-label={`Day ${dayIndex+1}: ${day.label||'Untitled day'}`} style={{ marginTop:dayIndex===0?0:28,paddingTop:dayIndex===0?0:24,borderTop:dayIndex===0?'none':'1px dashed #D7CCC0' }}>
-          <div style={{ display:'grid',gridTemplateColumns:canEdit?'58px minmax(0,1fr) 96px':'58px minmax(0,1fr)',alignItems:'stretch',gap:10,minHeight:82,marginBottom:14 }}>
-            <button type="button" aria-label={collapsed?'Expand day':'Collapse day'} onClick={()=>toggleDayCollapse(day.id)} style={{ width:58,minHeight:82,border:'none',borderRadius:16,background:'#6E2118',color:'#fff',cursor:'pointer',alignSelf:'stretch' }}><strong style={{ display:'block',fontSize:20 }}>{compactDate(day.date).d}</strong><span style={{ display:'block',marginTop:3,fontSize:9.5,letterSpacing:'0.08em' }}>{compactDate(day.date).mon}</span></button>
-            <div style={{ minWidth:0,alignSelf:'center',padding:'4px 0' }}><div style={{ fontSize:9.5,fontWeight:850,letterSpacing:'0.11em',color:'#927F75' }}>DAY {dayIndex+1} · {weekday.toUpperCase()}</div><div style={{ marginTop:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{Editable({ kind:'day', ids:{ dayId:day.id }, value:day.label, placeholder:'Untitled day', spanStyle:{ fontSize:16,fontWeight:800,color:'#302521' }, inputWidth:180 })}</div><div style={{ marginTop:4,color:'#9A877D',fontSize:10.5,lineHeight:1.3 }}>{items.length} item{items.length===1?'':'s'} · {fmtDate(day.date)}</div></div>
-            {canEdit&&<div style={{ display:'grid',gridTemplateRows:'1fr 1fr',gap:7,minWidth:0 }}><button type="button" aria-label="Add activity" onClick={()=>openAddEvent(day)} style={{ width:'100%',minHeight:0,border:'none',borderRadius:11,background:'#E8DDD5',color:'#6E2118',fontSize:10,fontWeight:850,cursor:'pointer' }}>＋ Activity</button><button type="button" aria-label="Add task" onClick={()=>openDayTask(day.id)} style={{ width:'100%',minHeight:0,border:'1px solid #D7CCC0',borderRadius:11,background:'#fff',color:'#6E2118',fontSize:10,fontWeight:850,cursor:'pointer' }}>＋ Task</button></div>}
-          </div>
+          {collapsed ? (
+            /* Collapsed: a thin bar with a maroon border — date + title + chevron, no add buttons. */
+            <button type="button" aria-label="Expand day" onClick={()=>toggleDayCollapse(day.id)}
+              style={{ display:'flex', alignItems:'center', gap:10, width:'100%', textAlign:'left', border:'1.5px solid #6E2118', borderRadius:14, background:'#FBF7F2', padding:'7px 12px 7px 8px', marginBottom:14, cursor:'pointer' }}>
+              <span style={{ flexShrink:0, background:'#6E2118', color:'#fff', borderRadius:10, padding:'6px 9px', textAlign:'center', lineHeight:1.1 }}>
+                <strong style={{ display:'block', fontSize:15 }}>{compactDate(day.date).d}</strong>
+                <span style={{ display:'block', fontSize:8, letterSpacing:'0.08em' }}>{compactDate(day.date).mon}</span>
+              </span>
+              <span style={{ flex:1, minWidth:0 }}>
+                <span style={{ display:'block', fontSize:9, fontWeight:850, letterSpacing:'0.1em', color:'#927F75' }}>DAY {dayIndex+1} · {weekday.toUpperCase()}</span>
+                <span style={{ display:'block', fontSize:15, fontWeight:800, color:'#302521', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{day.label || 'Untitled day'}</span>
+              </span>
+              <span style={{ flexShrink:0, display:'flex', alignItems:'center', gap:8, color:'#8B2A14' }}>
+                <span style={{ fontSize:10.5, color:'#9A877D' }}>{items.length} item{items.length===1?'':'s'}</span>
+                <span aria-hidden="true" style={{ fontSize:14 }}>▾</span>
+              </span>
+            </button>
+          ) : (
+            <div style={{ display:'grid',gridTemplateColumns:canEdit?'58px minmax(0,1fr) 96px':'58px minmax(0,1fr)',alignItems:'stretch',gap:10,minHeight:82,marginBottom:14 }}>
+              <button type="button" aria-label="Collapse day" onClick={()=>toggleDayCollapse(day.id)} style={{ width:58,minHeight:82,border:'none',borderRadius:16,background:'#6E2118',color:'#fff',cursor:'pointer',alignSelf:'stretch' }}><strong style={{ display:'block',fontSize:20 }}>{compactDate(day.date).d}</strong><span style={{ display:'block',marginTop:3,fontSize:9.5,letterSpacing:'0.08em' }}>{compactDate(day.date).mon}</span></button>
+              <div style={{ minWidth:0,alignSelf:'center',padding:'4px 0' }}><div style={{ fontSize:9.5,fontWeight:850,letterSpacing:'0.11em',color:'#927F75' }}>DAY {dayIndex+1} · {weekday.toUpperCase()}</div><div style={{ marginTop:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{Editable({ kind:'day', ids:{ dayId:day.id }, value:day.label, placeholder:'Untitled day', spanStyle:{ fontSize:16,fontWeight:800,color:'#302521' }, inputWidth:180 })}</div><div style={{ marginTop:4,color:'#9A877D',fontSize:10.5,lineHeight:1.3 }}>{items.length} item{items.length===1?'':'s'} · {fmtDate(day.date)}</div></div>
+              {canEdit&&<div style={{ display:'grid',gridTemplateRows:'1fr 1fr',gap:7,minWidth:0 }}><button type="button" aria-label="Add activity" onClick={()=>openAddEvent(day)} style={{ width:'100%',minHeight:0,border:'none',borderRadius:11,background:'#E8DDD5',color:'#6E2118',fontSize:10,fontWeight:850,cursor:'pointer' }}>＋ Activity</button><button type="button" aria-label="Add task" onClick={()=>openDayTask(day.id)} style={{ width:'100%',minHeight:0,border:'1px solid #D7CCC0',borderRadius:11,background:'#fff',color:'#6E2118',fontSize:10,fontWeight:850,cursor:'pointer' }}>＋ Task</button></div>}
+            </div>
+          )}
 
           {!collapsed&&<div style={{ position:'relative' }}><span aria-hidden="true" style={{ position:'absolute',left:16,top:22,bottom:24,width:1,background:'#D7CCC0' }}/>
             {items.length===0?<p style={{ margin:'0 0 0 40px',padding:'14px',border:'1px dashed #D7CCC0',borderRadius:14,color:'#927F75',fontSize:11.5 }}>No events or tasks</p>:items.map(it=>it.kind==='span'?renderSpanStrip(day,it.s):it.kind==='task'?renderDayTask(day,it.task):renderEventBlock(day,it.ev))}
