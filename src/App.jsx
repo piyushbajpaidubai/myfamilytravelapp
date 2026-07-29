@@ -2726,24 +2726,33 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
             {[...trips.filter(t => tripStatusOf(t) === 'active'), ...trips.filter(t => tripStatusOf(t) === 'todo'), ...trips.filter(t => tripStatusOf(t) === 'done')].map(t => {
               const r = tripDateRange(t); const c = chipFor(t);
               return (
+                // Three stacked rows so portrait never squeezes the title/dates against the buttons:
+                //   1) status chip + primary action   2) art + title/destination/dates + open
+                //   3) traveller count + add traveller
                 <div key={t.id} role="button" tabIndex={0} onClick={() => onOpenTrip(t.id)} onKeyDown={(e)=>{ if(e.key==='Enter') onOpenTrip(t.id); }}
-                  style={{ ...panel, background: 'rgba(255,250,240,0.85)', width: '100%', display: 'flex', gap: 16, alignItems: 'center', textAlign: 'left', cursor: 'pointer', marginBottom: 12, padding: 14 }}>
-                  <TripArt status={tripStatusOf(t)} />
-                  <span style={{ flex: 1, minWidth: 0 }}>
+                  style={{ ...panel, background: 'rgba(255,250,240,0.85)', width: '100%', display: 'flex', flexDirection: 'column', gap: 10, textAlign: 'left', cursor: 'pointer', marginBottom: 12, padding: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', color: c.color }}>
                       <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.dot }} /> {c.label}
                     </span>
-                    <span style={{ display: 'block', fontSize: 16.5, fontWeight: 800, color: '#3D0C02', margin: '4px 0 5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name || 'Unnamed trip'}</span>
-                    {t.destination && <span style={{ display: 'block', fontSize: 12, color: '#8B5A3C', marginBottom: 3 }}>📍 {t.destination}</span>}
-                    <span style={{ display: 'flex', gap: 14, fontSize: 11.5, color: '#9A8478', flexWrap: 'wrap' }}>
-                      <span>🕒 {r.start ? `${fmtDate(r.start).replace(/ \d{4}$/, '')}${r.end && r.end !== r.start ? ` – ${fmtDate(r.end)}` : ` ${r.start.slice(0, 4)}`}` : 'Dates not set'}</span>
-                      <span>👥 {(t.members || []).length || 1} traveler{((t.members || []).length || 1) === 1 ? '' : 's'}</span>
+                    {canCreate && onSetTripStatus && (() => { const st = tripStatusOf(t); const cfg = st==='active' ? { label:'✓ Complete', to:'done', bg:'#3C8A3C', color:'#fff' } : st==='done' ? { label:'↺ Reopen', to:'active', bg:'transparent', color:'#8B2A14', border:'1px solid #C8B09A' } : { label:'▶ Start', to:'active', bg:'#6E1A10', color:'#fff' };
+                      return <button onClick={(e)=>{ e.stopPropagation(); onSetTripStatus(t.id, cfg.to); }} style={{ flexShrink:0, border: cfg.border||'none', borderRadius:20, padding:'6px 13px', fontSize:11.5, fontWeight:700, cursor:'pointer', background:cfg.bg, color:cfg.color, whiteSpace:'nowrap' }}>{cfg.label}</button>; })()}
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <TripArt status={tripStatusOf(t)} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 16.5, fontWeight: 800, color: '#3D0C02', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name || 'Unnamed trip'}</span>
+                      {t.destination && <span style={{ display: 'block', fontSize: 12, color: '#8B5A3C', marginTop: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📍 {t.destination}</span>}
+                      <span style={{ display: 'block', fontSize: 11.5, color: '#9A8478', marginTop: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🕒 {r.start ? `${fmtDate(r.start).replace(/ \d{4}$/, '')}${r.end && r.end !== r.start ? ` – ${fmtDate(r.end)}` : ` ${r.start.slice(0, 4)}`}` : 'Dates not set'}</span>
                     </span>
-                  </span>
-                  {canCreate && onAddTraveller && <button onClick={(e)=>{ e.stopPropagation(); onAddTraveller(t.id); }} title="Add traveller" style={{ flexShrink:0, border:'1px solid #D4BFB0', borderRadius:20, width:34, height:34, fontSize:15, fontWeight:800, cursor:'pointer', background:'#fff', color:'#6E1A10' }}>＋</button>}
-                  {canCreate && onSetTripStatus && (() => { const st = tripStatusOf(t); const cfg = st==='active' ? { label:'✓ Complete', to:'done', bg:'#3C8A3C', color:'#fff' } : st==='done' ? { label:'↺ Reopen', to:'active', bg:'transparent', color:'#8B2A14', border:'1px solid #C8B09A' } : { label:'▶ Start', to:'active', bg:'#6E1A10', color:'#fff' };
-                    return <button onClick={(e)=>{ e.stopPropagation(); onSetTripStatus(t.id, cfg.to); }} style={{ flexShrink:0, border: cfg.border||'none', borderRadius:20, padding:'6px 12px', fontSize:11, fontWeight:700, cursor:'pointer', background:cfg.bg, color:cfg.color, whiteSpace:'nowrap' }}>{cfg.label}</button>; })()}
-                  <span style={{ width: 34, height: 34, borderRadius: '50%', border: '1.5px solid #D4BFB0', color: '#8B2A14', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>→</span>
+                    <span style={{ width: 34, height: 34, borderRadius: '50%', border: '1.5px solid #D4BFB0', color: '#8B2A14', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>→</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid #EFE3D5', paddingTop: 9 }}>
+                    <span style={{ fontSize: 11.5, color: '#9A8478', whiteSpace: 'nowrap' }}>👥 {(t.members || []).length || 1} traveler{((t.members || []).length || 1) === 1 ? '' : 's'}</span>
+                    {canCreate && onAddTraveller && <button onClick={(e)=>{ e.stopPropagation(); onAddTraveller(t.id); }} title="Add traveller" aria-label={`Add traveller to ${t.name || 'trip'}`} style={{ marginLeft:'auto', flexShrink:0, border:'1px solid #D4BFB0', borderRadius:20, width:34, height:34, fontSize:15, fontWeight:800, cursor:'pointer', background:'#fff', color:'#6E1A10', lineHeight:1 }}>＋</button>}
+                  </div>
                 </div>
               );
             })}
@@ -2990,7 +2999,6 @@ function MainApp() {
   const [showToday, setShowToday] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
-  const [showDocsSheet, setShowDocsSheet] = useState(false);
   const [showPacking, setShowPacking] = useState(false); // Packing moved from a tab to a header-icon overlay
   const [showProfile, setShowProfile] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
@@ -3006,7 +3014,6 @@ function MainApp() {
   const [past, setPast] = useState([]); // undo history: recent trips snapshots (max 3)
   const [loadedTripOwner, setLoadedTripOwner] = useState('');
   const activeLandingRef = useRef('');
-  const docsPullStartRef = useRef(null);
 
   // Snapshot current trips before a mutation so it can be reverted (keep last 3)
   const recordHistory = () => setPast(p => [trips, ...p].slice(0, 3));
@@ -3618,22 +3625,7 @@ function MainApp() {
         <div style={{ padding:20 }}>
           {/* Trip identity, travellers and tabs now live in the frozen header above */}
           <SwipeableTabPanels activeTab={activeTab} onChange={setActiveTab} renderTab={renderTripTab} slideTo={slideTo} />
-          {activeTab === 'Status' && <div aria-hidden="true" style={{ height:72 }} />}
-
-          {activeTab === 'Status' && !showDocsSheet && (
-            <button type="button" aria-label="Open itinerary documents" onClick={()=>setShowDocsSheet(true)}
-              onTouchStart={e=>{ docsPullStartRef.current = e.touches[0] ? e.touches[0].clientY : null; }}
-              onTouchEnd={e=>{ const y = e.changedTouches[0] ? e.changedTouches[0].clientY : null; if (docsPullStartRef.current != null && y != null && docsPullStartRef.current - y > 24) setShowDocsSheet(true); docsPullStartRef.current = null; }}
-              style={{ position:'fixed', left:'50%', bottom:'calc(env(safe-area-inset-bottom, 0px) + 10px)', transform:'translateX(-50%)', zIndex:35,
-                width:'min(calc(100% - 28px), 650px)', minHeight:58, border:'1px solid #D4BFB0', borderRadius:14, background:'#F5EFE2', color:'#6E1A10',
-                display:'flex', alignItems:'center', gap:10, padding:'8px 14px', boxShadow:'0 6px 22px rgba(61,12,2,0.18)', cursor:'pointer', textAlign:'left', touchAction:'pan-y' }}>
-              <span aria-hidden="true" style={{ width:34, height:34, borderRadius:'50%', background:'#6E1A10', color:'#F5ECD7', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:18 }}>⌃</span>
-              <span style={{ minWidth:0, flex:1 }}>
-                <span style={{ display:'block', fontSize:13.5, fontWeight:700 }}>Itinerary Documents</span>
-                <span style={{ display:'block', fontSize:11.5, color:'#8A7A6D', marginTop:2 }}>Pull up for tickets and bookings</span>
-              </span>
-            </button>
-          )}
+          {/* The itinerary-documents pull-up retired here — the Documents tab replaces it. */}
         </div>
       )}
 
@@ -3724,9 +3716,6 @@ function MainApp() {
         <DocsView trip={trip} onClose={()=>setShowDocs(false)} />
       )}
 
-      {showDocsSheet && trip && (
-        <DocsSheet trip={trip} onClose={()=>setShowDocsSheet(false)} />
-      )}
     </div>
   );
 }
@@ -4334,99 +4323,6 @@ function SearchModal({ trips, onGoToTrip, onClose }) {
         ))}
       </div>
     </Modal>
-  );
-}
-
-// ---- Thumb-reachable document sheet used from the Status tab ----
-function DocsSheet({ trip, onClose }) {
-  const [dragY, setDragY] = useState(0);
-  const dragRef = useRef(null);
-  const byDate = {};
-  const dayLabelOf = {};
-  (trip.days || []).forEach(day => { dayLabelOf[(day.date || '').slice(0, 10)] = day.label || ''; });
-  const addDoc = (date, doc, context) => {
-    const key = (date || '').slice(0, 10) || '__undated__';
-    (byDate[key] = byDate[key] || []).push({ doc, context });
-  };
-  (trip.days || []).forEach(day => (day.events || []).forEach(event => {
-    (event.docs || []).forEach(doc => addDoc(day.date, doc, event.title || 'event'));
-    (event.activities || []).forEach(activity => (activity.docs || []).forEach(doc => addDoc(day.date, doc, `${event.title || 'event'} · ${activity.text || 'task'}`)));
-  }));
-  (trip.spans || []).forEach(span => (span.docs || []).forEach(doc => addDoc(span.startDate, doc, `${spanIcon(span)} ${span.title || span.type}`)));
-  const dates = Object.keys(byDate).sort((a, b) => a === '__undated__' ? 1 : b === '__undated__' ? -1 : (a > b ? 1 : -1));
-  const totalCount = Object.values(byDate).reduce((total, docs) => total + docs.length, 0);
-  const fmtSize = bytes => bytes == null ? '' : bytes < 1024 ? `${bytes}B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)}KB` : `${(bytes / 1048576).toFixed(1)}MB`;
-  const startDrag = (e) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = { pointerId:e.pointerId, startY:e.clientY, currentY:e.clientY };
-  };
-  const moveDrag = (e) => {
-    if (!dragRef.current || dragRef.current.pointerId !== e.pointerId) return;
-    e.preventDefault();
-    dragRef.current.currentY = e.clientY;
-    setDragY(Math.max(0, e.clientY - dragRef.current.startY));
-  };
-  const endDrag = (e) => {
-    if (!dragRef.current || dragRef.current.pointerId !== e.pointerId) return;
-    const distance = Math.max(0, dragRef.current.currentY - dragRef.current.startY);
-    if (e.currentTarget.releasePointerCapture && e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
-    dragRef.current = null;
-    if (distance > 72) onClose();
-    else setDragY(0);
-  };
-
-  return (
-    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:220, background:'rgba(44,24,16,0.28)', display:'flex', alignItems:'flex-end', justifyContent:'center', fontFamily:'var(--font-body)', color:'#6E1A10' }}>
-      <section role="dialog" aria-modal="true" aria-label="Itinerary Documents" onClick={e=>e.stopPropagation()}
-        style={{ width:'min(100%, 680px)', height:'calc(100dvh - env(safe-area-inset-top, 0px) - 138px)', minHeight:360, maxHeight:'92dvh', background:'#F0EBE0', borderRadius:'20px 20px 0 0', boxShadow:'0 -10px 34px rgba(44,24,16,0.24)', overflow:'hidden', display:'flex', flexDirection:'column', transform:`translate3d(0,${dragY}px,0)`, transition:dragRef.current == null ? 'transform 180ms ease-out' : 'none' }}>
-        <div onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} data-no-tab-swipe
-          style={{ flexShrink:0, background:'#F5EFE2', borderBottom:'1px solid #D8CFC2', padding:'8px 16px 12px', touchAction:'none' }}>
-          <button type="button" onClick={onClose} aria-label="Close itinerary documents"
-            style={{ width:56, height:18, display:'block', margin:'0 auto 5px', padding:0, border:'none', background:'transparent', cursor:'pointer' }}>
-            <span style={{ display:'block', width:42, height:4, margin:'7px auto', borderRadius:4, background:'#B9A99A' }} />
-          </button>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-            <div>
-              <div style={{ fontSize:16, fontWeight:800, color:'#6E1A10' }}>Itinerary Documents</div>
-              <div style={{ fontSize:11.5, color:'#8A7A6D', marginTop:2 }}>{trip.name} · {totalCount} file{totalCount===1?'':'s'}</div>
-            </div>
-            <button type="button" onClick={onClose} aria-label="Close" style={{ width:34, height:34, borderRadius:'50%', border:'1px solid #D4BFB0', background:'#F0EBE0', color:'#8B2A14', cursor:'pointer', fontSize:19, lineHeight:1 }}>×</button>
-          </div>
-        </div>
-
-        <div data-no-tab-swipe style={{ flex:1, minHeight:0, overflowY:'auto', WebkitOverflowScrolling:'touch', overscrollBehavior:'contain', touchAction:'pan-y', padding:'8px 20px calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
-          {totalCount === 0 ? (
-            <div style={{ textAlign:'center', padding:'46px 10px', color:'#B54030' }}>
-              <div style={{ fontSize:42, marginBottom:12 }}>📎</div>
-              <p style={{ fontSize:15, margin:0 }}>No documents attached yet.</p>
-              <p style={{ fontSize:13, color:'#8A7A6D', marginTop:8 }}>Attach files to events or tasks in the Schedule tab.</p>
-            </div>
-          ) : dates.map((iso, dateIndex) => (
-            <div key={iso}>
-              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', margin:dateIndex===0 ? '10px 0' : '24px 0 10px' }}>
-                <span style={{ background:'#5C1A1A', color:'#F5ECD7', borderRadius:8, padding:'6px 11px', fontSize:13, fontWeight:700 }}>
-                  {iso === '__undated__' ? 'Undated' : fmtDate(iso)}
-                </span>
-                {iso !== '__undated__' && <span style={{ fontSize:11.5, color:'#9A8478', textTransform:'uppercase', letterSpacing:'0.05em', fontWeight:600 }}>{weekdayOf(iso)}{dayLabelOf[iso] ? ` · ${dayLabelOf[iso]}` : ''}</span>}
-                <span style={{ marginLeft:'auto', fontSize:11, color:'#B07A4A' }}>{byDate[iso].length} file{byDate[iso].length===1?'':'s'}</span>
-              </div>
-              {byDate[iso].map(item => (
-                <a key={item.doc.id || `${iso}-${item.doc.name}`} href={item.doc.url || item.doc.data} target="_blank" rel="noopener noreferrer"
-                  style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 4px', borderBottom:'1px solid #E2D8C8', textDecoration:'none', color:'inherit' }}>
-                  <span style={{ fontSize:20 }}>📎</span>
-                  <span style={{ flex:1, minWidth:0 }}>
-                    <span style={{ display:'block', fontSize:13.5, color:'#8B2A14', textDecoration:'underline', wordBreak:'break-word' }}>{item.doc.name}</span>
-                    <span style={{ display:'block', fontSize:11.5, color:'#9A8478', marginTop:2 }}>{item.context}</span>
-                  </span>
-                  {item.doc.size != null && <span style={{ fontSize:11.5, color:'#B07A4A', flexShrink:0 }}>{fmtSize(item.doc.size)}</span>}
-                </a>
-              ))}
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
   );
 }
 
