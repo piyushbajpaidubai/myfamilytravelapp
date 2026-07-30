@@ -147,7 +147,7 @@ const SPAN_TYPES = {
   Car:           { icon:'🚗', kind:'travel', startLabel:'Depart',   endLabel:'Arrive' },
 };
 const SPAN_TYPE_OPTIONS = ["Accommodation", "Travel", "Other"];
-// Travel sub-category (mode). By Road → Google Maps driving; By Air → Flightradar24 by flight no.
+// Travel sub-category (mode). By Road → Google Maps driving; By Air → FlightAware by flight no.
 const TRAVEL_MODES = ["By Road", "By Air"];
 // Official Google Maps directions URL (no API key needed; opens the Maps app on phones for live navigation)
 const gmapsDirUrl = (from, to) =>
@@ -156,8 +156,10 @@ const gmapsDirUrl = (from, to) =>
 // i.e. real turn-by-turn navigation from wherever the traveler actually is.
 const gmapsNavUrl = (to) =>
   'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(to || '') + '&travelmode=driving';
-// Flightradar24 flight-status page for a given flight number (free feature; live when airborne)
-const fr24Url = (flightNo) => 'https://www.flightradar24.com/data/flights/' + encodeURIComponent((flightNo || '').replace(/\s+/g, '').toLowerCase());
+// FlightAware flight-status page for a given flight number. FlightAware idents are
+// uppercase with no spaces (e.g. "AI 865" → AI865); an unknown ident lands on their
+// search page rather than erroring.
+const flightTrackUrl = (flightNo) => 'https://www.flightaware.com/live/flight/' + encodeURIComponent((flightNo || '').replace(/\s+/g, '').toUpperCase());
 
 // Free driving route (OpenStreetMap Nominatim geocode + OSRM routing; no API key) → { seconds, meters } or null
 async function roadRoute(from, to) {
@@ -1155,7 +1157,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
               </div>
             </>
           ) : evForm.type === 'Travel' ? (
-            // ── Travel (single- or multi-day): By Road → Google Maps, By Air → Flightradar24 ──
+            // ── Travel (single- or multi-day): By Road → Google Maps, By Air → FlightAware ──
             <>
               <Select label="Mode" value={evForm.mode} onChange={e=>setEvForm({...evForm,mode:e.target.value})} options={TRAVEL_MODES} />
               <Input label="Title *" value={evForm.title} onChange={e=>setEvForm({...evForm,title:e.target.value})}
@@ -1483,6 +1485,8 @@ const STATUS_WORD = { todo:'not started', active:'ongoing', done:'complete' };
 
 // Standardised status word for the Status "Sentences" view (coloured via STATUS_META[status].color)
 const STATUS_SENTENCE_WORD = { done:'complete', active:'on-going', todo:'not started' };
+// Something still ahead reads better as "has not started" than "is not started".
+const statusVerb = (st) => st === 'todo' ? 'has' : 'is';
 // "A" · "A and B" · "A, B and C"
 const joinNames = (names) => names.length <= 1 ? (names[0] || '')
   : names.length === 2 ? `${names[0]} and ${names[1]}`
@@ -1623,7 +1627,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
     // Tell the trip's followers, if this trip has notifications switched on.
     if (newStatus && itemTitle) {
       const word = STATUS_SENTENCE_WORD[newStatus] || newStatus;
-      sendFollowerPush(session, trip, `${trip.name || 'Trip'} · status update`, `${itemTitle} is ${word} for ${travelerName || 'a traveler'}`);
+      sendFollowerPush(session, trip, `${trip.name || 'Trip'} · status update`, `${itemTitle} ${statusVerb(newStatus)} ${word} for ${travelerName || 'a traveler'}`);
     }
   };
 
@@ -1900,7 +1904,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                               if (!names.length) return null;
                               return (
                                 <div key={st} style={{ fontSize:12.5, color:'#4A3B34', lineHeight:1.55 }}>
-                                  {it.titleText} is <span style={{ color: STATUS_META[st].color, fontWeight:700 }}>{STATUS_SENTENCE_WORD[st]}</span> for {joinNames(names)}
+                                  {it.titleText} {statusVerb(st)} <span style={{ color: STATUS_META[st].color, fontWeight:700 }}>{STATUS_SENTENCE_WORD[st]}</span> for {joinNames(names)}
                                 </div>
                               );
                             });
@@ -1964,7 +1968,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                         <div style={{ marginTop:8 }}>
                           {it.travel.mode === 'By Air'
                             ? <button onClick={()=>setLivePopup({ kind:'flight', ...it.travel })}
-                                style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#F16C1E', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
+                                style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#1D5E8C', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
                                 <span style={{ fontSize:14 }}>✈️</span> Show Live
                               </button>
                             : <button onClick={()=>setLivePopup({ kind:'maps', ...it.travel })}
@@ -2021,7 +2025,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
       )}
 
       {livePopup && (livePopup.kind === 'flight' ? (
-        <Modal title="Live on Flightradar24" onClose={()=>setLivePopup(null)}>
+        <Modal title="Live on FlightAware" onClose={()=>setLivePopup(null)}>
           <div style={{ fontSize:13.5, color:'#6E1A10', marginBottom:6 }}>{livePopup.name}</div>
           <div style={{ display:'flex', alignItems:'center', gap:8, background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:9, padding:'12px 14px', marginBottom:16 }}>
             <span style={{ fontSize:18 }}>✈️</span>
@@ -2030,9 +2034,9 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
               {(livePopup.from || livePopup.to) && <div style={{ fontSize:12, color:'#8A7A6D' }}>{livePopup.from || '?'} → {livePopup.to || '?'}</div>}
             </div>
           </div>
-          <p style={{ fontSize:12.5, color:'#8A7A6D', margin:'0 0 16px', lineHeight:1.5 }}>Opens this flight's live status on Flightradar24 — shows the aircraft's position and progress when it's airborne.</p>
+          <p style={{ fontSize:12.5, color:'#8A7A6D', margin:'0 0 16px', lineHeight:1.5 }}>Opens this flight's live status on FlightAware — shows the aircraft's position and progress when it's airborne.</p>
           <div style={{ display:'flex', gap:8 }}>
-            <Btn onClick={()=>{ window.open(fr24Url(livePopup.flightNo), '_blank', 'noopener'); setLivePopup(null); }} style={{ background:'#F16C1E' }}>Open on Flightradar24</Btn>
+            <Btn onClick={()=>{ window.open(flightTrackUrl(livePopup.flightNo), '_blank', 'noopener'); setLivePopup(null); }} style={{ background:'#1D5E8C' }}>Open on FlightAware</Btn>
             <Btn variant="ghost" onClick={()=>setLivePopup(null)}>Cancel</Btn>
           </div>
         </Modal>
@@ -4634,24 +4638,27 @@ function FollowerNotify({ tripId, token }) {
   };
   const turnOff = async () => { setState('busy'); try { await followerUnsubscribe(); } catch (e) {} setState('off'); };
 
-  const box = { display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', background:'#F5EFE2', border:'1px solid #E4D8C4', borderRadius:10, padding:'10px 14px', margin:'0 0 18px' };
-  if (state === 'on') return (
-    <div style={box}>
-      <span style={{ fontSize:12.5, color:'#2F7A2F', fontWeight:600, flex:1, minWidth:150 }}>🔔 Notifications on — you'll be alerted when a traveler updates status.</span>
-      <button onClick={turnOff} style={{ padding:'6px 14px', borderRadius:8, border:'1px solid #C8B09A', background:'transparent', color:'#8B2A14', fontSize:12.5, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>Turn off</button>
-    </div>
-  );
+  // A single compact toggle that sits inline next to "Refresh now" — the explanatory
+  // banner it replaced is now the button's tooltip.
+  const pill = (extra) => ({ padding:'4px 11px', borderRadius:6, border:'1px solid #C8B09A', background:'transparent',
+    color:'#8B2A14', fontSize:11.5, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0, ...extra });
+
   if (state === 'blocked') return (
-    <div style={box}><span style={{ fontSize:12, color:'#B54030', lineHeight:1.45 }}>🔔 Notifications are blocked for this site. Allow them in your browser's site settings, then reload to follow this trip's updates.</span></div>
+    <button type="button" disabled title="Notifications are blocked for this site. Allow them in your browser's site settings, then reload."
+      style={pill({ cursor:'default', color:'#B54030', opacity:0.75 })}>🔔 Blocked</button>
   );
   if (state === 'setup') return (
-    <div style={box}><span style={{ fontSize:12, color:'#B54030', lineHeight:1.45 }}>Notifications aren't switched on for this trip yet.</span></div>
+    <button type="button" disabled title="The traveler hasn't switched notifications on for this trip yet."
+      style={pill({ cursor:'default', color:'#B54030', opacity:0.75 })}>🔔 Unavailable</button>
   );
+  if (state === 'on') return (
+    <button type="button" onClick={turnOff} title="Notifications on — you'll be alerted when a traveler updates status. Tap to turn off."
+      style={pill({ background:'#3C8A3C', border:'1px solid #3C8A3C', color:'#fff', fontWeight:600 })}>🔔 Notifications on</button>
+  );
+  const waiting = state === 'busy' || state === 'checking';
   return (
-    <div style={box}>
-      <span style={{ fontSize:12.5, color:'#8B5A3C', flex:1, minWidth:150, lineHeight:1.4 }}>Get a notification whenever a traveler updates their status on this trip.</span>
-      <button onClick={turnOn} disabled={state==='busy'||state==='checking'} style={{ padding:'7px 14px', borderRadius:8, border:'none', background:'#6E1A10', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', opacity:(state==='busy'||state==='checking')?0.6:1 }}>{state==='busy'?'…':'🔔 Notify me'}</button>
-    </div>
+    <button type="button" onClick={turnOn} disabled={waiting} title="Get a notification whenever a traveler updates their status on this trip."
+      style={pill({ opacity: waiting ? 0.6 : 1 })}>{state==='busy' ? '…' : '🔔 Notifications off'}</button>
   );
 }
 
@@ -4732,11 +4739,14 @@ function ViewerApp({ tripId, token, focusUserId }) {
         {trip.destination && <span>📍 {trip.destination}</span>}
         {(() => { const r = tripDateRange(trip); return r.start ? <span style={{ marginLeft: trip.destination?8:0 }}>🗓 {fmtDate(r.start)}{r.end && r.end!==r.start ? ` → ${fmtDate(r.end)}` : ''}</span> : null; })()}
       </div>
-      <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", fontSize:11.5, color:"#9A8478", margin:"8px 0 18px" }}>
-        <span>{updatedAt ? `Last updated ${fmtDateTime(updatedAt)}` : 'Live view'} · refreshes automatically</span>
-        <button onClick={refresh} style={{ padding:"3px 10px", borderRadius:6, border:"1px solid #C8B09A", background:"transparent", color:"#8B2A14", fontSize:11.5, cursor:"pointer" }}>Refresh now</button>
+      <div style={{ fontSize:11.5, color:"#9A8478", margin:"8px 0 8px" }}>
+        {updatedAt ? `Last updated ${fmtDateTime(updatedAt)}` : 'Live view'} · refreshes automatically
       </div>
-      <FollowerNotify tripId={tripId} token={token} />
+      {/* Refresh + the notification toggle share one row and never wrap. */}
+      <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"nowrap", margin:"0 0 18px" }}>
+        <button onClick={refresh} style={{ padding:"4px 11px", borderRadius:6, border:"1px solid #C8B09A", background:"transparent", color:"#8B2A14", fontSize:11.5, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>Refresh now</button>
+        <FollowerNotify tripId={tripId} token={token} />
+      </div>
       <StatusTab trip={trip} focusUserId={focusUserId} shareToken={token} />
       <div style={{ textAlign:"center", fontSize:11, color:"#B0A091", padding:"18px 0 8px" }}>Read-only view · shared by the traveler</div>
     </div>
