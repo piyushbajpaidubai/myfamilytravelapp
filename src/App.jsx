@@ -147,7 +147,7 @@ const SPAN_TYPES = {
   Car:           { icon:'🚗', kind:'travel', startLabel:'Depart',   endLabel:'Arrive' },
 };
 const SPAN_TYPE_OPTIONS = ["Accommodation", "Travel", "Other"];
-// Travel sub-category (mode). By Road → Google Maps driving; By Air → FlightAware by flight no.
+// Travel sub-category (mode). By Road → Google Maps driving; By Air → FlightStats by flight no.
 const TRAVEL_MODES = ["By Road", "By Air"];
 // Official Google Maps directions URL (no API key needed; opens the Maps app on phones for live navigation)
 const gmapsDirUrl = (from, to) =>
@@ -156,10 +156,85 @@ const gmapsDirUrl = (from, to) =>
 // i.e. real turn-by-turn navigation from wherever the traveler actually is.
 const gmapsNavUrl = (to) =>
   'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(to || '') + '&travelmode=driving';
-// FlightAware flight-status page for a given flight number. FlightAware idents are
-// uppercase with no spaces (e.g. "AI 865" → AI865); an unknown ident lands on their
-// search page rather than erroring.
-const flightTrackUrl = (flightNo) => 'https://www.flightaware.com/live/flight/' + encodeURIComponent((flightNo || '').replace(/\s+/g, '').toUpperCase());
+// FlightStats flight tracker. Its URLs want the carrier and the number as separate
+// path segments (EK 507 → /flight-tracker/EK/507), so split the trailing digits off
+// the ident; anything we can't split falls back to their search page.
+const flightTrackUrl = (flightNo) => {
+  const clean = (flightNo || '').replace(/[\s-]+/g, '').toUpperCase();
+  const m = /^([A-Z0-9]{2,3}?)(\d{1,4})$/.exec(clean);
+  // "LH 0400" → LH/400: FlightStats indexes the bare number, not the padded one.
+  return m
+    ? `https://www.flightstats.com/v2/flight-tracker/${m[1]}/${String(parseInt(m[2], 10))}`
+    : 'https://www.flightstats.com/v2/flight-tracker/search';
+};
+
+// ── Reading a route back out of a Google Maps link ──────────────────────────────
+// A page can't read another tab's URL, so the round-trip is: open Maps → build the
+// route there → copy the link → paste it back here. These helpers turn that pasted
+// link into { from, to }.
+const RESOLVE_FN = 'https://mytravelhub.netlify.app/.netlify/functions/resolvelink';
+const isShortMapsLink = (u) => u.hostname === 'maps.app.goo.gl' || (u.hostname === 'goo.gl' && /^\/maps/.test(u.pathname));
+const isGoogleHost = (h) => h === 'maps.app.goo.gl' || h === 'goo.gl' || /(^|\.)google\.[a-z.]{2,}$/.test(h);
+// Maps percent-encodes and uses '+' for spaces in the path form.
+const decodeMapsPart = (s) => {
+  let out = String(s || '');
+  try { out = decodeURIComponent(out); } catch (e) { /* leave it as-is if it isn't valid encoding */ }
+  return out.replace(/\+/g, ' ').trim();
+};
+// Bare coordinates and Maps' own place ids aren't useful as a "From"/"To" the user reads.
+const looksLikeCoords = (s) => /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(s);
+// Handles all three shapes Maps produces:
+//   ?api=1&origin=A&destination=B      (documented deep-link form)
+//   /maps/dir/A/B/@lat,lng,z/data=...  (what "Copy link" gives you)
+//   ?saddr=A&daddr=B                   (legacy)
+function parseMapsDirUrl(raw) {
+  let u;
+  try { u = new URL(String(raw).trim()); } catch (e) { return null; }
+  if (!isGoogleHost(u.hostname)) return null;
+
+  const q = u.searchParams;
+  const qFrom = q.get('origin') || q.get('saddr');
+  const qTo = q.get('destination') || q.get('daddr');
+  if (qFrom || qTo) {
+    const from = decodeMapsPart(qFrom), to = decodeMapsPart(qTo);
+    if (from || to) return { from, to };
+  }
+
+  const m = /\/maps\/dir\/([^@]*)/.exec(u.pathname);
+  if (m) {
+    const parts = m[1].split('/').map(decodeMapsPart)
+      .filter(p => p && !/^data=/.test(p) && !looksLikeCoords(p));
+    // An empty first segment means "from your current location" — leave From blank.
+    if (parts.length >= 2) return { from: parts[0], to: parts[parts.length - 1] };
+    if (parts.length === 1) return { from: '', to: parts[0] };
+  }
+  return null;
+}
+// Expands a short link first (server hop), then parses. Throws a user-readable message.
+async function routeFromMapsLink(raw) {
+  const text = String(raw || '').trim();
+  if (!text) throw new Error('Paste the Google Maps link first.');
+  const url = (text.match(/https?:\/\/\S+/) || [])[0]; // tolerate "check this out <link>" shares
+  if (!url) throw new Error("That doesn't look like a Google Maps link.");
+  let u;
+  try { u = new URL(url); } catch (e) { throw new Error("That doesn't look like a Google Maps link."); }
+  if (!isGoogleHost(u.hostname)) throw new Error('That link isn’t from Google Maps.');
+
+  let full = url;
+  if (isShortMapsLink(u)) {
+    let res;
+    try { res = await fetch(`${RESOLVE_FN}?url=${encodeURIComponent(url)}`); }
+    catch (e) { throw new Error('Could not open that short link — check your connection.'); }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.url) throw new Error(body.error || 'Could not open that short link.');
+    full = body.url;
+  }
+  const route = parseMapsDirUrl(full);
+  if (!route || (!route.from && !route.to)) {
+    throw new Error('No route in that link — in Maps, set both stops and tap Directions before copying.');
+  }
+  return route;
+}
 
 // Free driving route (OpenStreetMap Nominatim geocode + OSRM routing; no API key) → { seconds, meters } or null
 async function roadRoute(from, to) {
@@ -343,6 +418,47 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
   // Auto-fill arrival (road route estimate) state
   const [estimating, setEstimating] = useState(false);
   const [estimateMsg, setEstimateMsg] = useState('');
+  // "Go to Google Maps" round-trip: the pasted link, and what to tell the user about it
+  const [mapsLink, setMapsLink] = useState('');
+  const [mapsBusy, setMapsBusy] = useState(false);
+  const [mapsMsg, setMapsMsg] = useState(null); // { ok:boolean, text:string }
+
+  // Open Maps with whatever the user has already typed, so the route starts half-built.
+  const openMapsForRoute = () => {
+    const { from, to } = evForm;
+    const url = (from || to)
+      ? gmapsDirUrl(from, to)
+      : 'https://www.google.com/maps/dir/';
+    window.open(url, '_blank', 'noopener');
+    setMapsMsg({ ok:true, text:'Pick your route in Maps, tap Share → Copy link, then paste it below.' });
+  };
+
+  // Turn a pasted Maps link into the From/To fields.
+  const applyMapsLink = async (text) => {
+    setMapsBusy(true); setMapsMsg(null);
+    try {
+      const route = await routeFromMapsLink(text);
+      setEvForm(cur => ({ ...cur, from: route.from || cur.from, to: route.to || cur.to }));
+      setMapsMsg({ ok:true, text: route.from
+        ? `Filled in: ${route.from} → ${route.to}`
+        : `Filled in destination: ${route.to} (Maps had no starting point — add one above)` });
+      setMapsLink('');
+    } catch (e) {
+      setMapsMsg({ ok:false, text: e.message });
+    } finally { setMapsBusy(false); }
+  };
+
+  // Clipboard read needs a user gesture and can be refused; fall back to the paste box.
+  const pasteMapsLink = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) { setMapsMsg({ ok:false, text:'Clipboard is empty — copy the link in Maps first.' }); return; }
+      setMapsLink(text);
+      await applyMapsLink(text);
+    } catch (e) {
+      setMapsMsg({ ok:false, text:'Couldn’t read the clipboard — paste the link into the box below.' });
+    }
+  };
   // Event expense modal: eventId being logged + the form
   const members = trip.members || [];
   // Tapping a traveller's icon narrows the schedule to their items. The signed-in
@@ -1157,13 +1273,39 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
               </div>
             </>
           ) : evForm.type === 'Travel' ? (
-            // ── Travel (single- or multi-day): By Road → Google Maps, By Air → FlightAware ──
+            // ── Travel (single- or multi-day): By Road → Google Maps, By Air → FlightStats ──
             <>
               <Select label="Mode" value={evForm.mode} onChange={e=>setEvForm({...evForm,mode:e.target.value})} options={TRAVEL_MODES} />
               <Input label="Title *" value={evForm.title} onChange={e=>setEvForm({...evForm,title:e.target.value})}
                 placeholder={evForm.mode==='By Air' ? 'e.g. AI 865  Delhi → Dubai' : 'e.g. Drive Dehradun → Kedarnath'} />
               {evForm.mode === 'By Air' && (
                 <Input label="Flight No. *" value={evForm.flightNo} onChange={e=>setEvForm({...evForm,flightNo:e.target.value})} placeholder="e.g. AI 865" />
+              )}
+              {evForm.mode === 'By Road' && (
+                // Optional helper: plan the drive in Maps and paste the link back to fill
+                // From/To. Skipping it and typing both fields by hand works exactly as before,
+                // which matters for off-road legs Maps doesn't know about.
+                <div style={{ margin:'0 0 14px', padding:'11px 12px', border:'1px dashed #D4BFB0', borderRadius:11, background:'#FBF6EE' }}>
+                  {/* Step 1 gets its own full-width row; step 2 is the paste field + button. */}
+                  <button type="button" onClick={openMapsForRoute}
+                    style={{ width:'100%', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6, background:'#1A73E8', color:'#fff', border:'none', borderRadius:8, padding:'9px 12px', fontSize:12.5, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>
+                    🗺 Go to Google Maps
+                  </button>
+                  <div style={{ display:'flex', gap:7, marginTop:7 }}>
+                    <input value={mapsLink} onChange={e=>setMapsLink(e.target.value)}
+                      onPaste={e=>{ const t = (e.clipboardData||window.clipboardData).getData('text'); if (t) { e.preventDefault(); setMapsLink(t); applyMapsLink(t); } }}
+                      onKeyDown={e=>{ if (e.key==='Enter') { e.preventDefault(); applyMapsLink(mapsLink); } }}
+                      placeholder="Paste the Maps link…"
+                      style={{ flex:1, minWidth:0, boxSizing:'border-box', padding:'8px 10px', border:'1px solid #DCCDBE', borderRadius:8, fontSize:12.5, color:'#4E3D36', background:'#fff' }} />
+                    <button type="button" onClick={pasteMapsLink} disabled={mapsBusy}
+                      style={{ flexShrink:0, border:'1px solid #C8B09A', borderRadius:8, padding:'8px 11px', fontSize:12.5, fontWeight:700, background:'#fff', color:'#6E1A10', cursor: mapsBusy?'default':'pointer', opacity: mapsBusy?0.6:1, whiteSpace:'nowrap' }}>
+                      {mapsBusy ? '…' : '📋 Paste'}
+                    </button>
+                  </div>
+                  <div style={{ fontSize:11, lineHeight:1.45, marginTop:6, color: mapsMsg ? (mapsMsg.ok ? '#2F7A2F' : '#B54030') : '#8A7A6D' }}>
+                    {mapsMsg ? mapsMsg.text : 'Optional — fills From and To for you. You can also just type them in below.'}
+                  </div>
+                </div>
               )}
               <div style={{ display:"flex", gap:10 }}>
                 <div style={{ flex:1 }}><Input label={evForm.mode==='By Air' ? 'From' : 'From *'} value={evForm.from} onChange={e=>setEvForm({...evForm,from:e.target.value})} placeholder={evForm.mode==='By Air' ? 'e.g. Delhi (DEL)' : 'e.g. Dehradun'} /></div>
@@ -1887,7 +2029,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                     </div>
                     <div style={{ width:80, flexShrink:0, paddingBottom: last?0:28, fontSize:12, letterSpacing:'0.03em', color:'#4A3B34', textTransform:'uppercase', lineHeight:1.35 }}>{it.time}</div>
                     <div style={{ flex:1, minWidth:0, paddingBottom: last?0:28, fontSize:13.5, color:'#2E2320', lineHeight:1.4 }}>
-                      <div>{it.name}</div>
+                      <div style={{ fontWeight:700 }}>{it.name}</div>
                       {/* "Description": one coloured line per status group, above the markers.
                           Shown at every group size — grouped by status it stays 1–3 lines. */}
                       {sentenceView && it.marks && (
@@ -2025,7 +2167,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
       )}
 
       {livePopup && (livePopup.kind === 'flight' ? (
-        <Modal title="Live on FlightAware" onClose={()=>setLivePopup(null)}>
+        <Modal title="Live on FlightStats" onClose={()=>setLivePopup(null)}>
           <div style={{ fontSize:13.5, color:'#6E1A10', marginBottom:6 }}>{livePopup.name}</div>
           <div style={{ display:'flex', alignItems:'center', gap:8, background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:9, padding:'12px 14px', marginBottom:16 }}>
             <span style={{ fontSize:18 }}>✈️</span>
@@ -2034,9 +2176,9 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
               {(livePopup.from || livePopup.to) && <div style={{ fontSize:12, color:'#8A7A6D' }}>{livePopup.from || '?'} → {livePopup.to || '?'}</div>}
             </div>
           </div>
-          <p style={{ fontSize:12.5, color:'#8A7A6D', margin:'0 0 16px', lineHeight:1.5 }}>Opens this flight's live status on FlightAware — shows the aircraft's position and progress when it's airborne.</p>
+          <p style={{ fontSize:12.5, color:'#8A7A6D', margin:'0 0 16px', lineHeight:1.5 }}>Opens this flight's live status on FlightStats — shows the aircraft's position and progress when it's airborne.</p>
           <div style={{ display:'flex', gap:8 }}>
-            <Btn onClick={()=>{ window.open(flightTrackUrl(livePopup.flightNo), '_blank', 'noopener'); setLivePopup(null); }} style={{ background:'#1D5E8C' }}>Open on FlightAware</Btn>
+            <Btn onClick={()=>{ window.open(flightTrackUrl(livePopup.flightNo), '_blank', 'noopener'); setLivePopup(null); }} style={{ background:'#1D5E8C' }}>Open on FlightStats</Btn>
             <Btn variant="ghost" onClick={()=>setLivePopup(null)}>Cancel</Btn>
           </div>
         </Modal>
