@@ -124,9 +124,16 @@ const stOf = (x) => (x && x.status) || (x && x.done ? 'done' : 'todo');
 const nextStatus = (s) => STATUS_ORDER[(STATUS_ORDER.indexOf(s) + 1) % 3];
 const STATUS_META = {
   todo:   { label:'Not started', short:'TODO',   color:'#8A7A6D', bg:'#E5DFD2', ring:'#B0A091' },
-  active: { label:'Active',      short:'ACTIVE', color:'#1F6FB2', bg:'#D8E8F4', ring:'#2E86C8' },
+  // 'ongoing' is amber. The ring is the pure amber; text/badge use a darker amber so
+  // small labels stay readable on the cream background.
+  active: { label:'Active',      short:'ACTIVE', color:'#8A6500', bg:'#FFF3D6', ring:'#FFBF00' },
   done:   { label:'Done',        short:'DONE',   color:'#3C8A3C', bg:'#DCEEDC', ring:'#3C8A3C' },
 };
+// Ring around a traveller's photo. Kept in one place so thickness stays consistent.
+const RING_W = 3.5;
+// Avatar <img>: block-level kills the inline baseline gap that pushed photos off-centre
+// inside their circle; explicit centre keeps the cover-crop centred.
+const AVATAR_IMG = { width:'100%', height:'100%', objectFit:'cover', objectPosition:'center', display:'block' };
 
 // ── Spanning events: accommodation & travel that cross multiple calendar days ──
 // Stored at trip level in trip.spans[] and overlaid onto every day they touch.
@@ -457,6 +464,13 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     update(t => ({ days:(t.days||[]).map(day => day.id===dayId
       ? { ...day, tasks:(day.tasks||[]).map(task => task.id===taskId ? { ...task,assignees } : task) }
       : day) }));
+
+  const delDayTask = (dayId, taskId, label) => {
+    if (!window.confirm(`Delete task “${label || 'this task'}”? This can't be undone from here.`)) return;
+    update(t => ({ days:(t.days||[]).map(day => day.id===dayId
+      ? { ...day, tasks:(day.tasks||[]).filter(task => task.id!==taskId) }
+      : day) }));
+  };
 
   // Renders an editable text span; clicking turns it into an input (Enter/blur saves, Esc cancels)
   const Editable = ({ kind, ids, value, placeholder, spanStyle, inputWidth, inputType }) => {
@@ -881,7 +895,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     const expanded = !!expandedItems[detailKey];
     const roster = itemPeople(item);
     return <button type="button" aria-expanded={expanded} aria-label={`${expanded?'Collapse':'Expand'} ${item.title} details`} onClick={()=>toggleItemDetails(detailKey)} style={{ width:'100%',minHeight:48,border:'none',borderTop:'1px solid #D8C8B8',background:expanded?'#E4D7C8':'#E9DED1',padding:'8px 13px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8 }}>
-      <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} title={`${member.name||member.userId}: ${STATUS_WORD[memStOf(item,member.userId)]}`} style={{ width:31,height:31,marginLeft:index===0?0:-7,borderRadius:'50%',overflow:'hidden',border:'2.5px solid '+STATUS_META[memStOf(item,member.userId)].ring,background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}<span style={{ marginLeft:7,color:'#7C675D',fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{itemPeopleLabel(item)}</span></span>
+      <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} title={`${member.name||member.userId}: ${STATUS_WORD[memStOf(item,member.userId)]}`} style={{ width:31,height:31,marginLeft:index===0?0:-7,borderRadius:'50%',boxSizing:'border-box',overflow:'hidden',border:RING_W+'px solid '+STATUS_META[memStOf(item,member.userId)].ring,background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={AVATAR_IMG}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}<span style={{ marginLeft:7,color:'#7C675D',fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{itemPeopleLabel(item)}</span></span>
       <span style={{ color:'#6E2118',transform:expanded?'rotate(180deg)':'none',transition:'transform .15s',display:'grid',placeItems:'center',flexShrink:0 }}><NativeStatusIcon name="chevron" size={16}/></span>
     </button>;
   };
@@ -908,12 +922,14 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
           <span style={{ display:'block',marginTop:6,fontSize:14,fontWeight:850,textDecoration:status==='done'?'line-through':'none',opacity:status==='done'?0.65:1 }}>{task.text}</span>
         </button>
         <button type="button" disabled={!canEdit} aria-expanded={peopleOpen} aria-label={`${peopleOpen?'Close':'Edit'} tagged travelers for task ${task.text}`} onClick={()=>toggleTaskPeople(peopleKey)} style={{ width:'100%',minHeight:42,padding:'6px 13px',border:'none',borderTop:'1px solid #D6BDAA',background:peopleOpen?'#DFCDBE':'#E9DED1',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,textAlign:'left',cursor:canEdit?'pointer':'default',opacity:1 }}>
-          <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} title={`${member.name||member.userId}: ${STATUS_WORD[memStOf(task,member.userId)]}`} style={{ width:29,height:29,marginLeft:index===0?0:-7,borderRadius:'50%',overflow:'hidden',border:'2.5px solid '+STATUS_META[memStOf(task,member.userId)].ring,background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}<span style={{ marginLeft:7,color:'#6F574C',fontSize:10.5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{peopleLabel}</span></span>
+          <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} title={`${member.name||member.userId}: ${STATUS_WORD[memStOf(task,member.userId)]}`} style={{ width:29,height:29,marginLeft:index===0?0:-7,borderRadius:'50%',boxSizing:'border-box',overflow:'hidden',border:RING_W+'px solid '+STATUS_META[memStOf(task,member.userId)].ring,background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={AVATAR_IMG}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}<span style={{ marginLeft:7,color:'#6F574C',fontSize:10.5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{peopleLabel}</span></span>
           {canEdit&&<span style={{ color:'#6E2118',transform:peopleOpen?'rotate(180deg)':'none',transition:'transform .15s',display:'grid',placeItems:'center',flexShrink:0 }}><NativeStatusIcon name="chevron" size={15}/></span>}
         </button>
         {peopleOpen&&canEdit&&<div role="region" aria-label={`Traveler tags for task ${task.text}`} style={{ padding:'9px 10px 10px',borderTop:'1px solid #D6BDAA',background:'#F8F0E7',display:'flex',flexWrap:'wrap',gap:6 }}>
           <button type="button" aria-pressed={everyoneSelected} onClick={()=>setDayTaskAssignees(day.id,task.id,[])} style={{ minHeight:31,padding:'4px 9px',border:`1px solid ${everyoneSelected?'#8B2A14':'#D5C5B8'}`,borderRadius:18,background:everyoneSelected?'#8B2A14':'#fff',color:everyoneSelected?'#fff':'#6F574C',fontSize:10.5,fontWeight:750,cursor:'pointer' }}>Everyone</button>
-          {members.map(member=>{ const selected=selectedIds.includes(member.userId); return <button key={member.userId} type="button" aria-pressed={selected} onClick={()=>toggleMember(member.userId)} style={{ minHeight:31,padding:'3px 8px 3px 4px',border:`1px solid ${selected?'#8B2A14':'#D5C5B8'}`,borderRadius:18,background:selected?'#F3D9CB':'#fff',color:'#5E463C',fontSize:10.5,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5 }}><span style={{ width:22,height:22,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:8,fontWeight:800 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>{(member.name||member.userId).split(' ')[0]}</button>;})}
+          {members.map(member=>{ const selected=selectedIds.includes(member.userId); return <button key={member.userId} type="button" aria-pressed={selected} onClick={()=>toggleMember(member.userId)} style={{ minHeight:31,padding:'3px 8px 3px 4px',border:`1px solid ${selected?'#8B2A14':'#D5C5B8'}`,borderRadius:18,background:selected?'#F3D9CB':'#fff',color:'#5E463C',fontSize:10.5,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5 }}><span style={{ width:22,height:22,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:8,fontWeight:800 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={AVATAR_IMG}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>{(member.name||member.userId).split(' ')[0]}</button>;})}
+          {/* Tasks had no delete path at all — matches the activity/span action styling. */}
+          <button type="button" onClick={()=>delDayTask(day.id,task.id,task.text)} aria-label={`Delete task ${task.text}`} style={{ ...nativeActionStyle(true),width:'100%',minHeight:38,marginTop:3 }}>♲ Delete task</button>
         </div>}
       </div>
     </article>;
@@ -1483,9 +1499,9 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
   const title = onClick ? `${name || userId}: ${STATUS_WORD[s]} — tap to update` : `${name || userId}: ${STATUS_WORD[s]}`;
   return (
     <span onClick={onClick} role={onClick ? 'button' : undefined} title={title} style={{ position:'relative', display:'inline-flex', width:size, height:size, flexShrink:0, cursor: onClick ? 'pointer' : 'default' }}>
-      <span style={{ width:size, height:size, borderRadius:'50%', boxSizing:'border-box', border:`2.5px solid ${ring}`, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
+      <span style={{ width:size, height:size, borderRadius:'50%', boxSizing:'border-box', border:`${RING_W}px solid ${ring}`, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
         {pic
-          ? <img src={pic} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+          ? <img src={pic} alt="" style={AVATAR_IMG} />
           : <span style={{ fontSize:Math.round(size*0.42), fontWeight:700, color:'#8A6A50' }}>{initial}</span>}
       </span>
       {s === 'done' && (
@@ -1568,7 +1584,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
 
   const LINE = '#3D0C02';
   const [livePopup, setLivePopup] = useState(null); // { kind:'maps'|'flight', from, to, mode, flightNo, name }
-  const [sentenceView, setSentenceView] = useState(false); // Markers ⇄ Sentences
+  const [sentenceView, setSentenceView] = useState(true); // "Description" toggle — status sentences above the markers, on by default
   // Travelers who count for an item: its assignees, or everyone when unassigned
   const assignedRoster = (item) => {
     const a = item && item.assignees;
@@ -1704,33 +1720,51 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
   const parseDay = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s||''); return m ? Date.UTC(+m[1], +m[2]-1, +m[3]) : null; };
   const baseMs = days.reduce((min, d) => { const t = parseDay(d.date); return (t != null && (min == null || t < min)) ? t : min; }, null);
 
+  // Equal-share pill for the status control row: `flex:1 1 0` splits the row evenly and
+  // `minWidth:0` lets each one shrink (with an ellipsis) rather than pushing the row wider.
+  const ctrlPill = { flex:'1 1 0', minWidth:0, height:38, boxSizing:'border-box', border:'1px solid #E2D8C8', borderRadius:19,
+    padding:'0 8px', fontSize:10.5, fontWeight:700, cursor:'pointer', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+    display:'inline-flex', alignItems:'center', justifyContent:'center', gap:4 };
+
   return (
     <div>
-      {/* Condensed status controls — three equal-height buttons in a row:
-          Notifications toggle · Share Location toggle · Share-status icon (right). */}
+      {/* Condensed status controls — four equal-height controls on ONE row, sized to fit
+          portrait: Notifications · Share Location · Description · Share-status icon (right).
+          Labels are short and the pills share the row equally so nothing wraps at 360px. */}
       {(shareUrl || update) && (
-        <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'nowrap', marginBottom:14 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap', marginBottom:14 }}>
           {update && (
             <button onClick={()=>update({ notifyEnabled: !trip.notifyEnabled })}
               title={trip.notifyEnabled ? 'Notifications on — followers who tapped “Notify me” get a push' : 'Notifications off — followers can still open the link to check'}
-              style={{ height:40, boxSizing:'border-box', border:'1px solid #E2D8C8', borderRadius:20, padding:'0 11px', fontSize:11.5, fontWeight:700, cursor:'pointer', flexShrink:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                background: trip.notifyEnabled ? '#3C8A3C' : '#F5EFE2', color: trip.notifyEnabled ? '#fff' : '#8B2A14', display:'inline-flex', alignItems:'center', gap:5 }}>
-              {trip.notifyEnabled ? <><span style={{ width:7,height:7,borderRadius:'50%',background:'#fff',display:'inline-block',flexShrink:0 }} /> Notifications</> : '🔔 Notifications'}
+              style={{ ...ctrlPill, background: trip.notifyEnabled ? '#3C8A3C' : '#F5EFE2', color: trip.notifyEnabled ? '#fff' : '#8B2A14' }}>
+              {trip.notifyEnabled
+                ? <><span style={{ width:6,height:6,borderRadius:'50%',background:'#fff',display:'inline-block',flexShrink:0 }} /> Notify</>
+                : '🔔 Notify'}
             </button>
           )}
           {onToggleShare && (
             <button onClick={onToggleShare} title="Broadcast my live location while travelling"
-              style={{ height:40, boxSizing:'border-box', border:'1px solid #E2D8C8', borderRadius:20, padding:'0 11px', fontSize:11.5, fontWeight:700, cursor:'pointer', flexShrink:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                background: sharingLoc ? '#3C8A3C' : '#F5EFE2', color: sharingLoc ? '#fff' : '#8B2A14', display:'inline-flex', alignItems:'center', gap:5 }}>
-              {sharingLoc ? <><span style={{ width:7,height:7,borderRadius:'50%',background:'#fff',display:'inline-block',flexShrink:0 }} /> Sharing</> : '📍 Share Location'}
+              style={{ ...ctrlPill, background: sharingLoc ? '#3C8A3C' : '#F5EFE2', color: sharingLoc ? '#fff' : '#8B2A14' }}>
+              {sharingLoc
+                ? <><span style={{ width:6,height:6,borderRadius:'50%',background:'#fff',display:'inline-block',flexShrink:0 }} /> Sharing</>
+                : '📍 Location'}
+            </button>
+          )}
+          {totalItems > 0 && (
+            <button onClick={()=>setSentenceView(v=>!v)} aria-pressed={sentenceView}
+              title={sentenceView ? 'Description on — a plain-English status line above each item' : 'Description off — photo markers only'}
+              style={{ ...ctrlPill, background: sentenceView ? '#3C8A3C' : '#F5EFE2', color: sentenceView ? '#fff' : '#8B2A14' }}>
+              {sentenceView
+                ? <><span style={{ width:6,height:6,borderRadius:'50%',background:'#fff',display:'inline-block',flexShrink:0 }} /> Description</>
+                : '💬 Description'}
             </button>
           )}
           {shareUrl && (
             <button onClick={copyShare} aria-label={copied ? 'Link copied' : 'Share status'} title={copied ? 'Link copied' : 'Share status link'}
-              style={{ marginLeft:'auto', width:40, height:40, boxSizing:'border-box', borderRadius:'50%', border:'none', background:'#6E1A10', color:'#F5ECD7', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              style={{ width:38, height:38, boxSizing:'border-box', borderRadius:'50%', border:'none', background:'#6E1A10', color:'#F5ECD7', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
               {copied
-                ? <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                : <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/></svg>}
+                ? <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                : <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/></svg>}
             </button>
           )}
         </div>
@@ -1738,8 +1772,8 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
 
       {/* Share-my-location moved to the Schedule event form (next to Travelers). */}
 
-      {/* Overall counts (aggregated across travelers) — small groups only */}
-      {!largeGroup && totalItems>0 && (
+      {/* Overall counts (aggregated across travelers) — every trip, whatever its size */}
+      {totalItems>0 && (
         <div style={{ fontSize:12.5, display:'flex', gap:12, flexWrap:'wrap', marginBottom: perTraveler?12:26 }}>
           <span style={{ color: STATUS_META.done.color, fontWeight:600 }}>{total.done} complete</span>
           <span style={{ color: STATUS_META.active.color, fontWeight:600 }}>{total.active} ongoing</span>
@@ -1764,8 +1798,8 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
               const label = tr.status === 'done' ? 'Complete' : tr.status === 'active' ? 'In progress' : 'Not started';
               return (
                 <div key={tr.userId} style={{ display:'grid', gridTemplateColumns:'38px minmax(0, 1fr) auto', gap:10, alignItems:'flex-start', padding:'11px 2px', borderBottom:'1px solid #E8DED2' }}>
-                  <span style={{ width:41, height:41, borderRadius:'50%', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#8A6A50', marginTop:1, border:'2.5px solid '+st.ring, boxSizing:'border-box' }}>
-                    {picOf(tr.userId) ? <img src={picOf(tr.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : ((tr.name||tr.userId||'?').trim().charAt(0)||'?').toUpperCase()}
+                  <span style={{ width:41, height:41, borderRadius:'50%', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#8A6A50', marginTop:1, border:RING_W+'px solid '+st.ring, boxSizing:'border-box' }}>
+                    {picOf(tr.userId) ? <img src={picOf(tr.userId)} alt="" style={AVATAR_IMG} /> : ((tr.name||tr.userId||'?').trim().charAt(0)||'?').toUpperCase()}
                   </span>
                   <span style={{ minWidth:0 }}>
                     <strong style={{ display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'#2E2320' }}>{tr.name || tr.userId}{session && tr.userId===session.userId ? ' (you)' : ''}</strong>
@@ -1791,34 +1825,10 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
           <p style={{ fontSize:11.5, color:'#8A7A6D', marginTop:12, lineHeight:1.5 }}>Switch to <strong>Events</strong> to update a status — tap an event, then a traveler's photo.</p>
         </section>
       )}
-      {/* Traveler legend — which initial is who (small groups) */}
-      {perTraveler && !largeGroup && (
-        <div style={{ display:'flex', gap:14, flexWrap:'wrap', alignItems:'center', marginBottom:24, paddingBottom:14, borderBottom:'1px solid #E2D8C8' }}>
-          {roster.map(m => (
-            <span key={m.userId} style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:12, color:'#6E1A10' }}>
-              <span style={{ width:24, height:24, borderRadius:'50%', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#8A6A50', flexShrink:0 }}>
-                {picOf(m.userId)
-                  ? <img src={picOf(m.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-                  : ((m.name||m.userId||'?').trim().charAt(0)||'?').toUpperCase()}
-              </span>
-              {m.name || m.userId}{session && m.userId===session.userId ? ' (you)' : ''}
-            </span>
-          ))}
-        </div>
-      )}
+      {/* The old flat traveller legend is gone — the header's traveller circles cover it,
+          and the "Description" control moved into the status control row above. */}
       {perTraveler && !largeGroup && update && canUpdateOthers && (
-        <p style={{ fontSize:11.5, color:'#8A7A6D', margin:'-14px 0 22px', lineHeight:1.45 }}>💡 Tap any traveler's photo on an item to update their status — handy when you're travelling together and someone's away from their phone.</p>
-      )}
-
-      {/* Toggle: show status sentences above the markers (small groups) */}
-      {perTraveler && !largeGroup && totalItems > 0 && (
-        <div style={{ display:'inline-flex', alignItems:'center', gap:8, marginBottom:18 }}>
-          <span style={{ fontSize:12.5, color:'#8B2A14', fontWeight:600 }}>Status sentences</span>
-          <button onClick={()=>setSentenceView(v=>!v)}
-            style={{ display:'inline-flex', alignItems:'center', gap:6, border:`1px solid ${sentenceView?'#6E1A10':'#C8B09A'}`, borderRadius:20, padding:'4px 12px', fontSize:12, fontWeight:700, cursor:'pointer', background: sentenceView?'#6E1A10':'transparent', color: sentenceView?'#fff':'#8B2A14' }}>
-            {sentenceView ? '✓ On' : 'Off'}
-          </button>
-        </div>
+        <p style={{ fontSize:11.5, color:'#8A7A6D', margin:'0 0 18px', lineHeight:1.45 }}>💡 Tap any traveler's photo on an item to update their status — handy when you're travelling together and someone's away from their phone.</p>
       )}
 
       {(!largeGroup || largeGroupView==='events') && days.length===0 && (
@@ -1874,8 +1884,9 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                     <div style={{ width:80, flexShrink:0, paddingBottom: last?0:28, fontSize:12, letterSpacing:'0.03em', color:'#4A3B34', textTransform:'uppercase', lineHeight:1.35 }}>{it.time}</div>
                     <div style={{ flex:1, minWidth:0, paddingBottom: last?0:28, fontSize:13.5, color:'#2E2320', lineHeight:1.4 }}>
                       <div>{it.name}</div>
-                      {/* Sentences (one coloured line per traveler) shown above the markers when toggled on */}
-                      {!largeGroup && sentenceView && it.marks && (
+                      {/* "Description": one coloured line per status group, above the markers.
+                          Shown at every group size — grouped by status it stays 1–3 lines. */}
+                      {sentenceView && it.marks && (
                         <div style={{ marginTop:5 }}>
                           {(() => {
                             // display name = first name, unless two travelers on this item share it
@@ -1897,9 +1908,9 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                         </div>
                       )}
                       {it.marks
-                        ? (largeGroup
-                          ? (() => {
-                              // Compact summary: segmented bar + avatar cluster + counts. "Update" opens the full traveler list popup.
+                        ? ((() => {
+                              // One layout for every trip size — segmented bar + avatar cluster + counts.
+                              // (Trips under 6 travellers used to get a separate, older-looking marker row.)
                               const counts = it.marks.reduce((a, m) => { a[m.status]++; return a; }, { todo:0, active:0, done:0 });
                               const markTotal = Math.max(1, it.marks.length);
                               const canEdit = update && (canUpdateOthers || (session && it.marks.some(mk => mk.userId === session.userId)));
@@ -1911,20 +1922,29 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                                     {counts.todo>0 && <span style={{ width:`${counts.todo/markTotal*100}%`, background:STATUS_META.todo.ring }} />}
                                   </div>
                                   {/* Always six circles: up to 6 traveller photos, or 5 + a "+" when there are more.
-                                      Tapping any circle (captains) opens the traveller status popup. */}
+                                      When every traveller has their own circle (≤6) tapping one cycles that
+                                      person's status directly; past 6 the circles are a partial view, so a tap
+                                      opens the full traveller popup instead. */}
                                   <div style={{ display:'flex', alignItems:'center', marginBottom:7 }}>
                                     {(() => {
                                       const AV = 43; // +20% on the previous 36px
                                       const over = it.marks.length > 6;
                                       const shown = over ? it.marks.slice(0, 5) : it.marks.slice(0, 6);
                                       const openModal = () => setStatusModal({ ref: it.ref, title: it.titleText, members: it.marks.map(m => ({ userId:m.userId, name:m.name })) });
+                                      const tapOf = (mark) => {
+                                        if (!update) return undefined;
+                                        if (over) return canEdit ? openModal : undefined;
+                                        return (canUpdateOthers || (session && mark.userId === session.userId))
+                                          ? () => cycleMemberStatus(it.ref, mark.userId, it.titleText, mark.name)
+                                          : undefined;
+                                      };
                                       return (<>
-                                        {shown.map((mark, mi) => (
-                                          <button key={mark.userId} type="button" disabled={!canEdit} onClick={canEdit ? openModal : undefined} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}`} title={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}`}
-                                            style={{ width:AV, height:AV, marginLeft:mi===0?0:-10, borderRadius:'50%', border:'2.5px solid '+STATUS_META[mark.status].ring, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#7B675A', padding:0, cursor: canEdit?'pointer':'default', zIndex:7-mi }}>
-                                            {picOf(mark.userId) ? <img src={picOf(mark.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : ((mark.name||mark.userId||'?').trim().charAt(0)||'?').toUpperCase()}
+                                        {shown.map((mark, mi) => { const tap = tapOf(mark); return (
+                                          <button key={mark.userId} type="button" disabled={!tap} onClick={tap} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`} title={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`}
+                                            style={{ width:AV, height:AV, marginLeft:mi===0?0:-10, borderRadius:'50%', boxSizing:'border-box', border:RING_W+'px solid '+STATUS_META[mark.status].ring, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#7B675A', padding:0, cursor: tap?'pointer':'default', zIndex:7-mi }}>
+                                            {picOf(mark.userId) ? <img src={picOf(mark.userId)} alt="" style={AVATAR_IMG} /> : ((mark.name||mark.userId||'?').trim().charAt(0)||'?').toUpperCase()}
                                           </button>
-                                        ))}
+                                        ); })}
                                         {over && <button type="button" onClick={openModal} aria-label="Show all travellers" title={`+${it.marks.length-5} more — tap to see all`}
                                           style={{ width:AV, height:AV, marginLeft:-10, borderRadius:'50%', border:'none', background:'#6E1A10', color:'#fff', fontSize:21, fontWeight:800, lineHeight:1, cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', zIndex:0 }}>+</button>}
                                       </>);
@@ -1934,14 +1954,11 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                                     <span style={{ color:STATUS_META.done.color }}>{counts.done} complete</span>
                                     <span style={{ color:STATUS_META.active.color }}>{counts.active} ongoing</span>
                                     <span style={{ color:STATUS_META.todo.color }}>{counts.todo} pending</span>
-                                    {!canEdit && <button type="button" onClick={()=>setLargeGroupView('travelers')} style={{ border:'none', background:'transparent', color:'#8B2A14', padding:0, fontSize:10.5, fontWeight:700, textDecoration:'underline', cursor:'pointer' }}>View list</button>}
+                                    {largeGroup && !canEdit && <button type="button" onClick={()=>setLargeGroupView('travelers')} style={{ border:'none', background:'transparent', color:'#8B2A14', padding:0, fontSize:10.5, fontWeight:700, textDecoration:'underline', cursor:'pointer' }}>View list</button>}
                                   </div>
                                 </div>
                               );
-                            })()
-                          : <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
-                              {it.marks.map(mk => <MemberMark key={mk.userId} name={mk.name} userId={mk.userId} status={mk.status} pic={picOf(mk.userId)} size={42} onClick={update && (canUpdateOthers || (session && mk.userId === session.userId)) ? ()=>cycleMemberStatus(it.ref, mk.userId, it.titleText, mk.name) : undefined} />)}
-                            </div>)
+                            })())
                         : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
                       {it.travel && it.anyActive && (
                         <div style={{ marginTop:8 }}>
@@ -2472,7 +2489,7 @@ function ViewerHome({ session, profile, trips, onOpenAccount }) {
           </div>
           <button onClick={onOpenAccount} title={`Signed in as ${(session && session.name) || ''}`} aria-label="Account"
             style={{ width:42, height:42, borderRadius:'50%', overflow:'hidden', border:'2px solid rgba(245,236,215,0.5)', background:'rgba(245,236,215,0.12)', cursor:'pointer', padding:0, flexShrink:0, color:'#F5ECD7', fontSize:17, fontWeight:800 }}>
-            {profile && profile.pic ? <img src={profile.pic} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initial}
+            {profile && profile.pic ? <img src={profile.pic} alt="" style={AVATAR_IMG} /> : initial}
           </button>
         </div>
       </div>
@@ -2585,7 +2602,7 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
   const avatarBtn = (
     <button onClick={onOpenAccount} title={`Signed in as ${(session && session.name) || ''}`} aria-label="Account"
       style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(92,26,26,0.35)', background: '#EFE3CC', cursor: 'pointer', padding: 0, flexShrink: 0, color: '#8B5A3C', fontSize: 16, fontWeight: 800 }}>
-      {profile && profile.pic ? <img src={profile.pic} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
+      {profile && profile.pic ? <img src={profile.pic} alt="" style={AVATAR_IMG} /> : initial}
     </button>
   );
 
@@ -2620,7 +2637,7 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
           <div style={{ flex: 1 }} />
           <button onClick={onOpenAccount} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 8px', border: 'none', borderRadius: 12, cursor: 'pointer', background: 'rgba(245,236,215,0.06)', color: '#F5ECD7', textAlign: 'left' }}>
             <span style={{ width: 34, height: 34, borderRadius: '50%', overflow: 'hidden', background: 'rgba(245,236,215,0.15)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, flexShrink: 0 }}>
-              {profile && profile.pic ? <img src={profile.pic} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
+              {profile && profile.pic ? <img src={profile.pic} alt="" style={AVATAR_IMG} /> : initial}
             </span>
             <span style={{ minWidth: 0 }}>
               <span style={{ display: 'block', fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(session && session.name) || ''}</span>
@@ -2652,7 +2669,7 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
               )}
               <button onClick={onOpenAccount} aria-label="Account"
                 style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(245,236,215,0.5)', background: 'rgba(245,236,215,0.12)', cursor: 'pointer', padding: 0, flexShrink: 0, color: '#F5ECD7', fontSize: 14, fontWeight: 800 }}>
-                {profile && profile.pic ? <img src={profile.pic} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
+                {profile && profile.pic ? <img src={profile.pic} alt="" style={AVATAR_IMG} /> : initial}
               </button>
             </div>
           </div>
@@ -3494,9 +3511,6 @@ function MainApp() {
             <button onClick={()=>setShowSearch(true)} aria-label="Search" title="Search" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
               <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
             </button>
-            <button onClick={()=>{ if(trip) setActiveTab('Documents'); }} aria-label="Documents" title="Documents" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
-            </button>
             <button onClick={()=>{ if(trip) setShowPacking(true); }} aria-label="Packing" title="Packing list" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
               <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M17 6h-2V3a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3H7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm-6-2h2v2h-2V4zm2 15h-2v-9h2v9z"/></svg>
             </button>
@@ -3556,7 +3570,7 @@ function MainApp() {
               style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s",overflow:"hidden" }}
             >
               {profile && profile.pic
-                ? <img src={profile.pic} alt="" style={{ width:"100%",height:"100%",objectFit:"cover" }} />
+                ? <img src={profile.pic} alt="" style={AVATAR_IMG} />
                 : session
                   ? <span style={{ fontSize:15, fontWeight:800, letterSpacing:0 }}>{((session.name||session.userId||'?').trim().charAt(0)||'?').toUpperCase()}</span>
                   : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>}
@@ -3581,7 +3595,7 @@ function MainApp() {
                   <button key={m.userId} type="button" aria-pressed={on} title={`${on?'Remove':'Add'} ${(m.name||m.userId)}${m.userId===me?' (you)':''}`}
                     onClick={()=>toggleFocus(m.userId)}
                     style={{ width:38, height:38, marginLeft:i===0?0:-8, borderRadius:"50%", overflow:"hidden", border:on?"2px solid #6E1A10":"2px solid #F0EBE0", boxShadow:on?"0 0 0 2px #6E1A10":"0 0 0 1px #CFC2B5", background:"#A88977", color:"#fff", display:"grid", placeItems:"center", fontSize:13, fontWeight:800, cursor:"pointer", padding:0, transform:on?"translateY(-2px)":"none", zIndex:on?30:20-i, flexShrink:0 }}>
-                    {hdrPicOf(m.userId) ? <img src={hdrPicOf(m.userId)} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/> : ((m.name||m.userId||'?')[0]||'?').toUpperCase()}
+                    {hdrPicOf(m.userId) ? <img src={hdrPicOf(m.userId)} alt="" style={AVATAR_IMG}/> : ((m.name||m.userId||'?')[0]||'?').toUpperCase()}
                   </button>
                 ); };
                 return (<>
@@ -3681,7 +3695,7 @@ function MainApp() {
             <button type="button" onClick={()=>{ setFocusTravellers([]); }} style={{ textAlign:'left', border:'1px solid #E0D2C5', borderRadius:10, padding:'10px 12px', background: focusTravellers.length===0?'#F1E7DD':'#fff', color:'#6E1A10', fontSize:13, fontWeight:700, cursor:'pointer' }}>Everyone</button>
             {(trip.members||[]).map(m => { const on = focusTravellers.includes(m.userId); return (
               <button key={m.userId} type="button" onClick={()=>toggleFocus(m.userId)} style={{ display:'flex', alignItems:'center', gap:10, textAlign:'left', border:'1px solid '+(on?'#6E1A10':'#E0D2C5'), borderRadius:10, padding:'8px 12px', background: on?'#F1E7DD':'#fff', color:'#5E463C', fontSize:13, fontWeight:700, cursor:'pointer' }}>
-                <span style={{ width:28,height:28,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>{hdrPicOf(m.userId)?<img src={hdrPicOf(m.userId)} alt="" style={{ width:'100%',height:'100%',objectFit:'cover' }}/>:((m.name||m.userId||'?')[0]||'?').toUpperCase()}</span>
+                <span style={{ width:28,height:28,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>{hdrPicOf(m.userId)?<img src={hdrPicOf(m.userId)} alt="" style={AVATAR_IMG}/>:((m.name||m.userId||'?')[0]||'?').toUpperCase()}</span>
                 <span style={{ flex:1, minWidth:0 }}>{m.name||m.userId}{session && m.userId===session.userId?' (you)':''}</span>
                 <span style={{ width:20, height:20, borderRadius:5, border:'2px solid '+(on?'#3C8A3C':'#CFC2B5'), background:on?'#3C8A3C':'#fff', color:'#fff', display:'grid', placeItems:'center', fontSize:13, flexShrink:0 }}>{on?'✓':''}</span>
               </button>
@@ -3745,7 +3759,7 @@ function ProfileModal({ initial, onSave, onClose, session }) {
         <label style={{ cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center' }}>
           <div style={{ width:88, height:88, borderRadius:'50%', overflow:'hidden', background:'#E8E2D4', display:'flex', alignItems:'center', justifyContent:'center', border:'2px solid #D4BFB0' }}>
             {form.pic
-              ? <img src={form.pic} alt="Profile" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+              ? <img src={form.pic} alt="Profile" style={AVATAR_IMG} />
               : <span style={{ fontSize:34, fontWeight:600, color:'#B7A08F' }}>{(form.name||'?').trim().charAt(0).toUpperCase() || '?'}</span>}
           </div>
           <input type="file" accept="image/*" onChange={pickPic} style={{ display:'none' }} />
@@ -3790,7 +3804,7 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom:18 }}>
           <div style={{ width:80, height:80, borderRadius:'50%', overflow:'hidden', background:'#E8E2D4', display:'flex', alignItems:'center', justifyContent:'center', border:'2px solid #D4BFB0', marginBottom:10 }}>
             {profile && profile.pic
-              ? <img src={profile.pic} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+              ? <img src={profile.pic} alt="" style={AVATAR_IMG} />
               : <span style={{ fontSize:32, fontWeight:700, color:'#B7A08F' }}>{initial}</span>}
           </div>
           <div style={{ fontSize:18, fontWeight:700, color:'#6E1A10' }}>{session.name}</div>
@@ -3858,7 +3872,7 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom:14 }}>
           <label style={{ cursor:'pointer', textAlign:'center' }}>
             <div style={{ width:80, height:80, borderRadius:'50%', overflow:'hidden', background:'#E8E2D4', border:'2px dashed #C8B09A', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 6px' }}>
-              {picPreview ? <img src={picPreview} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <span style={{ fontSize:26, color:'#B7A08F' }}>＋</span>}
+              {picPreview ? <img src={picPreview} alt="" style={AVATAR_IMG} /> : <span style={{ fontSize:26, color:'#B7A08F' }}>＋</span>}
             </div>
             <span style={{ fontSize:12, color:'#8B5A3C', fontWeight:700 }}>{picPreview ? 'Change picture' : 'Add profile picture'}</span>
             <input type="file" accept="image/*" onChange={pickPic} style={{ display:'none' }} />
@@ -4096,7 +4110,7 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
   const focusName = focus ? ((allMembers.find(m => m.userId === focus) || {}).name || focus) : null;
   const assignedIds = (item) => (item && item.assignees && item.assignees.length) ? item.assignees : allMembers.map(m => m.userId);
   const showItem = (item) => !focus || assignedIds(item).includes(focus);
-  const avatar = (m, i, status) => <span key={m.userId} title={`${m.name||m.userId}${status?': '+STATUS_WORD[status]:''}`} style={{ width:26, height:26, marginLeft:i===0?0:-7, borderRadius:'50%', overflow:'hidden', border:'2.5px solid '+(status?STATUS_META[status].ring:'#F0EBE0'), background:'#A88977', color:'#fff', display:'grid', placeItems:'center', fontSize:10, fontWeight:800, flexShrink:0, boxSizing:'border-box' }}>{picOf(m.userId) ? <img src={picOf(m.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : ((m.name||m.userId||'?')[0]||'?').toUpperCase()}</span>;
+  const avatar = (m, i, status) => <span key={m.userId} title={`${m.name||m.userId}${status?': '+STATUS_WORD[status]:''}`} style={{ width:26, height:26, marginLeft:i===0?0:-7, borderRadius:'50%', overflow:'hidden', border:RING_W+'px solid '+(status?STATUS_META[status].ring:'#F0EBE0'), background:'#A88977', color:'#fff', display:'grid', placeItems:'center', fontSize:10, fontWeight:800, flexShrink:0, boxSizing:'border-box' }}>{picOf(m.userId) ? <img src={picOf(m.userId)} alt="" style={AVATAR_IMG}/> : ((m.name||m.userId||'?')[0]||'?').toUpperCase()}</span>;
   // statusFn(uid) supplies each traveller's status on this item, coloured as a ring.
   const assignedAvatars = (item, statusFn) => {
     const people = assignedIds(item).map(id => allMembers.find(m => m.userId === id)).filter(Boolean);
@@ -4131,7 +4145,7 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
       {matches.length > 0 && allMembers.length > 0 && (
         <div style={{ maxWidth:680, margin:'0 auto', padding:'10px 16px 0', display:'flex', alignItems:'center', gap:8 }}>
           <div style={{ display:'flex', alignItems:'center' }}>
-            {orderedMembers.slice(0,6).map((m,i) => { const on=focus===m.userId; return <button key={m.userId} type="button" aria-pressed={on} title={`Show only ${m.name||m.userId}'s plan`} onClick={()=>setFocus(on?null:m.userId)} style={{ width:41, height:41, marginLeft:i===0?0:-9, borderRadius:'50%', overflow:'hidden', border:on?'2px solid #6E1A10':'2px solid #F0EBE0', boxShadow:on?'0 0 0 2px #6E1A10':'0 0 0 1px #CFC2B5', background:'#A88977', color:'#fff', display:'grid', placeItems:'center', fontSize:14, fontWeight:800, cursor:'pointer', padding:0, transform:on?'translateY(-1px)':'none', zIndex:on?2:1 }}>{picOf(m.userId) ? <img src={picOf(m.userId)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : ((m.name||m.userId||'?')[0]||'?').toUpperCase()}</button>; })}
+            {orderedMembers.slice(0,6).map((m,i) => { const on=focus===m.userId; return <button key={m.userId} type="button" aria-pressed={on} title={`Show only ${m.name||m.userId}'s plan`} onClick={()=>setFocus(on?null:m.userId)} style={{ width:41, height:41, marginLeft:i===0?0:-9, borderRadius:'50%', overflow:'hidden', border:on?'2px solid #6E1A10':'2px solid #F0EBE0', boxShadow:on?'0 0 0 2px #6E1A10':'0 0 0 1px #CFC2B5', background:'#A88977', color:'#fff', display:'grid', placeItems:'center', fontSize:14, fontWeight:800, cursor:'pointer', padding:0, transform:on?'translateY(-1px)':'none', zIndex:on?2:1 }}>{picOf(m.userId) ? <img src={picOf(m.userId)} alt="" style={AVATAR_IMG}/> : ((m.name||m.userId||'?')[0]||'?').toUpperCase()}</button>; })}
             {orderedMembers.length>6 && <button type="button" onClick={()=>setShowFocusPicker(true)} title="More travellers" style={{ marginLeft:7, width:38, height:38, borderRadius:'50%', border:'1px solid #CFC2B5', background:'#fff', color:'#6E1A10', fontSize:18, fontWeight:800, cursor:'pointer' }}>+</button>}
           </div>
           {focus && <button type="button" onClick={()=>setFocus(null)} style={{ marginLeft:'auto', border:'none', background:'transparent', color:'#8B2A14', fontSize:11.5, fontWeight:800, cursor:'pointer' }}>Show all ✕</button>}
@@ -4380,7 +4394,7 @@ function DocumentsTab({ trip, update, session, canEdit=true, focus=[] }) {
     ? <span style={{ fontSize:10, color:'#8A7A6D' }}>Everyone</span>
     : <span style={{ display:'inline-flex', alignItems:'center', gap:4, flexWrap:'wrap' }}>{travellers.slice(0,4).map(id => (
         <span key={id} title={nameOf(id)} style={{ display:'inline-flex', alignItems:'center', gap:4, background:'#EFE3CC', borderRadius:12, padding:'1px 7px 1px 2px', fontSize:10, color:'#6E1A10', fontWeight:700 }}>
-          <span style={{ width:16, height:16, borderRadius:'50%', overflow:'hidden', background:'#A88977', color:'#fff', display:'grid', placeItems:'center', fontSize:8, fontWeight:800 }}>{picOf(id) ? <img src={picOf(id)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : ((nameOf(id)||'?')[0]||'?').toUpperCase()}</span>
+          <span style={{ width:16, height:16, borderRadius:'50%', overflow:'hidden', background:'#A88977', color:'#fff', display:'grid', placeItems:'center', fontSize:8, fontWeight:800 }}>{picOf(id) ? <img src={picOf(id)} alt="" style={AVATAR_IMG}/> : ((nameOf(id)||'?')[0]||'?').toUpperCase()}</span>
           {(nameOf(id)||id).split(' ')[0]}
         </span>
       ))}{travellers.length>4 && <span style={{ fontSize:10, color:'#8A7A6D' }}>+{travellers.length-4}</span>}</span>;
