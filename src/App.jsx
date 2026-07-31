@@ -156,17 +156,82 @@ const gmapsDirUrl = (from, to) =>
 // i.e. real turn-by-turn navigation from wherever the traveler actually is.
 const gmapsNavUrl = (to) =>
   'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(to || '') + '&travelmode=driving';
-// FlightStats flight tracker. Its URLs want the carrier and the number as separate
-// path segments (EK 507 → /flight-tracker/EK/507), so split the trailing digits off
-// the ident; anything we can't split falls back to their search page.
-const flightTrackUrl = (flightNo) => {
-  const clean = (flightNo || '').replace(/[\s-]+/g, '').toUpperCase();
-  const m = /^([A-Z0-9]{2,3}?)(\d{1,4})$/.exec(clean);
-  // "LH 0400" → LH/400: FlightStats indexes the bare number, not the padded one.
-  return m
-    ? `https://www.flightstats.com/v2/flight-tracker/${m[1]}/${String(parseInt(m[2], 10))}`
-    : 'https://www.flightstats.com/v2/flight-tracker/search';
+// ── Live flight status ──────────────────────────────────────────────────────────
+// PHASE 1: the status below is MOCKED. There is no public Google flight-status API —
+// Google licenses that data (their own panel credits Cirium), so a real build needs a
+// commercial feed (AeroDataBox / AviationStack / FlightAware AeroAPI) with the key held
+// in a Netlify function and the response cached per flight+date.
+//
+// `fetchFlightStatus` is the ONLY thing that changes when that happens: swap the body
+// for the function call and keep the returned shape identical. Everything downstream —
+// the card, the badges, the struck-through times — already works off this shape.
+
+const FLIGHT_PHASE = {
+  scheduled: { label:'SCHEDULED',     tone:'#6E655B' },
+  ontime:    { label:'ON TIME',       tone:'#2F7A2F' },
+  delayed:   { label:'DEPARTING LATE', tone:'#B54030' },
+  airborne:  { label:'IN THE AIR',    tone:'#8A6500' },
+  landed:    { label:'LANDED',        tone:'#2F7A2F' },
 };
+
+// "Delhi (DEL)" → { code:'DEL', city:'Delhi' } · "Mumbai" → { code:'', city:'Mumbai' }
+const parseAirport = (text) => {
+  const raw = String(text || '').trim();
+  const m = /^(.*?)[\s(]*\(?\b([A-Z]{3})\b\)?\s*$/.exec(raw);
+  if (m && m[2] && m[1].trim()) return { code:m[2].toUpperCase(), city:m[1].replace(/[([]\s*$/, '').trim() };
+  if (/^[A-Za-z]{3}$/.test(raw)) return { code:raw.toUpperCase(), city:'' };
+  return { code:'', city:raw };
+};
+const hhmmToMin = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t||'')); return m ? (+m[1])*60 + (+m[2]) : null; };
+const minToHhmm = (n) => { const v = ((n % 1440) + 1440) % 1440; return String(Math.floor(v/60)).padStart(2,'0') + ':' + String(v%60).padStart(2,'0'); };
+const fmtDur = (min) => min == null ? '' : `${Math.floor(min/60)}h ${min%60}m`;
+// "16:00" → "4:00 PM" (airport boards read 12-hour here); passes anything unparseable through.
+const fmtTime12 = (t) => {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(t||''));
+  if (!m) return String(t || '');
+  const h = +m[1], ap = h < 12 ? 'AM' : 'PM';
+  return `${((h + 11) % 12) + 1}:${m[2]} ${ap}`;
+};
+const fmtAgo = (ms) => { const s = Math.max(0, Math.round((Date.now()-ms)/1000));
+  if (s < 60) return 'just now'; const m = Math.round(s/60);
+  return m < 60 ? `${m}m ago` : `${Math.floor(m/60)}h ${m%60}m ago`; };
+// Local wall-clock minutes since midnight, for deciding whether a leg has already flown.
+const nowMinutesLocal = () => { const d = new Date(); return d.getHours()*60 + d.getMinutes(); };
+
+// MOCK. Deterministic so a given flight always looks the same: odd flight numbers run
+// late, even ones are on time, and a leg whose scheduled arrival has passed shows as
+// landed. Replace this body with the provider call — do not change the return shape.
+async function fetchFlightStatus(travel, dayISO) {
+  const depSched = hhmmToMin(travel.startTime);
+  const arrSched = hhmmToMin(travel.endTime);
+  const digits = parseInt(String(travel.flightNo || '').replace(/\D/g, ''), 10);
+  const overnight = depSched != null && arrSched != null && arrSched < depSched;
+  const durationMin = (depSched != null && arrSched != null)
+    ? (overnight ? arrSched + 1440 - depSched : arrSched - depSched) : null;
+
+  const today = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; })();
+  const isToday = (dayISO || '').slice(0,10) === today;
+  const flownAlready = isToday && arrSched != null && !overnight && nowMinutesLocal() > arrSched;
+
+  let phase = 'scheduled';
+  if (flownAlready) phase = 'landed';
+  else if (Number.isFinite(digits)) phase = (digits % 2 === 1) ? 'delayed' : 'ontime';
+
+  const delayMin = phase === 'delayed' ? 45 : 0;
+  const dep = parseAirport(travel.from), arr = parseAirport(travel.to);
+
+  return {
+    mock: true,
+    phase,
+    note: phase === 'delayed' ? 'Incoming aircraft is running late, which may affect this flight.' : '',
+    durationMin,
+    dep: { ...dep, scheduled: travel.startTime || '', estimated: depSched != null && delayMin ? minToHhmm(depSched + delayMin) : '', terminal:'', gate:'' },
+    arr: { ...arr, scheduled: travel.endTime || '', estimated: arrSched != null && delayMin ? minToHhmm(arrSched + delayMin) : '', terminal:'', gate:'' },
+    updatedAt: Date.now(),
+    source: 'Sample data',
+  };
+}
 
 // ── Reading a route back out of a Google Maps link ──────────────────────────────
 // A page can't read another tab's URL, so the round-trip is: open Maps → build the
@@ -1661,6 +1726,107 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
 }
 
 // ---- Status Tab ----  (per-traveler rollup of event/activity/span statuses per day)
+// Inline flight tracker for a By Air leg — replaces the old "Show Live" pop-up so the
+// traveller never leaves the Status tab. Collapsed it is one summary line; the chevron
+// opens the route diagram and the estimated-vs-scheduled detail.
+function FlightTrackCard({ travel, dayISO }) {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState(null);
+  const { flightNo, from, to, startTime, endTime } = travel;
+  useEffect(() => {
+    let dead = false;
+    fetchFlightStatus({ flightNo, from, to, startTime, endTime }, dayISO)
+      .then(d => { if (!dead) setData(d); })
+      .catch(() => { if (!dead) setData(null); });
+    return () => { dead = true; };
+  }, [flightNo, from, to, startTime, endTime, dayISO]);
+
+  const phase = FLIGHT_PHASE[(data && data.phase) || 'scheduled'];
+  const dep = (data && data.dep) || parseAirport(from);
+  const arr = (data && data.arr) || parseAirport(to);
+  const delayed = data && data.phase === 'delayed';
+  // Where to sit the aircraft glyph on the line.
+  const progress = !data ? 0 : data.phase === 'landed' ? 1 : data.phase === 'airborne' ? 0.5 : 0;
+
+  const endLabel = (a) => a.code || (a.city || '—').slice(0, 12);
+  const timeCell = (side, label) => (
+    <div style={{ flex:1, minWidth:0 }}>
+      <div style={{ fontSize:9.5, letterSpacing:'0.06em', color:'#8A7A6D', textTransform:'uppercase' }}>{label}</div>
+      <div style={{ fontSize:15, fontWeight:800, color: side.estimated ? '#B54030' : '#2E2320', marginTop:2 }}>
+        {fmtTime12(side.estimated || side.scheduled) || '—'}
+      </div>
+      {side.estimated && side.scheduled && (
+        <div style={{ fontSize:11, color:'#9A8478', textDecoration:'line-through' }}>{fmtTime12(side.scheduled)}</div>
+      )}
+      {(side.terminal || side.gate) && (
+        <div style={{ fontSize:10.5, color:'#7A685F', marginTop:3 }}>
+          {side.terminal ? `Terminal ${side.terminal}` : ''}{side.terminal && side.gate ? ' · ' : ''}{side.gate ? `Gate ${side.gate}` : ''}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div data-no-tab-swipe style={{ marginTop:8, border:'1px solid #E2D8C8', borderRadius:12, background:'#FFFDF8', overflow:'hidden' }}>
+      <button type="button" onClick={()=>setOpen(o=>!o)} aria-expanded={open}
+        aria-label={`${flightNo || 'Flight'} — ${phase.label}. ${open ? 'Hide' : 'Show'} flight details`}
+        style={{ width:'100%', border:'none', background:'transparent', padding:'9px 10px', textAlign:'left', cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}>
+        <span style={{ flex:1, minWidth:0 }}>
+          <span style={{ display:'block', fontSize:12.5, fontWeight:800, color:'#2E2320', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            {(flightNo || '').toUpperCase() || 'Flight'}
+            {(dep.code || arr.code) ? <span style={{ fontWeight:600, color:'#7A685F' }}>{`  ${endLabel(dep)} → ${endLabel(arr)}`}</span> : null}
+          </span>
+          <span style={{ display:'inline-block', marginTop:4, fontSize:9.5, fontWeight:800, letterSpacing:'0.06em', color:phase.tone, border:`1px solid ${phase.tone}`, borderRadius:5, padding:'2px 6px' }}>
+            {phase.label}
+          </span>
+        </span>
+        <span aria-hidden="true" style={{ flexShrink:0, color:'#8A7A6D', transform:open?'rotate(180deg)':'none', transition:'transform .15s', display:'grid', placeItems:'center' }}>
+          <NativeStatusIcon name="chevron" size={16} />
+        </span>
+      </button>
+
+      {open && (
+        <div style={{ borderTop:'1px solid #EDE3D6', padding:'10px', background:'#FFFBF3' }}>
+          {data && data.note && (
+            <div style={{ fontSize:11, lineHeight:1.45, color:'#8A5A2A', background:'#FFF3D6', border:'1px solid #F0DFB6', borderRadius:8, padding:'7px 9px', marginBottom:10 }}>{data.note}</div>
+          )}
+
+          {/* Route line: origin — aircraft on a progress track — destination */}
+          <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+            <div style={{ fontSize:19, fontWeight:800, color:'#2E2320', flexShrink:0 }}>{endLabel(dep)}</div>
+            <div style={{ flex:1, minWidth:24, position:'relative', height:18 }}>
+              {data && data.durationMin != null && (
+                <div style={{ position:'absolute', top:-3, left:0, right:0, textAlign:'center', fontSize:10, color:'#8A7A6D' }}>{fmtDur(data.durationMin)}</div>
+              )}
+              <div style={{ position:'absolute', top:13, left:0, right:0, height:2, background:'#DCCFC0', borderRadius:2 }} />
+              <div style={{ position:'absolute', top:13, left:0, width:`${progress*100}%`, height:2, background:'#8B2A14', borderRadius:2 }} />
+              <span aria-hidden="true" style={{ position:'absolute', top:5, left:`calc(${progress*100}% - 6px)`, fontSize:12, color:'#8B2A14', transition:'left .3s' }}>✈</span>
+            </div>
+            <div style={{ fontSize:19, fontWeight:800, color:'#2E2320', flexShrink:0 }}>{endLabel(arr)}</div>
+          </div>
+          {(dep.city || arr.city) && (
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:10.5, color:'#8A7A6D', marginTop:2 }}>
+              <span>{dep.city}</span><span>{arr.city}</span>
+            </div>
+          )}
+
+          <div style={{ display:'flex', gap:10, marginTop:11, paddingTop:10, borderTop:'1px solid #EDE3D6' }}>
+            {timeCell(dep, 'Departure')}
+            {timeCell(arr, 'Arrival')}
+          </div>
+
+          <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginTop:10, fontSize:10, color:'#A2917F' }}>
+            <span>{data ? `Updated ${fmtAgo(data.updatedAt)}` : 'Loading…'}</span>
+            {data && <span>· Source: {data.source}</span>}
+            {data && data.mock && <span style={{ color:'#B07A2A', fontWeight:700 }}>· sample only</span>}
+          </div>
+          {delayed && <div style={{ fontSize:10, color:'#A2917F', marginTop:3 }}>Confirm on an airport monitor — status may change.</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focusUserId=null, focusIds=[], sharingLoc=false, onToggleShare=null, shareToken=null }) {
   const days = trip.days || [];
   // focusUserId (a traveler's share link) is one traveller; focusIds (header string)
@@ -1832,7 +1998,9 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
       const statuses = perTraveler ? sr.map(m => spanMemStOf(s, m.userId, day.date)) : [spanStOf(s, day.date)];
       const isTravel = meta.kind === 'travel';
       const hasLink = isTravel && (s.mode === 'By Air' ? !!s.flightNo : (s.from || s.to));
-      const extra = { ref:{ kind:'span', spanId:s.id, dayISO:day.date }, titleText: s.title || '(untitled)', ...(hasLink ? { travel: { mode:s.mode, from:s.from, to:s.to, flightNo:s.flightNo, name:s.title || 'Travel' } } : {}) };
+      // Scheduled times ride along so the flight card can render before (or without) any live lookup.
+      const extra = { ref:{ kind:'span', spanId:s.id, dayISO:day.date }, titleText: s.title || '(untitled)', ...(hasLink ? { travel: { mode:s.mode, from:s.from, to:s.to, flightNo:s.flightNo, name:s.title || 'Travel',
+        startDate:s.startDate, startTime:s.startTime, endDate:s.endDate, endTime:s.endTime } } : {}) };
       push(s.id+'_'+day.id, spanSegLabel(s, day.date), `${spanIcon(s)} ${s.title || '(untitled)'}`.trim(), statuses, extra, sr);
     };
     const pushEvent = (ev) => {
@@ -2106,17 +2274,18 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                               );
                             })())
                         : <span style={{ color: STATUS_META[it.legacy].color, fontWeight:600 }}>{STATUS_WORD[it.legacy]}</span>}
-                      {it.travel && it.anyActive && (
+                      {/* By Air: the inline tracker replaces the old pop-up, and shows whether
+                          or not anyone has started the leg. By Road keeps its map pop-up until
+                          the car version of this card is built. */}
+                      {it.travel && it.travel.mode === 'By Air' && (
+                        <FlightTrackCard travel={it.travel} dayISO={(it.ref && it.ref.dayISO) || ''} />
+                      )}
+                      {it.travel && it.travel.mode !== 'By Air' && it.anyActive && (
                         <div style={{ marginTop:8 }}>
-                          {it.travel.mode === 'By Air'
-                            ? <button onClick={()=>setLivePopup({ kind:'flight', ...it.travel })}
-                                style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#1D5E8C', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
-                                <span style={{ fontSize:14 }}>✈️</span> Show Live
-                              </button>
-                            : <button onClick={()=>setLivePopup({ kind:'maps', ...it.travel })}
-                                style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#1A73E8', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
-                                <span style={{ fontSize:14 }}>🗺</span> View on Map
-                              </button>}
+                          <button onClick={()=>setLivePopup({ kind:'maps', ...it.travel })}
+                            style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#1A73E8', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
+                            <span style={{ fontSize:14 }}>🗺</span> View on Map
+                          </button>
                         </div>
                       )}
                     </div>
@@ -2166,23 +2335,8 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
         </Modal>
       )}
 
-      {livePopup && (livePopup.kind === 'flight' ? (
-        <Modal title="Live on FlightStats" onClose={()=>setLivePopup(null)}>
-          <div style={{ fontSize:13.5, color:'#6E1A10', marginBottom:6 }}>{livePopup.name}</div>
-          <div style={{ display:'flex', alignItems:'center', gap:8, background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:9, padding:'12px 14px', marginBottom:16 }}>
-            <span style={{ fontSize:18 }}>✈️</span>
-            <div>
-              <div style={{ fontSize:14, fontWeight:700, color:'#2E2320', letterSpacing:'0.03em' }}>{(livePopup.flightNo||'').toUpperCase()}</div>
-              {(livePopup.from || livePopup.to) && <div style={{ fontSize:12, color:'#8A7A6D' }}>{livePopup.from || '?'} → {livePopup.to || '?'}</div>}
-            </div>
-          </div>
-          <p style={{ fontSize:12.5, color:'#8A7A6D', margin:'0 0 16px', lineHeight:1.5 }}>Opens this flight's live status on FlightStats — shows the aircraft's position and progress when it's airborne.</p>
-          <div style={{ display:'flex', gap:8 }}>
-            <Btn onClick={()=>{ window.open(flightTrackUrl(livePopup.flightNo), '_blank', 'noopener'); setLivePopup(null); }} style={{ background:'#1D5E8C' }}>Open on FlightStats</Btn>
-            <Btn variant="ghost" onClick={()=>setLivePopup(null)}>Cancel</Btn>
-          </div>
-        </Modal>
-      ) : (
+      {/* The flight pop-up is gone — By Air now renders inline via FlightTrackCard. */}
+      {livePopup && (
         <Modal title="View on Map" onClose={()=>setLivePopup(null)}>
           <div style={{ fontSize:13.5, color:'#6E1A10', marginBottom:6 }}>{livePopup.name}</div>
           <div style={{ display:'flex', alignItems:'center', gap:8, background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:9, padding:'12px 14px', marginBottom:14 }}>
@@ -2195,7 +2349,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
           )}
           <Btn variant="soft" onClick={()=>{ window.open(gmapsDirUrl(livePopup.from, livePopup.to), '_blank', 'noopener'); setLivePopup(null); }} style={{ width:'100%' }}>🗺 See the route on Google Maps</Btn>
         </Modal>
-      ))}
+      )}
     </div>
   );
 }
