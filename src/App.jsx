@@ -1791,22 +1791,24 @@ function FlightTrackCard({ travel, dayISO }) {
             <div style={{ fontSize:11, lineHeight:1.45, color:'#8A5A2A', background:'#FFF3D6', border:'1px solid #F0DFB6', borderRadius:8, padding:'7px 9px', marginBottom:10 }}>{data.note}</div>
           )}
 
-          {/* Route line: origin — aircraft on a progress track — destination */}
-          <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-            <div style={{ fontSize:19, fontWeight:800, color:'#2E2320', flexShrink:0 }}>{endLabel(dep)}</div>
-            <div style={{ flex:1, minWidth:24, position:'relative', height:18 }}>
-              {data && data.durationMin != null && (
-                <div style={{ position:'absolute', top:-3, left:0, right:0, textAlign:'center', fontSize:10, color:'#8A7A6D' }}>{fmtDur(data.durationMin)}</div>
-              )}
-              <div style={{ position:'absolute', top:13, left:0, right:0, height:2, background:'#DCCFC0', borderRadius:2 }} />
-              <div style={{ position:'absolute', top:13, left:0, width:`${progress*100}%`, height:2, background:'#8B2A14', borderRadius:2 }} />
-              <span aria-hidden="true" style={{ position:'absolute', top:5, left:`calc(${progress*100}% - 6px)`, fontSize:12, color:'#8B2A14', transition:'left .3s' }}>✈</span>
-            </div>
-            <div style={{ fontSize:19, fontWeight:800, color:'#2E2320', flexShrink:0 }}>{endLabel(arr)}</div>
+          {/* Route line spans the full card, a dot at each end, the aircraft riding the
+              track between them. The place names sit beneath it — one label per end, so
+              nothing is repeated. */}
+          <div style={{ position:'relative', height:22 }}>
+            {data && data.durationMin != null && (
+              <div style={{ position:'absolute', top:0, left:0, right:0, textAlign:'center', fontSize:10, color:'#8A7A6D' }}>{fmtDur(data.durationMin)}</div>
+            )}
+            <div style={{ position:'absolute', top:17, left:0, right:0, height:2, background:'#DCCFC0', borderRadius:2 }} />
+            <div style={{ position:'absolute', top:17, left:0, width:`${progress*100}%`, height:2, background:'#8B2A14', borderRadius:2 }} />
+            <span aria-hidden="true" style={{ position:'absolute', top:14, left:0, width:8, height:8, borderRadius:'50%', background:'#8B2A14' }} />
+            <span aria-hidden="true" style={{ position:'absolute', top:14, right:0, width:8, height:8, borderRadius:'50%', background: progress >= 1 ? '#8B2A14' : '#DCCFC0' }} />
+            {/* Kept clear of both dots at either extreme of the track. */}
+            <span aria-hidden="true" style={{ position:'absolute', top:9, left:`calc(10px + (100% - 32px) * ${progress})`, fontSize:12, color:'#8B2A14', transition:'left .3s' }}>✈</span>
           </div>
-          {(dep.city || arr.city) && (
-            <div style={{ display:'flex', justifyContent:'space-between', fontSize:10.5, color:'#8A7A6D', marginTop:2 }}>
-              <span>{dep.city}</span><span>{arr.city}</span>
+          {(dep.city || dep.code || arr.city || arr.code) && (
+            <div style={{ display:'flex', justifyContent:'space-between', gap:8, fontSize:12, fontWeight:800, color:'#2E2320', marginTop:5 }}>
+              <span style={{ minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{dep.city || dep.code}</span>
+              <span style={{ minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'right' }}>{arr.city || arr.code}</span>
             </div>
           )}
 
