@@ -1836,6 +1836,11 @@ function FlightTrackCard({ travel, dayISO }) {
             {timeCell(dep, 'Departure')}
             {timeCell(arr, 'Arrival')}
           </div>
+          {/* Each end is shown in its own airport's local time, so on a leg that crosses
+              zones the two clock times can look impossibly close together (Mumbai 17:13 →
+              Dubai 17:24 is really 1h 41m). The duration above is computed from UTC and is
+              correct; this line explains the apparent gap. */}
+          <div style={{ fontSize:10, color:'#A2917F', marginTop:7 }}>Showing local airport times</div>
 
           <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginTop:10, fontSize:10, color:'#A2917F' }}>
             {!data ? <span>Loading…</span> : data.live ? (
