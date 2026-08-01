@@ -182,6 +182,7 @@ const FLIGHT_UNAVAILABLE = {
   'not-configured':    'Live status not switched on yet',
   'not-found':         'No live status for this flight',
   'quota':             'Live status limit reached — try again later',
+  'busy':              'Live status is busy — try again in a moment',
   'bad-flight-number': 'Add a valid flight number for live status',
   'bad-date':          'No live status for this date',
   'network':           'Live status unavailable — check your connection',
@@ -1754,14 +1755,26 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
 function FlightTrackCard({ travel, dayISO }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
+  const loadedKeyRef = useRef('');
   const { flightNo, from, to, startTime, endTime, startDate } = travel;
+
+  // Look the flight up only once the card is opened. Fetching on mount meant every
+  // scroll past a flight cost a lookup, for every traveller viewing the trip — the card
+  // is collapsed most of the time, so most of those were never read by anyone.
   useEffect(() => {
+    if (!open) return undefined;
+    const key = `${flightNo}|${startDate || dayISO}|${reloadTick}`;
+    if (loadedKeyRef.current === key) return undefined;
+    loadedKeyRef.current = key;
     let dead = false;
+    setLoading(true);
     fetchFlightStatus({ flightNo, from, to, startTime, endTime, startDate }, dayISO)
-      .then(d => { if (!dead) setData(d); })
-      .catch(() => { if (!dead) setData(null); });
+      .then(d => { if (!dead) { setData(d); setLoading(false); } })
+      .catch(() => { if (!dead) setLoading(false); });
     return () => { dead = true; };
-  }, [flightNo, from, to, startTime, endTime, startDate, dayISO]);
+  }, [open, flightNo, from, to, startTime, endTime, startDate, dayISO, reloadTick]);
 
   const phase = FLIGHT_PHASE[(data && data.phase) || 'scheduled'];
   const dep = (data && data.dep) || parseAirport(from);
@@ -1791,16 +1804,24 @@ function FlightTrackCard({ travel, dayISO }) {
   return (
     <div data-no-tab-swipe style={{ marginTop:8, border:'1px solid #E2D8C8', borderRadius:12, background:'#FFFDF8', overflow:'hidden' }}>
       <button type="button" onClick={()=>setOpen(o=>!o)} aria-expanded={open}
-        aria-label={`${flightNo || 'Flight'} — ${phase.label}. ${open ? 'Hide' : 'Show'} flight details`}
+        aria-label={`${flightNo || 'Flight'}${data ? ' — ' + phase.label : ''}. ${open ? 'Hide' : 'Show'} flight details`}
         style={{ width:'100%', border:'none', background:'transparent', padding:'9px 10px', textAlign:'left', cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}>
         <span style={{ flex:1, minWidth:0 }}>
           <span style={{ display:'block', fontSize:12.5, fontWeight:800, color:'#2E2320', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
             {(flightNo || '').toUpperCase() || 'Flight'}
             {(dep.code || arr.code) ? <span style={{ fontWeight:600, color:'#7A685F' }}>{`  ${endLabel(dep)} → ${endLabel(arr)}`}</span> : null}
           </span>
-          <span style={{ display:'inline-block', marginTop:4, fontSize:9.5, fontWeight:800, letterSpacing:'0.06em', color:phase.tone, border:`1px solid ${phase.tone}`, borderRadius:5, padding:'2px 6px' }}>
-            {phase.label}
-          </span>
+          {/* No badge until we've actually looked the flight up — claiming a status we
+              haven't checked would be worse than saying nothing. */}
+          {data ? (
+            <span style={{ display:'inline-block', marginTop:4, fontSize:9.5, fontWeight:800, letterSpacing:'0.06em', color:phase.tone, border:`1px solid ${phase.tone}`, borderRadius:5, padding:'2px 6px' }}>
+              {phase.label}
+            </span>
+          ) : (
+            <span style={{ display:'inline-block', marginTop:4, fontSize:10, color:'#8A7A6D' }}>
+              {loading ? 'Checking live status…' : 'Tap for live status'}
+            </span>
+          )}
         </span>
         <span aria-hidden="true" style={{ flexShrink:0, color:'#8A7A6D', transform:open?'rotate(180deg)':'none', transition:'transform .15s', display:'grid', placeItems:'center' }}>
           <NativeStatusIcon name="chevron" size={16} />
@@ -1845,8 +1866,14 @@ function FlightTrackCard({ travel, dayISO }) {
           <div style={{ fontSize:10, color:'#A2917F', marginTop:7 }}>Showing local airport times</div>
 
           <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginTop:10, fontSize:10, color:'#A2917F' }}>
-            {!data ? <span>Loading…</span> : data.live ? (
-              <><span>Updated {fmtAgo(data.updatedAt)}</span><span>· Source: {data.source}</span></>
+            {!data ? <span>{loading ? 'Checking…' : ''}</span> : data.live ? (
+              <>
+                <span>Updated {fmtAgo(data.updatedAt)}</span><span>· Source: {data.source}</span>
+                <button type="button" onClick={()=>setReloadTick(t=>t+1)} disabled={loading}
+                  style={{ marginLeft:'auto', border:'none', background:'transparent', color:'#8B2A14', padding:0, fontSize:10, fontWeight:700, textDecoration:'underline', cursor: loading?'default':'pointer' }}>
+                  {loading ? 'Checking…' : 'Refresh'}
+                </button>
+              </>
             ) : (
               // Say plainly that these are the traveller's own times, not a live feed.
               <span style={{ color:'#B07A2A', fontWeight:700 }}>

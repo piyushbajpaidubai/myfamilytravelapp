@@ -9,8 +9,22 @@
 // scheduledTime/revisedTime {utc,local}, terminal, gate, plus a top-level status enum.
 
 const RAPIDAPI_HOST = 'aerodatabox.p.rapidapi.com';
-const CACHE_TTL_MS = 4 * 60 * 1000;
 const CACHE_MAX = 200;
+
+// How long a result stays usable depends on how fast it can change. A flight six hours
+// out barely moves; one on approach moves every minute. Re-asking at the same rate for
+// both is what burned through requests.
+const MIN = 60 * 1000;
+function cacheTtlFor(phase, minutesToDeparture) {
+  if (phase === 'airborne' || phase === 'approaching') return 3 * MIN;
+  if (phase === 'boarding' || phase === 'gateclosed') return 5 * MIN;
+  if (phase === 'landed' || phase === 'cancelled' || phase === 'diverted') return 60 * MIN;
+  if (minutesToDeparture == null) return 30 * MIN;
+  if (minutesToDeparture < 0) return 10 * MIN;   // overdue — updates matter again
+  if (minutesToDeparture <= 120) return 5 * MIN;
+  if (minutesToDeparture <= 360) return 20 * MIN;
+  return 60 * MIN;                                // more than six hours out
+}
 
 // Module scope survives between invocations while the container stays warm, so several
 // travellers opening the same trip usually share one upstream call. It is a best-effort
@@ -118,9 +132,12 @@ function normalise(flight) {
   else if (depDelay != null && depDelay >= 5) note = `Departure is running about ${depDelay} minutes late.`;
   else if (arrDelay != null && arrDelay >= 10) note = `Arrival is running about ${arrDelay} minutes late.`;
 
+  const minutesToDeparture = depTime ? Math.round((depTime.getTime() - Date.now()) / 60000) : null;
+  const ttlMs = cacheTtlFor(phase, minutesToDeparture);
+
   delete dep._sched; delete dep._rev; delete arr._sched; delete arr._rev;
 
-  return {
+  return { ttlMs, payload: {
     live: true,
     phase,
     staleStatus,
@@ -130,7 +147,7 @@ function normalise(flight) {
     dep, arr,
     updatedAt: asDate({ utc: flight.lastUpdatedUtc }) ? new Date(String(flight.lastUpdatedUtc).replace(' ', 'T')).getTime() : Date.now(),
     source: 'AeroDataBox',
-  };
+  } };
 }
 
 exports.handler = async (event) => {
@@ -147,7 +164,7 @@ exports.handler = async (event) => {
 
   const cacheKey = `${flight}|${date}`;
   const hit = cache.get(cacheKey);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return ok({ ...hit.payload, cached: true });
+  if (hit && Date.now() - hit.at < hit.ttlMs) return ok({ ...hit.payload, cached: true });
 
   let res;
   try {
@@ -160,9 +177,15 @@ exports.handler = async (event) => {
     return ok({ live: false, reason: 'network' });
   }
 
-  // 204 = the flight simply isn't in the feed for that date; 429 = quota spent.
+  // 204 = the flight simply isn't in the feed for that date.
   if (res.status === 204 || res.status === 404) return ok({ live: false, reason: 'not-found' });
-  if (res.status === 429) return ok({ live: false, reason: 'quota' });
+  // 429 covers BOTH the per-second rate limit and the monthly allowance, which look
+  // identical apart from RapidAPI's remaining-requests header. Treat a non-zero
+  // remainder as a momentary rate limit rather than telling the user they're out.
+  if (res.status === 429) {
+    const left = parseInt(res.headers.get('x-ratelimit-requests-remaining') || '', 10);
+    return ok({ live: false, reason: Number.isFinite(left) && left > 0 ? 'busy' : 'quota' });
+  }
   if (!res.ok) return ok({ live: false, reason: 'upstream-' + res.status });
 
   let body;
@@ -176,10 +199,11 @@ exports.handler = async (event) => {
   const departsOn = (f) => String((((f || {}).departure || {}).scheduledTime || {}).local || '').slice(0, 10);
   const usable = flights.filter(f => f && f.departure && f.arrival);
   const chosen = usable.find(f => departsOn(f) === date) || usable[0] || flights[0];
-  let payload;
-  try { payload = normalise(chosen); } catch (e) { return ok({ live: false, reason: 'parse' }); }
+  let result;
+  try { result = normalise(chosen); } catch (e) { return ok({ live: false, reason: 'parse' }); }
+  const { payload, ttlMs } = result;
 
   if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
-  cache.set(cacheKey, { at: Date.now(), payload });
+  cache.set(cacheKey, { at: Date.now(), ttlMs, payload });
   return ok(payload);
 };
