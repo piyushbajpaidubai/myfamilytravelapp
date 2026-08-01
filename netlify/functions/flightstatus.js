@@ -81,6 +81,21 @@ function normalise(flight) {
     phase = 'delayed';
   }
 
+  // Sanity gate. A record can go stale — we have seen the feed still reporting a flight
+  // as en route hours after that snapshot, while its own departure time was still in the
+  // future. A flight cannot be flying before it is due to leave, so when the status
+  // contradicts the clock, trust the clock and fall back to the schedule.
+  const depTime = dep._rev || dep._sched;
+  const notDueYet = depTime && Date.now() < depTime.getTime() - 5 * 60000;
+  let staleStatus = false;
+  if (notDueYet && ['airborne','approaching','landed'].includes(phase)) {
+    // The whole record is suspect, not just the status field — so drop its revised times
+    // too and show the schedule alone. Anything else would contradict the note below.
+    phase = 'scheduled';
+    dep.estimated = ''; arr.estimated = '';
+    staleStatus = true;
+  }
+
   const durationMin = minutesBetween(dep._rev || dep._sched, arr._rev || arr._sched);
 
   // Where the aircraft sits on the track.
@@ -99,6 +114,7 @@ function normalise(flight) {
   let note = '';
   if (phase === 'cancelled') note = 'This flight is showing as cancelled — check with the airline.';
   else if (phase === 'diverted') note = 'This flight has been diverted from its scheduled destination.';
+  else if (staleStatus) note = 'Live status looks out of date — showing the schedule.';
   else if (depDelay != null && depDelay >= 5) note = `Departure is running about ${depDelay} minutes late.`;
   else if (arrDelay != null && arrDelay >= 10) note = `Arrival is running about ${arrDelay} minutes late.`;
 
@@ -107,6 +123,7 @@ function normalise(flight) {
   return {
     live: true,
     phase,
+    staleStatus,
     note,
     durationMin: durationMin != null && durationMin > 0 ? durationMin : null,
     progress,
@@ -134,7 +151,9 @@ exports.handler = async (event) => {
 
   let res;
   try {
-    res = await fetch(`https://${RAPIDAPI_HOST}/flights/number/${encodeURIComponent(flight)}/${date}?withAircraftImage=false&withLocation=false`, {
+    // dateLocalRole=Departure: the default (Both) also returns legs that merely ARRIVE on
+    // this date, so a daily rotation can hand back the previous day's flight.
+    res = await fetch(`https://${RAPIDAPI_HOST}/flights/number/${encodeURIComponent(flight)}/${date}?dateLocalRole=Departure&withAircraftImage=false&withLocation=false`, {
       headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': RAPIDAPI_HOST },
     });
   } catch (e) {
@@ -151,9 +170,12 @@ exports.handler = async (event) => {
   const flights = Array.isArray(body) ? body : (body ? [body] : []);
   if (!flights.length) return ok({ live: false, reason: 'not-found' });
 
-  // A number can return several legs (multi-sector or codeshare); take the first that
-  // has both ends, else the first one at all.
-  const chosen = flights.find(f => f && f.departure && f.arrival) || flights[0];
+  // A number can return several legs (multi-sector, codeshare, or adjacent days).
+  // Prefer the one that actually departs on the requested date; belt-and-braces on top
+  // of dateLocalRole above.
+  const departsOn = (f) => String((((f || {}).departure || {}).scheduledTime || {}).local || '').slice(0, 10);
+  const usable = flights.filter(f => f && f.departure && f.arrival);
+  const chosen = usable.find(f => departsOn(f) === date) || usable[0] || flights[0];
   let payload;
   try { payload = normalise(chosen); } catch (e) { return ok({ live: false, reason: 'parse' }); }
 

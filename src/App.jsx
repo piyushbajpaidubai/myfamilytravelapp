@@ -231,7 +231,9 @@ function scheduledOnlyStatus(travel, reason) {
 
 async function fetchFlightStatus(travel, dayISO) {
   const flight = String(travel.flightNo || '').replace(/[\s-]+/g, '').toUpperCase();
-  const date = String(dayISO || travel.startDate || '').slice(0, 10);
+  // Key on the DEPARTURE date. A multi-day span renders a card on each day it touches,
+  // and looking the flight up by the arrival day would ask for the wrong rotation.
+  const date = String(travel.startDate || dayISO || '').slice(0, 10);
   if (!flight) return scheduledOnlyStatus(travel, 'bad-flight-number');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return scheduledOnlyStatus(travel, 'bad-date');
 
@@ -1752,14 +1754,14 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
 function FlightTrackCard({ travel, dayISO }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
-  const { flightNo, from, to, startTime, endTime } = travel;
+  const { flightNo, from, to, startTime, endTime, startDate } = travel;
   useEffect(() => {
     let dead = false;
-    fetchFlightStatus({ flightNo, from, to, startTime, endTime }, dayISO)
+    fetchFlightStatus({ flightNo, from, to, startTime, endTime, startDate }, dayISO)
       .then(d => { if (!dead) setData(d); })
       .catch(() => { if (!dead) setData(null); });
     return () => { dead = true; };
-  }, [flightNo, from, to, startTime, endTime, dayISO]);
+  }, [flightNo, from, to, startTime, endTime, startDate, dayISO]);
 
   const phase = FLIGHT_PHASE[(data && data.phase) || 'scheduled'];
   const dep = (data && data.dep) || parseAirport(from);
