@@ -1757,6 +1757,7 @@ function FlightTrackCard({ travel, dayISO }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const loadedKeyRef = useRef('');
   const { flightNo, from, to, startTime, endTime, startDate } = travel;
 
@@ -1780,8 +1781,27 @@ function FlightTrackCard({ travel, dayISO }) {
   const dep = (data && data.dep) || parseAirport(from);
   const arr = (data && data.arr) || parseAirport(to);
   const delayed = data && data.phase === 'delayed';
-  // The lookup works out where the aircraft is; fall back to the start of the line.
-  const progress = (data && typeof data.progress === 'number') ? data.progress : 0;
+
+  // While the aircraft is actually flying, elapsed/remaining and the plane's position are
+  // recomputed from the clock rather than frozen at whatever the lookup returned. Ticking
+  // locally costs nothing — no further calls to the provider.
+  const inFlight = !!(data && data.live && data.depEpoch && data.arrEpoch
+    && ['airborne','approaching'].includes(data.phase) && data.arrEpoch > data.depEpoch);
+  useEffect(() => {
+    if (!open || !inFlight) return undefined;
+    const id = setInterval(() => setNowMs(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, [open, inFlight]);
+
+  const flown = inFlight ? nowMs - data.depEpoch : 0;
+  const total = inFlight ? data.arrEpoch - data.depEpoch : 0;
+  const elapsedMin = inFlight ? Math.max(0, Math.round(flown / 60000)) : null;
+  const remainingMin = inFlight ? Math.max(0, Math.round((data.arrEpoch - nowMs) / 60000)) : null;
+
+  // The lookup works out where the aircraft is; in flight, keep it moving between ticks.
+  const progress = inFlight
+    ? Math.min(0.95, Math.max(0.05, flown / total))
+    : (data && typeof data.progress === 'number') ? data.progress : 0;
 
   const endLabel = (a) => a.code || (a.city || '—').slice(0, 12);
   const timeCell = (side, label) => (
@@ -1854,6 +1874,14 @@ function FlightTrackCard({ travel, dayISO }) {
               <span style={{ minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'right' }}>{arr.city || arr.code}</span>
             </div>
           )}
+          {/* Only meaningful once it's actually flying — "elapsed" on a flight that hasn't
+              left would be nonsense, so the pair is omitted until then. */}
+          {inFlight && (
+            <div style={{ display:'flex', justifyContent:'space-between', gap:8, fontSize:10, color:'#8A7A6D', marginTop:3 }}>
+              <span style={{ whiteSpace:'nowrap' }}>{fmtDur(elapsedMin)} elapsed</span>
+              <span style={{ whiteSpace:'nowrap', textAlign:'right' }}>{fmtDur(remainingMin)} remaining</span>
+            </div>
+          )}
 
           <div style={{ display:'flex', gap:10, marginTop:11, paddingTop:10, borderTop:'1px solid #EDE3D6' }}>
             {timeCell(dep, 'Departure')}
@@ -1868,7 +1896,9 @@ function FlightTrackCard({ travel, dayISO }) {
           <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginTop:10, fontSize:10, color:'#A2917F' }}>
             {!data ? <span>{loading ? 'Checking…' : ''}</span> : data.live ? (
               <>
-                <span>Updated {fmtAgo(data.updatedAt)}</span><span>· Source: {data.source}</span>
+                {/* The "updated N ago" line is gone from view, but the age is what tells
+                    you whether a reading is trustworthy — so it lives on the tooltip. */}
+                <span title={`Last updated ${fmtAgo(data.updatedAt)}`}>Source: {data.source}</span>
                 <button type="button" onClick={()=>setReloadTick(t=>t+1)} disabled={loading}
                   style={{ marginLeft:'auto', border:'none', background:'transparent', color:'#8B2A14', padding:0, fontSize:10, fontWeight:700, textDecoration:'underline', cursor: loading?'default':'pointer' }}>
                   {loading ? 'Checking…' : 'Refresh'}

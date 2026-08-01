@@ -135,6 +135,12 @@ function normalise(flight) {
   const minutesToDeparture = depTime ? Math.round((depTime.getTime() - Date.now()) / 60000) : null;
   const ttlMs = cacheTtlFor(phase, minutesToDeparture);
 
+  // Absolute times, so the card can work out elapsed/remaining. The HH:MM strings can't
+  // do it — they're each in a different airport's local zone.
+  const arrTime = arr._rev || arr._sched;
+  const depEpoch = depTime ? depTime.getTime() : null;
+  const arrEpoch = arrTime ? arrTime.getTime() : null;
+
   delete dep._sched; delete dep._rev; delete arr._sched; delete arr._rev;
 
   return { ttlMs, payload: {
@@ -144,6 +150,7 @@ function normalise(flight) {
     note,
     durationMin: durationMin != null && durationMin > 0 ? durationMin : null,
     progress,
+    depEpoch, arrEpoch,
     dep, arr,
     updatedAt: asDate({ utc: flight.lastUpdatedUtc }) ? new Date(String(flight.lastUpdatedUtc).replace(' ', 'T')).getTime() : Date.now(),
     source: 'AeroDataBox',
