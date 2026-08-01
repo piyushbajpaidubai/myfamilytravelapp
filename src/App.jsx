@@ -157,21 +157,35 @@ const gmapsDirUrl = (from, to) =>
 const gmapsNavUrl = (to) =>
   'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(to || '') + '&travelmode=driving';
 // ── Live flight status ──────────────────────────────────────────────────────────
-// PHASE 1: the status below is MOCKED. There is no public Google flight-status API —
-// Google licenses that data (their own panel credits Cirium), so a real build needs a
-// commercial feed (AeroDataBox / AviationStack / FlightAware AeroAPI) with the key held
-// in a Netlify function and the response cached per flight+date.
-//
-// `fetchFlightStatus` is the ONLY thing that changes when that happens: swap the body
-// for the function call and keep the returned shape identical. Everything downstream —
-// the card, the badges, the struck-through times — already works off this shape.
+// Real data now: AeroDataBox (RapidAPI), called through the flightstatus Netlify
+// function so the key never ships in the app bundle. When the lookup can't answer —
+// no key, flight not in the feed, quota spent, offline — the card falls back to the
+// times the traveller typed and says so. It never invents a status.
+
+const FLIGHT_FN = 'https://mytravelhub.netlify.app/.netlify/functions/flightstatus';
 
 const FLIGHT_PHASE = {
-  scheduled: { label:'SCHEDULED',     tone:'#6E655B' },
-  ontime:    { label:'ON TIME',       tone:'#2F7A2F' },
-  delayed:   { label:'DEPARTING LATE', tone:'#B54030' },
-  airborne:  { label:'IN THE AIR',    tone:'#8A6500' },
-  landed:    { label:'LANDED',        tone:'#2F7A2F' },
+  scheduled:  { label:'SCHEDULED',      tone:'#6E655B' },
+  checkin:    { label:'CHECK-IN OPEN',  tone:'#2F7A2F' },
+  boarding:   { label:'BOARDING',       tone:'#2F7A2F' },
+  gateclosed: { label:'GATE CLOSED',    tone:'#8A6500' },
+  delayed:    { label:'DEPARTING LATE', tone:'#B54030' },
+  airborne:   { label:'IN THE AIR',     tone:'#8A6500' },
+  approaching:{ label:'APPROACHING',    tone:'#8A6500' },
+  landed:     { label:'LANDED',         tone:'#2F7A2F' },
+  cancelled:  { label:'CANCELLED',      tone:'#B54030' },
+  diverted:   { label:'DIVERTED',       tone:'#B54030' },
+};
+
+// Why live status isn't showing — phrased for a traveller, not a developer.
+const FLIGHT_UNAVAILABLE = {
+  'not-configured':    'Live status not switched on yet',
+  'not-found':         'No live status for this flight',
+  'quota':             'Live status limit reached — try again later',
+  'bad-flight-number': 'Add a valid flight number for live status',
+  'bad-date':          'No live status for this date',
+  'network':           'Live status unavailable — check your connection',
+  'offline':           'Live status unavailable — check your connection',
 };
 
 // "Delhi (DEL)" → { code:'DEL', city:'Delhi' } · "Mumbai" → { code:'', city:'Mumbai' }
@@ -183,7 +197,6 @@ const parseAirport = (text) => {
   return { code:'', city:raw };
 };
 const hhmmToMin = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t||'')); return m ? (+m[1])*60 + (+m[2]) : null; };
-const minToHhmm = (n) => { const v = ((n % 1440) + 1440) % 1440; return String(Math.floor(v/60)).padStart(2,'0') + ':' + String(v%60).padStart(2,'0'); };
 const fmtDur = (min) => min == null ? '' : `${Math.floor(min/60)}h ${min%60}m`;
 // "16:00" → "4:00 PM" (airport boards read 12-hour here); passes anything unparseable through.
 const fmtTime12 = (t) => {
@@ -195,41 +208,48 @@ const fmtTime12 = (t) => {
 const fmtAgo = (ms) => { const s = Math.max(0, Math.round((Date.now()-ms)/1000));
   if (s < 60) return 'just now'; const m = Math.round(s/60);
   return m < 60 ? `${m}m ago` : `${Math.floor(m/60)}h ${m%60}m ago`; };
-// Local wall-clock minutes since midnight, for deciding whether a leg has already flown.
-const nowMinutesLocal = () => { const d = new Date(); return d.getHours()*60 + d.getMinutes(); };
-
-// MOCK. Deterministic so a given flight always looks the same: odd flight numbers run
-// late, even ones are on time, and a leg whose scheduled arrival has passed shows as
-// landed. Replace this body with the provider call — do not change the return shape.
-async function fetchFlightStatus(travel, dayISO) {
+// The traveller's own itinerary, shaped like a status response. Used whenever the live
+// lookup can't answer — so the card still shows the flight, clearly marked as not live.
+function scheduledOnlyStatus(travel, reason) {
   const depSched = hhmmToMin(travel.startTime);
   const arrSched = hhmmToMin(travel.endTime);
-  const digits = parseInt(String(travel.flightNo || '').replace(/\D/g, ''), 10);
   const overnight = depSched != null && arrSched != null && arrSched < depSched;
-  const durationMin = (depSched != null && arrSched != null)
-    ? (overnight ? arrSched + 1440 - depSched : arrSched - depSched) : null;
-
-  const today = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0');
-    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; })();
-  const isToday = (dayISO || '').slice(0,10) === today;
-  const flownAlready = isToday && arrSched != null && !overnight && nowMinutesLocal() > arrSched;
-
-  let phase = 'scheduled';
-  if (flownAlready) phase = 'landed';
-  else if (Number.isFinite(digits)) phase = (digits % 2 === 1) ? 'delayed' : 'ontime';
-
-  const delayMin = phase === 'delayed' ? 45 : 0;
-  const dep = parseAirport(travel.from), arr = parseAirport(travel.to);
-
   return {
-    mock: true,
-    phase,
-    note: phase === 'delayed' ? 'Incoming aircraft is running late, which may affect this flight.' : '',
-    durationMin,
-    dep: { ...dep, scheduled: travel.startTime || '', estimated: depSched != null && delayMin ? minToHhmm(depSched + delayMin) : '', terminal:'', gate:'' },
-    arr: { ...arr, scheduled: travel.endTime || '', estimated: arrSched != null && delayMin ? minToHhmm(arrSched + delayMin) : '', terminal:'', gate:'' },
+    live: false,
+    reason: reason || 'unavailable',
+    phase: 'scheduled',
+    note: '',
+    progress: 0,
+    durationMin: (depSched != null && arrSched != null)
+      ? (overnight ? arrSched + 1440 - depSched : arrSched - depSched) : null,
+    dep: { ...parseAirport(travel.from), scheduled: travel.startTime || '', estimated:'', terminal:'', gate:'' },
+    arr: { ...parseAirport(travel.to), scheduled: travel.endTime || '', estimated:'', terminal:'', gate:'' },
     updatedAt: Date.now(),
-    source: 'Sample data',
+    source: 'Your itinerary',
+  };
+}
+
+async function fetchFlightStatus(travel, dayISO) {
+  const flight = String(travel.flightNo || '').replace(/[\s-]+/g, '').toUpperCase();
+  const date = String(dayISO || travel.startDate || '').slice(0, 10);
+  if (!flight) return scheduledOnlyStatus(travel, 'bad-flight-number');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return scheduledOnlyStatus(travel, 'bad-date');
+
+  let body;
+  try {
+    const res = await fetch(`${FLIGHT_FN}?flight=${encodeURIComponent(flight)}&date=${date}`);
+    body = await res.json();
+  } catch (e) {
+    return scheduledOnlyStatus(travel, 'offline');
+  }
+  if (!body || !body.live) return scheduledOnlyStatus(travel, (body && body.reason) || 'unavailable');
+
+  // Prefer the feed's airport names, but keep whatever the traveller typed if it has none.
+  const typedDep = parseAirport(travel.from), typedArr = parseAirport(travel.to);
+  return {
+    ...body,
+    dep: { ...body.dep, code: body.dep.code || typedDep.code, city: body.dep.city || typedDep.city },
+    arr: { ...body.arr, code: body.arr.code || typedArr.code, city: body.arr.city || typedArr.city },
   };
 }
 
@@ -1745,8 +1765,8 @@ function FlightTrackCard({ travel, dayISO }) {
   const dep = (data && data.dep) || parseAirport(from);
   const arr = (data && data.arr) || parseAirport(to);
   const delayed = data && data.phase === 'delayed';
-  // Where to sit the aircraft glyph on the line.
-  const progress = !data ? 0 : data.phase === 'landed' ? 1 : data.phase === 'airborne' ? 0.5 : 0;
+  // The lookup works out where the aircraft is; fall back to the start of the line.
+  const progress = (data && typeof data.progress === 'number') ? data.progress : 0;
 
   const endLabel = (a) => a.code || (a.city || '—').slice(0, 12);
   const timeCell = (side, label) => (
@@ -1818,9 +1838,14 @@ function FlightTrackCard({ travel, dayISO }) {
           </div>
 
           <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginTop:10, fontSize:10, color:'#A2917F' }}>
-            <span>{data ? `Updated ${fmtAgo(data.updatedAt)}` : 'Loading…'}</span>
-            {data && <span>· Source: {data.source}</span>}
-            {data && data.mock && <span style={{ color:'#B07A2A', fontWeight:700 }}>· sample only</span>}
+            {!data ? <span>Loading…</span> : data.live ? (
+              <><span>Updated {fmtAgo(data.updatedAt)}</span><span>· Source: {data.source}</span></>
+            ) : (
+              // Say plainly that these are the traveller's own times, not a live feed.
+              <span style={{ color:'#B07A2A', fontWeight:700 }}>
+                {FLIGHT_UNAVAILABLE[data.reason] || 'Live status unavailable'} — showing your saved times
+              </span>
+            )}
           </div>
           {delayed && <div style={{ fontSize:10, color:'#A2917F', marginTop:3 }}>Confirm on an airport monitor — status may change.</div>}
         </div>
