@@ -2767,12 +2767,16 @@ async function tripCreate(session, trip) {
     return rows && rows[0] ? rowToTrip(rows[0]) : null;
   } catch(e) { return null; }
 }
+// Returns whether the write actually landed. It used to swallow everything and return
+// nothing, so a 401 from an expired token, an RLS refusal or a dead connection all looked
+// exactly like success — and the caller marked the trip saved regardless.
 async function tripPatch(session, id, fields) {
   try {
-    await fetch(SUPA_URL + '/rest/v1/trips?id=eq.' + encodeURIComponent(id), {
+    const r = await fetch(SUPA_URL + '/rest/v1/trips?id=eq.' + encodeURIComponent(id), {
       method: 'PATCH', headers: authHeaders(session), body: JSON.stringify(fields)
     });
-  } catch(e) {}
+    return r.ok;
+  } catch(e) { return false; }
 }
 async function tripDelete(session, id) {
   try {
@@ -3420,7 +3424,7 @@ function MainApp() {
   const [editingDest, setEditingDest] = useState(false);
   const [destDraft, setDestDraft] = useState('');
   const [headerNote, setHeaderNote] = useState('');
-  const [savedStatus, setSavedStatus] = useState(''); // '', 'saving', 'saved'
+  const [savedStatus, setSavedStatus] = useState(''); // '', 'saving', 'saved', 'failed'
   const [past, setPast] = useState([]); // undo history: recent trips snapshots (max 3)
   const [loadedTripOwner, setLoadedTripOwner] = useState('');
   const activeLandingRef = useRef('');
@@ -3440,6 +3444,8 @@ function MainApp() {
   // while signed out and until the RLS migration has been run.
   const cloudMode = useRef('unknown');
   const savedRef = useRef({}); // tripId -> last JSON persisted, so we only write changes
+  const savingRef = useRef({}); // tripId -> JSON currently being written, so retries don't pile up
+  const [saveRetry, setSaveRetry] = useState(0); // bumped after a failed write to re-run the save
   const sessionKey = session ? session.userId : '';
 
   // Load trips whenever the signed-in traveler changes
@@ -3516,7 +3522,10 @@ function MainApp() {
     return () => clearTimeout(timer);
   }, [headerNote, profile, session]);
 
-  // Auto-save: debounce 2s after any change to trips
+  // Auto-save: debounce 2s after any change to trips.
+  // A trip is recorded as saved only once the write comes back OK. Marking it up front
+  // meant a failed PATCH was remembered as stored and never retried — the edit was gone
+  // with nothing on screen to say so.
   useEffect(() => {
     if (trips.length === 0) return;
     const timer = setTimeout(async () => {
@@ -3524,35 +3533,48 @@ function MainApp() {
       if (cloudMode.current !== 'rls') { saveToCloud(trips, headerNote); return; }
       if (!session) return;
       const s = await freshSession(session, setSession);
-      trips.forEach(t => { // one row per trip → only the edited ones are written
+      let anyFailed = false;
+      await Promise.all(trips.map(async t => { // one row per trip → only the edited ones are written
         const body = JSON.stringify(tripData(t));
-        if (savedRef.current[t.id] === body) return;
-        savedRef.current[t.id] = body;
-        tripPatch(s, t.id, { data: JSON.parse(body) });
-      });
+        if (savedRef.current[t.id] === body) return;      // already stored
+        if (savingRef.current[t.id] === body) return;     // the same write is already in flight
+        savingRef.current[t.id] = body;
+        try {
+          const ok = await tripPatch(s, t.id, { data: JSON.parse(body) });
+          if (ok) savedRef.current[t.id] = body; else anyFailed = true;
+        } finally {
+          if (savingRef.current[t.id] === body) delete savingRef.current[t.id];
+        }
+      }));
+      // Nothing else may change for a while, so a failure needs its own nudge to retry.
+      if (anyFailed) setTimeout(() => setSaveRetry(n => n + 1), 15000);
     }, 2000);
     return () => clearTimeout(timer);
-  }, [trips, headerNote, session]);
+  }, [trips, headerNote, session, saveRetry]);
 
   const handleSave = async () => {
     setSavedStatus('saving');
     // Save to localStorage immediately
     try { localStorage.setItem('travelPlannerData', JSON.stringify({ trips })); } catch(e) {}
-    // Save to cloud
+    // Save to cloud — tapping Save and being told "Saved" when the write was refused is
+    // worse than no button at all, so the result is reported honestly.
+    let ok = true;
     try {
       if (cloudMode.current === 'rls' && session) {
         const s = await freshSession(session, setSession);
-        await Promise.all(trips.map(t => {
+        const results = await Promise.all(trips.map(async t => {
           const body = JSON.stringify(tripData(t));
-          savedRef.current[t.id] = body;
-          return tripPatch(s, t.id, { data: JSON.parse(body) });
+          const wrote = await tripPatch(s, t.id, { data: JSON.parse(body) });
+          if (wrote) savedRef.current[t.id] = body;
+          return wrote;
         }));
+        ok = results.every(Boolean);
       } else {
         await saveToCloud(trips, headerNote);
       }
-    } catch(e) {}
-    setSavedStatus('saved');
-    setTimeout(() => setSavedStatus(''), 2500);
+    } catch(e) { ok = false; }
+    setSavedStatus(ok ? 'saved' : 'failed');
+    setTimeout(() => setSavedStatus(''), ok ? 2500 : 5000);
   };
   const [tripForm, setTripForm] = useState({ name:"", destination:"", startDate:"", endDate:"" });
   const [createErr, setCreateErr] = useState('');
@@ -3940,21 +3962,23 @@ function MainApp() {
             </button>
             <button
               onClick={handleSave}
-              aria-label={savedStatus==='saved'?'Saved':'Save'}
-              title={savedStatus==='saved'?'Saved':'Save'}
+              aria-label={savedStatus==='saved'?'Saved':savedStatus==='failed'?"Couldn't save — tap to try again":'Save'}
+              title={savedStatus==='saved'?'Saved':savedStatus==='failed'?"Couldn't save — check your connection and tap to try again":'Save'}
               style={{
                 width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",
                 borderRadius:10,padding:0,cursor:"pointer",transition:"all 0.3s",
-                border: savedStatus==='saved'?'1.5px solid #7DB87A':'1.5px solid rgba(245,236,215,0.28)',
-                background: savedStatus==='saved'?'rgba(125,184,122,0.22)':'rgba(245,236,215,0.08)',
-                color: savedStatus==='saved'?'#A8E6A0':'#F5ECD7'
+                border: savedStatus==='saved'?'1.5px solid #7DB87A':savedStatus==='failed'?'1.5px solid #E08B7A':'1.5px solid rgba(245,236,215,0.28)',
+                background: savedStatus==='saved'?'rgba(125,184,122,0.22)':savedStatus==='failed'?'rgba(224,139,122,0.22)':'rgba(245,236,215,0.08)',
+                color: savedStatus==='saved'?'#A8E6A0':savedStatus==='failed'?'#FFC9BE':'#F5ECD7'
               }}
             >
               {savedStatus==='saved'
                 ? <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                : savedStatus==='saving'
-                  ? <span style={{ fontSize:17,lineHeight:1 }}>…</span>
-                  : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>}
+                : savedStatus==='failed'
+                  ? <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+                  : savedStatus==='saving'
+                    ? <span style={{ fontSize:17,lineHeight:1 }}>…</span>
+                    : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>}
             </button>
             <button
               onClick={()=>setShowAccount(true)}
