@@ -2288,8 +2288,12 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                         {it.agg==='active' && <span style={{ width:4, height:4, borderRadius:'50%', background:LINE }} />}
                       </div>
                     </div>
-                    <div style={{ width:80, flexShrink:0, paddingBottom: last?0:28, fontSize:12, letterSpacing:'0.03em', color:'#4A3B34', textTransform:'uppercase', lineHeight:1.35 }}>{it.time}</div>
+                    {/* The time used to hold its own 80px column, which squeezed everything
+                        beside it into ~208px at phone width. Sitting on its own line above
+                        the item, in a bordered chip, the content block gets the full ~288px. */}
                     <div style={{ flex:1, minWidth:0, paddingBottom: last?0:28, fontSize:13.5, color:'#2E2320', lineHeight:1.4 }}>
+                      <div style={{ display:'inline-block', marginBottom:6, padding:'2px 9px', border:'1px solid #6E1A10', borderRadius:8,
+                        fontSize:14, letterSpacing:'0.03em', color:'#4A3B34', textTransform:'uppercase', lineHeight:1.35 }}>{it.time}</div>
                       <div style={{ fontWeight:700 }}>{it.name}</div>
                       {/* "Description": one coloured line per status group, above the markers.
                           Shown at every group size — grouped by status it stays 1–3 lines. */}
@@ -2334,7 +2338,8 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                                       opens the full traveller popup instead. */}
                                   <div style={{ display:'flex', alignItems:'center', marginBottom:7 }}>
                                     {(() => {
-                                      const AV = 43; // +20% on the previous 36px
+                                      const AV = 54;   // +25%, affordable now the row is full width
+                                      const LAP = -16; // sized so six circles still fit a 320px phone without spilling
                                       const over = it.marks.length > 6;
                                       const shown = over ? it.marks.slice(0, 5) : it.marks.slice(0, 6);
                                       const openModal = () => setStatusModal({ ref: it.ref, title: it.titleText, members: it.marks.map(m => ({ userId:m.userId, name:m.name })) });
@@ -2348,12 +2353,12 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                                       return (<>
                                         {shown.map((mark, mi) => { const tap = tapOf(mark); return (
                                           <button key={mark.userId} type="button" disabled={!tap} onClick={tap} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`} title={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`}
-                                            style={{ width:AV, height:AV, marginLeft:mi===0?0:-10, borderRadius:'50%', boxSizing:'border-box', border:RING_W+'px solid '+STATUS_META[mark.status].ring, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#7B675A', padding:0, cursor: tap?'pointer':'default', zIndex:7-mi }}>
+                                            style={{ width:AV, height:AV, flexShrink:0, marginLeft:mi===0?0:LAP, borderRadius:'50%', boxSizing:'border-box', border:RING_W+'px solid '+STATUS_META[mark.status].ring, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:17, fontWeight:700, color:'#7B675A', padding:0, cursor: tap?'pointer':'default', zIndex:7-mi }}>
                                             {picOf(mark.userId) ? <img src={picOf(mark.userId)} alt="" style={AVATAR_IMG} /> : ((mark.name||mark.userId||'?').trim().charAt(0)||'?').toUpperCase()}
                                           </button>
                                         ); })}
                                         {over && <button type="button" onClick={openModal} aria-label="Show all travellers" title={`+${it.marks.length-5} more — tap to see all`}
-                                          style={{ width:AV, height:AV, marginLeft:-10, borderRadius:'50%', border:'none', background:'#6E1A10', color:'#fff', fontSize:21, fontWeight:800, lineHeight:1, cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', zIndex:0 }}>+</button>}
+                                          style={{ width:AV, height:AV, flexShrink:0, marginLeft:LAP, borderRadius:'50%', border:'none', background:'#6E1A10', color:'#fff', fontSize:26, fontWeight:800, lineHeight:1, cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', zIndex:0 }}>+</button>}
                                       </>);
                                     })()}
                                   </div>
