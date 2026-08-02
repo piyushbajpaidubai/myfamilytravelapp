@@ -169,9 +169,15 @@ exports.handler = async (event) => {
   if (!/^[A-Z0-9]{2,3}\d{1,4}$/.test(flight)) return ok({ live: false, reason: 'bad-flight-number' });
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return ok({ live: false, reason: 'bad-date' });
 
+  // debug=1 returns the raw time fields next to what we made of them, so questions like
+  // "is runwayTime populated in flight?" can be answered from real data rather than the
+  // spec. It bypasses the cache (a cached entry has no raw payload to show) and writes
+  // nothing back. Diagnostic only — safe to delete once the times are settled.
+  const debug = q.debug === '1';
+
   const cacheKey = `${flight}|${date}`;
   const hit = cache.get(cacheKey);
-  if (hit && Date.now() - hit.at < hit.ttlMs) return ok({ ...hit.payload, cached: true });
+  if (!debug && hit && Date.now() - hit.at < hit.ttlMs) return ok({ ...hit.payload, cached: true });
 
   let res;
   try {
@@ -209,6 +215,30 @@ exports.handler = async (event) => {
   let result;
   try { result = normalise(chosen); } catch (e) { return ok({ live: false, reason: 'parse' }); }
   const { payload, ttlMs } = result;
+
+  if (debug) {
+    const raw = (mv) => mv ? {
+      airport: (mv.airport || {}).iata || null,
+      scheduledTime: mv.scheduledTime || null,
+      revisedTime: mv.revisedTime || null,
+      predictedTime: mv.predictedTime || null,
+      runwayTime: mv.runwayTime || null,
+      terminal: mv.terminal || null,
+      gate: mv.gate || null,
+      runway: mv.runway || null,
+      quality: mv.quality || null,
+    } : null;
+    return ok({
+      debug: true,
+      serverNowUtc: new Date().toISOString(),
+      legsReturned: flights.length,
+      status: chosen.status,
+      lastUpdatedUtc: chosen.lastUpdatedUtc,
+      departure: raw(chosen.departure),
+      arrival: raw(chosen.arrival),
+      normalised: payload,
+    });
+  }
 
   if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
   cache.set(cacheKey, { at: Date.now(), ttlMs, payload });
