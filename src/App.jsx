@@ -1813,6 +1813,8 @@ function FlightTrackCard({ travel, dayISO }) {
       {side.estimated && side.scheduled && (
         <div style={{ fontSize:11, color:'#9A8478', textDecoration:'line-through' }}>{fmtTime12(side.scheduled)}</div>
       )}
+      {/* This time is our own reconstruction, not the feed's — say so. */}
+      {side.approx && <div style={{ fontSize:9.5, color:'#B07A2A', fontWeight:700 }}>approx.</div>}
       {(side.terminal || side.gate) && (
         <div style={{ fontSize:10.5, color:'#7A685F', marginTop:3 }}>
           {side.terminal ? `Terminal ${side.terminal}` : ''}{side.terminal && side.gate ? ' · ' : ''}{side.gate ? `Gate ${side.gate}` : ''}

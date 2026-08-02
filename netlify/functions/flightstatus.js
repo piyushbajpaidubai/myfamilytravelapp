@@ -63,11 +63,30 @@ const PHASE_BY_STATUS = {
   Canceled: 'cancelled', CanceledUncertain: 'cancelled', Diverted: 'diverted',
 };
 
-const side = (mv) => {
+// The local strings carry the airport's UTC offset ("2026-08-02 17:35+04:00"), which is
+// how a synthesised time can be printed in the right airport's clock.
+const offsetOf = (dt) => {
+  const s = String((dt && dt.local) || '');
+  const m = /([+-])(\d{2}):?(\d{2})\s*$/.exec(s);
+  if (m) return (m[1] === '-' ? -1 : 1) * (parseInt(m[2], 10) * 60 + parseInt(m[3], 10));
+  return /Z\s*$/.test(s) ? 0 : null;
+};
+const hhmmAtOffset = (date, offMin) => {
+  const t = new Date(date.getTime() + offMin * 60000);
+  return String(t.getUTCHours()).padStart(2, '0') + ':' + String(t.getUTCMinutes()).padStart(2, '0');
+};
+
+// preferPredicted: AeroDataBox gives two forecasts per endpoint. `revisedTime` is the
+// airport's published figure; `predictedTime` is AeroDataBox's own. Observed on a live
+// EK507: the departure's revisedTime tracked reality while the arrival's did not — it
+// still implied a 2h29m flight on a 3h05m route after a 62-minute late departure, while
+// predictedTime had moved. So the arrival prefers predictedTime once airborne.
+const side = (mv, preferPredicted) => {
   const airport = (mv && mv.airport) || {};
   const scheduled = mv && mv.scheduledTime;
-  // revisedTime is the airport's own update; predictedTime is AeroDataBox's estimate.
-  const revised = (mv && (mv.revisedTime || mv.predictedTime)) || null;
+  const revised = (mv && (preferPredicted
+    ? (mv.predictedTime || mv.revisedTime)
+    : (mv.revisedTime || mv.predictedTime))) || null;
   const schedHHMM = hhmm(scheduled);
   const revHHMM = hhmm(revised);
   return {
@@ -78,16 +97,20 @@ const side = (mv) => {
     estimated: revHHMM && revHHMM !== schedHHMM ? revHHMM : '',
     terminal: mv && mv.terminal ? String(mv.terminal) : '',
     gate: mv && mv.gate ? String(mv.gate) : '',
+    approx: false,
     _sched: asDate(scheduled),
     _rev: asDate(revised),
+    _offset: offsetOf(scheduled),
   };
 };
 
 function normalise(flight) {
-  const dep = side(flight.departure);
-  const arr = side(flight.arrival);
+  const statusPhase = PHASE_BY_STATUS[flight.status] || 'scheduled';
+  const flying = statusPhase === 'airborne' || statusPhase === 'approaching';
+  const dep = side(flight.departure, false);
+  const arr = side(flight.arrival, flying);
 
-  let phase = PHASE_BY_STATUS[flight.status] || 'scheduled';
+  let phase = statusPhase;
   // A flight can be running late without the feed setting status=Delayed, which is how
   // "DEPARTING LATE" shows up on Google's panel. Only meaningful before it leaves.
   const depDelay = minutesBetween(dep._sched, dep._rev);
@@ -110,7 +133,32 @@ function normalise(flight) {
     staleStatus = true;
   }
 
-  const durationMin = minutesBetween(dep._rev || dep._sched, arr._rev || arr._sched);
+  // Plausibility gate on the arrival. An aircraft that left an hour late does not make
+  // that hour up in the air, so an arrival implying a flight materially shorter than the
+  // scheduled one is wrong whichever field it came from. Rebuild it as actual departure
+  // plus scheduled flight time, and mark it approximate rather than pretending.
+  const schedDurationMin = minutesBetween(dep._sched, arr._sched);
+  let durationMin = minutesBetween(dep._rev || dep._sched, arr._rev || arr._sched);
+  const depActual = dep._rev || dep._sched;
+
+  // The telling signal is claimed *recovery*: an arrival less delayed than the departure
+  // means the aircraft is supposedly making up time in the air. A few minutes is normal
+  // (schedules carry padding); half an hour is not, and in practice means the arrival
+  // estimate simply hasn't been updated for the delay. Scaled by sector length, since a
+  // long-haul can genuinely claw back more than a short hop.
+  const arrDelayRaw = minutesBetween(arr._sched, arr._rev);
+  const depDelayRaw = minutesBetween(dep._sched, dep._rev);
+  const claimedRecovery = (depDelayRaw != null && arrDelayRaw != null) ? depDelayRaw - arrDelayRaw : 0;
+  const recoveryAllowed = Math.max(25, (schedDurationMin || 0) * 0.10);
+
+  if (schedDurationMin != null && schedDurationMin > 0 && durationMin != null && depActual && arr._offset != null
+      && (claimedRecovery > recoveryAllowed || durationMin < schedDurationMin * 0.8)) {
+    const rebuilt = new Date(depActual.getTime() + schedDurationMin * 60000);
+    arr._rev = rebuilt;
+    arr.estimated = hhmmAtOffset(rebuilt, arr._offset);
+    arr.approx = true;
+    durationMin = schedDurationMin;
+  }
 
   // Where the aircraft sits on the track.
   let progress = 0;
@@ -125,12 +173,20 @@ function normalise(flight) {
   }
 
   const arrDelay = minutesBetween(arr._sched, arr._rev);
+  // "196 minutes late" is how a machine says it; past an hour, use the same h/m form the
+  // rest of the card uses.
+  const lateText = (m) => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} minutes`;
   let note = '';
   if (phase === 'cancelled') note = 'This flight is showing as cancelled — check with the airline.';
   else if (phase === 'diverted') note = 'This flight has been diverted from its scheduled destination.';
   else if (staleStatus) note = 'Live status looks out of date — showing the schedule.';
-  else if (depDelay != null && depDelay >= 5) note = `Departure is running about ${depDelay} minutes late.`;
-  else if (arrDelay != null && arrDelay >= 10) note = `Arrival is running about ${arrDelay} minutes late.`;
+  // Once it's down, a departure delay is history and the arrival is what mattered — and
+  // either way it needs the past tense, not "is running late" on a flight that landed.
+  else if (phase === 'landed') {
+    if (arrDelay != null && arrDelay >= 10) note = `Arrived about ${lateText(arrDelay)} late.`;
+  }
+  else if (depDelay != null && depDelay >= 5) note = `Departure is running about ${lateText(depDelay)} late.`;
+  else if (arrDelay != null && arrDelay >= 10) note = `Arrival is running about ${lateText(arrDelay)} late.`;
 
   const minutesToDeparture = depTime ? Math.round((depTime.getTime() - Date.now()) / 60000) : null;
   const ttlMs = cacheTtlFor(phase, minutesToDeparture);
@@ -141,7 +197,8 @@ function normalise(flight) {
   const depEpoch = depTime ? depTime.getTime() : null;
   const arrEpoch = arrTime ? arrTime.getTime() : null;
 
-  delete dep._sched; delete dep._rev; delete arr._sched; delete arr._rev;
+  delete dep._sched; delete dep._rev; delete dep._offset;
+  delete arr._sched; delete arr._rev; delete arr._offset;
 
   return { ttlMs, payload: {
     live: true,
