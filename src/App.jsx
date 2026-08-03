@@ -4986,6 +4986,274 @@ function SearchModal({ trips, onGoToTrip, onClose }) {
   );
 }
 
+// ── Importing an agent's itinerary PDF into the schedule ────────────────────────
+//
+// PHASE 1: the extraction below is STUBBED. Reading the PDF will be a Netlify function
+// holding an Anthropic key, asking Claude for this exact shape via a forced JSON schema.
+// `extractItinerary` is the only thing that changes — keep the returned shape and the
+// review screen and merge below work untouched.
+//
+// The trip is created first, so by the time this runs we already know the trip's dates
+// (to anchor "Day 3" against) and its roster (to match passenger names to). Both were
+// open risks in a build-the-trip-from-the-PDF flow.
+
+// Only PDFs are offered for import — the agent itinerary case. A photo of a booking is
+// a different problem and would need different prompting to do honestly.
+const isPdfDoc = (d) => /\.pdf(\?|$)/i.test(String((d && (d.name || d.url)) || '')) ||
+  /pdf/i.test(String((d && d.type) || ''));
+
+const IMPORT_KINDS = {
+  travel: { icon:'✈️', label:'Travel' },
+  stay:   { icon:'🏨', label:'Stay' },
+  event:  { icon:'📍', label:'Activity' },
+  task:   { icon:'✓',  label:'Task' },
+};
+
+// Sample of what a travel agent's PDF yields, for judging the review screen before a
+// single token is spent. Deliberately includes the awkward cases: a date outside the
+// trip, and an activity that clashes with something already in the schedule.
+function extractItineraryStub(trip) {
+  const r = tripDateRange(trip);
+  const base = r.start || trip.startDate || '';
+  const day = (n) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(base); if (!m) return '';
+    const d = new Date(Date.UTC(+m[1], +m[2]-1, +m[3] + n));
+    return d.toISOString().slice(0,10); };
+  return {
+    source: 'Sample extraction',
+    items: [
+      { kind:'travel', mode:'By Air', flightNo:'EK 507', title:'Flight to Dubai', from:'Mumbai (BOM)', to:'Dubai (DXB)',
+        startDate:day(0), startTime:'16:00', endDate:day(0), endTime:'17:35', people:['Sneha','Ivaan'] },
+      { kind:'stay', title:'Rove Downtown', location:'Downtown Dubai',
+        startDate:day(0), startTime:'19:00', endDate:day(3), endTime:'11:00', people:[] },
+      { kind:'event', title:'Desert safari with dinner', location:'Al Marmoom', time:'15:30', endTime:'21:00', date:day(1), people:[] },
+      { kind:'event', title:'Burj Khalifa — At the Top', location:'Downtown Dubai', time:'10:00', endTime:'12:00', date:day(2), people:[] },
+      { kind:'task', text:'Carry passports and visa printouts', time:'08:00', date:day(0), people:[] },
+      { kind:'task', text:'Hotel check-out — settle incidentals', time:'10:00', date:day(3), people:[] },
+      // Falls outside the trip's dates — the review screen must catch this, not the merge.
+      { kind:'event', title:'Abu Dhabi day trip', location:'Abu Dhabi', time:'09:00', endTime:'19:00', date:day(9), people:[] },
+    ],
+  };
+}
+async function extractItinerary(trip /*, doc */) {
+  return extractItineraryStub(trip);
+}
+
+// Match a name off the PDF to somebody actually on the trip. First name, case-insensitive
+// — an agent writes "Sneha" where the roster says "Sneha Bajpai". No match means the item
+// is simply left untagged rather than guessed at.
+const matchTravellers = (names, members) => {
+  const out = [];
+  (names || []).forEach(n => {
+    const want = String(n || '').trim().toLowerCase();
+    if (!want) return;
+    const hit = (members || []).find(m => {
+      const full = String(m.name || m.userId || '').trim().toLowerCase();
+      return full === want || full.split(/\s+/)[0] === want.split(/\s+/)[0];
+    });
+    if (hit && !out.includes(hit.userId)) out.push(hit.userId);
+  });
+  return out;
+};
+
+// Decide what to flag before anything is merged. Two things get unticked by default:
+// dates outside the trip, and items that look like something already in the schedule.
+function reviewItinerary(trip, extraction) {
+  const r = tripDateRange(trip);
+  const lo = r.start || trip.startDate || '';
+  const hi = r.end || trip.endDate || '';
+  const days = trip.days || [];
+  const spans = trip.spans || [];
+  return (extraction.items || []).map((it, i) => {
+    const date = it.kind === 'event' || it.kind === 'task' ? it.date : it.startDate;
+    const outside = !!(lo && hi && date && (date < lo || date > hi));
+    let dupe = false;
+    if (it.kind === 'event') {
+      const d = days.find(x => (x.date || '').slice(0,10) === date);
+      dupe = !!(d && (d.events || []).some(e => (e.time || '') === (it.time || '') ||
+        String(e.title || '').trim().toLowerCase() === String(it.title || '').trim().toLowerCase()));
+    } else if (it.kind === 'task') {
+      const d = days.find(x => (x.date || '').slice(0,10) === date);
+      dupe = !!(d && (d.tasks || []).some(t => String(t.text || '').trim().toLowerCase() === String(it.text || '').trim().toLowerCase()));
+    } else {
+      dupe = spans.some(s => s.startDate === it.startDate &&
+        (String(s.title || '').trim().toLowerCase() === String(it.title || '').trim().toLowerCase() ||
+         (it.flightNo && String(s.flightNo || '').replace(/\s/g,'').toUpperCase() === String(it.flightNo).replace(/\s/g,'').toUpperCase())));
+    }
+    return { ...it, _i:i, date, outside, dupe, include: !outside && !dupe,
+      assignees: matchTravellers(it.people, trip.members) };
+  });
+}
+
+// Build the trip patch. Days the itinerary needs but the trip doesn't have yet are
+// created — a new trip starts with none, so without this an import would have nowhere
+// to put anything.
+function mergeItinerary(trip, rows) {
+  const chosen = rows.filter(r => r.include);
+  let days = (trip.days || []).map(d => ({ ...d, events:[...(d.events||[])], tasks:[...(d.tasks||[])] }));
+  const spans = [...(trip.spans || [])];
+  const ensureDay = (date) => {
+    if (!date) return null;
+    let d = days.find(x => (x.date || '').slice(0,10) === date);
+    if (!d) { d = { id:uid(), date, label:'', events:[], tasks:[] }; days.push(d); }
+    return d;
+  };
+  chosen.forEach(it => {
+    if (it.kind === 'event') {
+      const d = ensureDay(it.date); if (!d) return;
+      d.events.push({ id:uid(), time:it.time||'', endTime:it.endTime||'', title:it.title||'', location:it.location||'',
+        locationLink:'', category:'Sightseeing', assignees:it.assignees||[], activities:[], docs:[] });
+    } else if (it.kind === 'task') {
+      const d = ensureDay(it.date); if (!d) return;
+      d.tasks.push({ id:uid(), time:it.time||'', text:it.text||'', assignees:it.assignees||[], status:'todo' });
+    } else {
+      // Travel and stays are spans: they cross days and are overlaid onto each one.
+      ensureDay(it.startDate); ensureDay(it.endDate);
+      spans.push({ id:uid(), type: it.kind === 'stay' ? 'Accommodation' : 'Travel',
+        title:it.title||'', location:it.location||'', from:it.from||'', to:it.to||'',
+        mode: it.kind === 'stay' ? '' : (it.mode || 'By Road'), flightNo:it.flightNo||'',
+        assignees:it.assignees||[], startDate:it.startDate||'', startTime:it.startTime||'',
+        endDate:it.endDate||it.startDate||'', endTime:it.endTime||'', docs:[] });
+    }
+  });
+  days.forEach(d => {
+    d.events.sort((a,b) => (a.time||'').localeCompare(b.time||''));
+    d.tasks.sort((a,b) => (a.time||'').localeCompare(b.time||''));
+  });
+  days.sort((a,b) => (a.date||'') > (b.date||'') ? 1 : -1);
+  return { days, spans };
+}
+
+// Review before anything is written. Nothing here is merged until "Add" is tapped, and
+// every time and title is editable — a misread departure time is the whole risk of
+// importing, so correcting one has to be a single tap, not a reason to abandon.
+function ImportReview({ trip, doc, onClose, onApply }) {
+  const [rows, setRows] = useState(null);
+  const [busy, setBusy] = useState(true);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let dead = false;
+    extractItinerary(trip, doc)
+      .then(ex => { if (!dead) { setRows(reviewItinerary(trip, ex)); setBusy(false); } })
+      .catch(() => { if (!dead) { setFailed(true); setBusy(false); } });
+    return () => { dead = true; };
+  }, [trip, doc]);
+
+  const set = (i, patch) => setRows(rs => rs.map(r => r._i === i ? { ...r, ...patch } : r));
+  const list = rows || [];
+  const selected = list.filter(r => r.include);
+  const outside = list.filter(r => r.outside).length;
+  const dupes = list.filter(r => r.dupe).length;
+
+  const byDate = {};
+  list.forEach(r => { const k = r.date || '—'; (byDate[k] = byDate[k] || []).push(r); });
+  const dates = Object.keys(byDate).sort();
+
+  const field = (val, onChange, width, placeholder) => (
+    <input value={val || ''} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+      style={{ width, minWidth:0, boxSizing:'border-box', padding:'4px 6px', border:'1px solid #DCCDBE', borderRadius:6,
+        fontSize:12, color:'#3D2E26', background:'#fff' }} />
+  );
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:220, background:'#F0EBE0', overflowY:'auto', fontFamily:'var(--font-body)', paddingBottom:'env(safe-area-inset-bottom, 0px)' }}>
+      <div style={{ background:'#5C1A1A', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', position:'sticky', top:0, zIndex:5 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12, padding:'calc(env(safe-area-inset-top, 0px) + 11px) 16px 11px' }}>
+          <button onClick={onClose} aria-label="Cancel import" style={{ width:34, height:34, borderRadius:9, border:'1.5px solid rgba(245,236,215,0.28)', background:'rgba(245,236,215,0.08)', color:'#F5ECD7', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, padding:0 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+          </button>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:16, fontWeight:800, color:'#F5ECD7', letterSpacing:'0.02em' }}>Import itinerary</div>
+            <div style={{ fontSize:11, color:'rgba(245,236,215,0.72)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{(doc && doc.name) || 'document'}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth:640, margin:'0 auto', padding:'14px 16px 120px' }}>
+        {busy && <p style={{ fontSize:13, color:'#8A7A6D', textAlign:'center', padding:'40px 0' }}>Reading the itinerary…</p>}
+        {failed && <p style={{ fontSize:13, color:'#B54030', textAlign:'center', padding:'40px 0' }}>Couldn’t read that document. Nothing has been changed.</p>}
+
+        {!busy && !failed && (
+          <>
+            {/* The extraction is stubbed but the merge is real — anything ticked here
+                genuinely lands in the trip. Say so plainly until a PDF is actually read. */}
+            <div style={{ fontSize:11.5, color:'#8A5A2A', background:'#FFF3D6', border:'1px solid #F0DFB6', borderRadius:10, padding:'9px 11px', marginBottom:10, lineHeight:1.5 }}>
+              <strong>Sample data — this document hasn’t been read yet.</strong> The layout is real and anything you add really does go into the schedule, so use a test trip.
+            </div>
+            <div style={{ fontSize:11.5, color:'#6E2118', background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:10, padding:'9px 11px', marginBottom:14, lineHeight:1.5 }}>
+              Found <strong>{list.length}</strong> items · <strong>{selected.length}</strong> selected
+              {outside > 0 && <> · <span style={{ color:'#B07A2A', fontWeight:700 }}>{outside} outside your trip dates</span></>}
+              {dupes > 0 && <> · <span style={{ color:'#B07A2A', fontWeight:700 }}>{dupes} possible duplicate{dupes===1?'':'s'}</span></>}
+              <div style={{ color:'#8A7A6D', marginTop:4 }}>Nothing is added until you tap Add below. Check the times.</div>
+            </div>
+
+            {dates.map(d => (
+              <div key={d} style={{ marginBottom:16 }}>
+                <div style={{ fontSize:11, fontWeight:800, letterSpacing:'0.08em', color:'#8B2A14', textTransform:'uppercase', marginBottom:7 }}>
+                  {d === '—' ? 'No date' : fmtDate(d)}
+                </div>
+                {byDate[d].map(r => {
+                  const k = IMPORT_KINDS[r.kind] || IMPORT_KINDS.event;
+                  return (
+                    <div key={r._i} style={{ display:'flex', gap:9, alignItems:'flex-start', padding:'9px 10px', marginBottom:7,
+                      border:'1px solid ' + (r.include ? '#D6C3B2' : '#E6DCD2'), borderRadius:11,
+                      background: r.include ? '#FFFDF8' : '#F4EFE8', opacity: r.include ? 1 : 0.75 }}>
+                      <button type="button" onClick={()=>set(r._i, { include: !r.include })}
+                        aria-pressed={r.include} aria-label={`${r.include ? 'Exclude' : 'Include'} ${r.title || r.text}`}
+                        style={{ width:22, height:22, flexShrink:0, marginTop:2, borderRadius:6, cursor:'pointer',
+                          border:'2px solid ' + (r.include ? '#3C8A3C' : '#C3B3A5'), background: r.include ? '#3C8A3C' : '#fff',
+                          color:'#fff', fontSize:13, lineHeight:1, display:'grid', placeItems:'center', padding:0 }}>{r.include ? '✓' : ''}</button>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:5 }}>
+                          <span style={{ fontSize:12 }}>{k.icon}</span>
+                          <span style={{ fontSize:9.5, fontWeight:800, letterSpacing:'0.06em', color:'#8A7A6D', textTransform:'uppercase' }}>{k.label}</span>
+                          {r.outside && <span style={{ fontSize:9, fontWeight:800, color:'#B07A2A', border:'1px solid #E3C89A', borderRadius:4, padding:'1px 5px' }}>OUTSIDE TRIP</span>}
+                          {r.dupe && <span style={{ fontSize:9, fontWeight:800, color:'#B07A2A', border:'1px solid #E3C89A', borderRadius:4, padding:'1px 5px' }}>MAYBE ALREADY THERE</span>}
+                        </div>
+                        <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                          {field(r.kind === 'event' || r.kind === 'task' ? r.time : r.startTime,
+                            v => set(r._i, (r.kind === 'event' || r.kind === 'task') ? { time:v } : { startTime:v }), 62, 'hh:mm')}
+                          {field(r.kind === 'task' ? r.text : r.title,
+                            v => set(r._i, r.kind === 'task' ? { text:v } : { title:v }), '100%', 'Description')}
+                        </div>
+                        {(r.from || r.to) && (
+                          <div style={{ fontSize:11, color:'#7A685F', marginTop:5 }}>{r.from || '?'} → {r.to || '?'}{r.flightNo ? ` · ${r.flightNo}` : ''}</div>
+                        )}
+                        {r.location && !r.from && <div style={{ fontSize:11, color:'#7A685F', marginTop:5 }}>📍 {r.location}</div>}
+                        {r.kind === 'stay' && <div style={{ fontSize:11, color:'#7A685F', marginTop:3 }}>{fmtDate(r.startDate)} → {fmtDate(r.endDate)}</div>}
+                        {r.assignees && r.assignees.length > 0 && (
+                          <div style={{ fontSize:10.5, color:'#6E2118', marginTop:4 }}>
+                            👥 {r.assignees.map(uid => { const m = (trip.members||[]).find(x=>x.userId===uid); return (m && m.name) || uid; }).join(', ')}
+                          </div>
+                        )}
+                        {r.people && r.people.length > 0 && (!r.assignees || !r.assignees.length) && (
+                          <div style={{ fontSize:10.5, color:'#B07A2A', marginTop:4 }}>👥 {r.people.join(', ')} — not on this trip, will be left untagged</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+
+      {!busy && !failed && (
+        <div style={{ position:'fixed', left:0, right:0, bottom:0, background:'#F5EFE2', borderTop:'1px solid #D8CFC2',
+          padding:'11px 16px calc(env(safe-area-inset-bottom, 0px) + 11px)', display:'flex', gap:9, alignItems:'center' }}>
+          <button onClick={onClose} style={{ flexShrink:0, border:'1px solid #C8B09A', borderRadius:9, padding:'10px 14px', background:'transparent', color:'#8B2A14', fontSize:13, fontWeight:700, cursor:'pointer' }}>Cancel</button>
+          <button disabled={!selected.length} onClick={()=>onApply(rows)}
+            style={{ flex:1, minWidth:0, border:'none', borderRadius:9, padding:'11px 14px', background: selected.length ? '#6E1A10' : '#C6B8AC',
+              color:'#fff', fontSize:13, fontWeight:800, cursor: selected.length ? 'pointer' : 'default', whiteSpace:'nowrap' }}>
+            Add {selected.length} item{selected.length===1?'':'s'} to schedule
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Documents TAB: every document across the trip, tagged & filterable by traveller ----
 function DocumentsTab({ trip, update, session, canEdit=true, focus=[] }) {
   const members = trip.members || [];
@@ -4998,6 +5266,8 @@ function DocumentsTab({ trip, update, session, canEdit=true, focus=[] }) {
   const [showUpload, setShowUpload] = useState(false);
   const [upForm, setUpForm] = useState({ file:null, name:'', assignees:[] });
   const [busy, setBusy] = useState(false);
+  const [importDoc, setImportDoc] = useState(null);   // the PDF being read into the schedule
+  const [importDone, setImportDone] = useState('');
 
   // Gather every document. Schedule-attached docs inherit their item's travellers;
   // trip-level uploads carry their own tags and sit under "General".
@@ -5070,6 +5340,14 @@ function DocumentsTab({ trip, update, session, canEdit=true, focus=[] }) {
                 <a href={x.doc.url || x.doc.data} target="_blank" rel="noopener noreferrer" style={{ display:'block', fontSize:12.5, fontWeight:700, color:'#6E1A10', textDecoration:'none', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{x.doc.name}</a>
                 <div style={{ fontSize:10, color:'#8A7A6D', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{x.ctx}{x.doc.size ? ` · ${fmtSize(x.doc.size)}` : ''}</div>
                 <div style={{ marginTop:4 }}>{tagChips(x.travellers)}</div>
+                {/* Only the captain can import, and only from a PDF — an agent's itinerary
+                    is the one document worth reading into the schedule. */}
+                {canEdit && isPdfDoc(x.doc) && (
+                  <button type="button" onClick={()=>setImportDoc(x.doc)}
+                    style={{ marginTop:6, border:'1px solid #C8B09A', borderRadius:8, padding:'5px 10px', background:'#fff', color:'#6E1A10', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                    ⤵ Import into schedule
+                  </button>
+                )}
               </div>
               {x.tripDoc && canEdit && <button type="button" aria-label="Delete document" onClick={()=>delTripDoc(x.doc.id)} style={{ flexShrink:0, width:28, height:28, border:'none', borderRadius:8, background:'#F5DFDA', color:'#A43828', cursor:'pointer', fontSize:13 }}>✕</button>}
             </div>
@@ -5095,6 +5373,24 @@ function DocumentsTab({ trip, update, session, canEdit=true, focus=[] }) {
             <Btn onClick={doUpload} disabled={busy} style={{ opacity: busy?0.6:1 }}>{busy ? 'Uploading…' : 'Upload'}</Btn>
           </div>
         </Modal>
+      )}
+
+      {importDone && (
+        <div style={{ position:'fixed', left:16, right:16, bottom:20, zIndex:230, background:'#2F7A2F', color:'#fff',
+          borderRadius:11, padding:'11px 14px', fontSize:12.5, fontWeight:700, boxShadow:'0 6px 20px rgba(0,0,0,0.25)' }}>
+          {importDone}
+        </div>
+      )}
+
+      {importDoc && (
+        <ImportReview trip={trip} doc={importDoc} onClose={()=>setImportDoc(null)}
+          onApply={(rows) => {
+            const added = rows.filter(r => r.include).length;
+            update(t => mergeItinerary(t, rows));
+            setImportDoc(null);
+            setImportDone(`Added ${added} item${added===1?'':'s'} to the schedule.`);
+            setTimeout(() => setImportDone(''), 4000);
+          }} />
       )}
     </div>
   );
