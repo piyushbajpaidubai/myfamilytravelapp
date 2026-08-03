@@ -324,17 +324,29 @@ async function routeFromMapsLink(raw) {
   return route;
 }
 
-// Free driving route (OpenStreetMap Nominatim geocode + OSRM routing; no API key) → { seconds, meters } or null
-async function roadRoute(from, to) {
+// ── Free driving routes (OpenStreetMap Nominatim + OSRM; no API key) ────────────
+// A place name resolves to the same coordinates every time, so results are cached for
+// the session: a card recomputing its ETA every few minutes must not re-ask Nominatim
+// for the same town each time. Their policy asks for roughly one request a second, and
+// a browser cannot send the identifying User-Agent they request — so the fewer, the
+// better. Both services are free public instances with no SLA; treat every call as
+// allowed to fail and fall back to the schedule.
+const geoCache = new Map();
+async function geocodeOnce(q) {
+  const key = String(q || '').trim().toLowerCase();
+  if (!key) return null;
+  if (geoCache.has(key)) return geoCache.get(key);
   try {
-    const geocode = async (q) => {
-      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } });
-      if (!r.ok) return null;
-      const rows = await r.json();
-      return (rows && rows[0]) ? { lat: rows[0].lat, lon: rows[0].lon } : null;
-    };
-    const a = await geocode(from); if (!a) return null;
-    const b = await geocode(to);   if (!b) return null;
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } });
+    if (!r.ok) return null;                       // not cached: a transient failure should be retryable
+    const rows = await r.json();
+    const hit = (rows && rows[0]) ? { lat: +rows[0].lat, lon: +rows[0].lon } : null;
+    geoCache.set(key, hit);
+    return hit;
+  } catch (e) { return null; }
+}
+async function osrmLeg(a, b) {
+  try {
     const rr = await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`);
     if (!rr.ok) return null;
     const j = await rr.json();
@@ -342,6 +354,24 @@ async function roadRoute(from, to) {
     return { seconds: j.routes[0].duration, meters: j.routes[0].distance };
   } catch (e) { return null; }
 }
+async function roadRoute(from, to) {
+  const a = await geocodeOnce(from); if (!a) return null;
+  const b = await geocodeOnce(to);   if (!b) return null;
+  return osrmLeg(a, b);
+}
+// What's left of the drive from where a traveller actually is. Only the destination
+// needs geocoding — the origin arrives as live coordinates.
+async function roadRouteFromCoords(lat, lon, toText) {
+  const b = await geocodeOnce(toText); if (!b) return null;
+  return osrmLeg({ lat, lon }, b);
+}
+// Straight-line km, used only to decide whether someone has moved far enough to be
+// worth re-routing. Not shown to anyone.
+const havKm = (aLat, aLon, bLat, bLon) => {
+  const R = 6371, dLat = (bLat - aLat) * Math.PI / 180, dLon = (bLon - aLon) * Math.PI / 180;
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * Math.PI / 180) * Math.cos(bLat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+};
 // Add seconds to a (YYYY-MM-DD, HH:MM) → { date, time }, UTC math to avoid timezone drift
 const addSeconds = (dateISO, timeHM, secs) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateISO || '');
@@ -1749,6 +1779,222 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
 }
 
 // ---- Status Tab ----  (per-traveler rollup of event/activity/span statuses per day)
+const ROAD_PHASE = {
+  notracking: { label:'NOT TRACKING', tone:'#8A7A6D' },
+  onway:      { label:'ON THE WAY',   tone:'#2F7A2F' },
+  late:       { label:'RUNNING LATE', tone:'#B54030' },
+  arrived:    { label:'ARRIVED',      tone:'#2F7A2F' },
+};
+
+// Inline tracker for a By Road leg — the counterpart of the flight card.
+//
+// A drive has no flight number and nobody publishes it, so there is no feed to query.
+// The road equivalent of ADS-B is the traveller's own phone: the Status tab already
+// polls live positions every 20s (and, until now, discarded them). Distance and drive
+// time come from OSRM. No provider, no key.
+//
+// Better than the flight card in one respect — the position is first-hand and seconds
+// old, so it cannot go quietly stale the way a third-party record can. Worse in
+// another: OSRM's free routing knows nothing about traffic, so the ETA is free-flow.
+function RoadTrackCard({ travel, locations, members, session, sharingLoc, onToggleShare }) {
+  const [open, setOpen] = useState(false);
+  const [baseline, setBaseline] = useState(null); // whole leg: { seconds, meters }
+  const [legs, setLegs] = useState({});           // userId -> { seconds, meters, at }
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const lastCalcRef = useRef({});                 // userId -> { at, lat, lon } of the last route we asked for
+  const { from, to, startTime, endTime, startDate, endDate } = travel;
+  const assigneeKey = ((travel.assignees && travel.assignees.length) ? travel.assignees : []).join(',');
+
+  // Whoever is on this leg and currently broadcasting. `locations` is pre-filtered to
+  // travellers who switched sharing on, so an empty list means nobody is tracking.
+  const assigned = assigneeKey ? assigneeKey.split(',') : [];
+  const riders = (locations || []).filter(l => !assigned.length || assigned.includes(l.user_id));
+
+  // Whole-route baseline, once, when the card is opened.
+  useEffect(() => {
+    if (!open || baseline || !from || !to) return undefined;
+    let dead = false;
+    roadRoute(from, to).then(r => { if (!dead) setBaseline(r || { failed:true }); });
+    return () => { dead = true; };
+  }, [open, baseline, from, to]);
+
+  // Remaining drive per traveller. Throttled hard: the position poll ticks every 20s,
+  // but re-routing that often would hammer a free public OSRM instance for an answer
+  // that barely moves. Re-ask only after 3 minutes, or 5km of travel.
+  useEffect(() => {
+    if (!open || !to) return undefined;
+    const onLeg = assigneeKey ? assigneeKey.split(',') : [];
+    const list = (locations || []).filter(l => !onLeg.length || onLeg.includes(l.user_id));
+    if (!list.length) return undefined;
+    let dead = false;
+    (async () => {
+      for (const r of list) {
+        const prev = lastCalcRef.current[r.user_id];
+        const movedKm = prev ? havKm(prev.lat, prev.lon, r.lat, r.lon) : Infinity;
+        const age = prev ? Date.now() - prev.at : Infinity;
+        // Parked (or stuck): the route cannot have changed, so don't ask. Still refresh
+        // occasionally in case the destination or road conditions did.
+        if (movedKm < 0.5 && age < 15 * 60000) continue;
+        if (age < 3 * 60000 && movedKm < 5) continue;
+        lastCalcRef.current[r.user_id] = { at: Date.now(), lat: r.lat, lon: r.lon };
+        const leg = await roadRouteFromCoords(r.lat, r.lon, to);
+        if (dead) return;
+        if (leg) setLegs(p => ({ ...p, [r.user_id]: { ...leg, at: Date.now() } }));
+      }
+    })();
+    return () => { dead = true; };
+  }, [open, to, locations, assigneeKey]);
+
+  // Between recomputes, count the remaining time down rather than leaving it frozen.
+  useEffect(() => {
+    if (!open || !riders.length) return undefined;
+    const id = setInterval(() => setNowMs(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, [open, riders.length]);
+
+  const nameOf = (uid) => { const m = (members || []).find(x => x.userId === uid); return (m && m.name) || uid; };
+  const firstNameOf = (uid) => String(nameOf(uid)).trim().split(/\s+/)[0];
+
+  // A route is computed at a moment; decay it by the time since so it stays truthful.
+  const rem = riders.map(r => {
+    const l = legs[r.user_id];
+    if (!l) return null;
+    return { uid: r.user_id, sec: Math.max(0, l.seconds - (nowMs - l.at) / 1000), meters: l.meters };
+  }).filter(Boolean);
+
+  const groupSec = rem.length ? Math.max(...rem.map(x => x.sec)) : null; // the one furthest behind sets the group ETA
+  const soonestSec = rem.length ? Math.min(...rem.map(x => x.sec)) : null;
+  const totalM = baseline && !baseline.failed ? baseline.meters : null;
+
+  const etaDate = groupSec != null ? new Date(nowMs + groupSec * 1000) : null;
+  const etaHHMM = etaDate ? `${String(etaDate.getHours()).padStart(2,'0')}:${String(etaDate.getMinutes()).padStart(2,'0')}` : '';
+  // Only judge lateness on a same-day leg — comparing wall-clock across midnight lies.
+  const sameDay = !startDate || !endDate || startDate === endDate;
+  const plannedArrMin = hhmmToMin(endTime);
+  const etaMin = etaDate ? etaDate.getHours() * 60 + etaDate.getMinutes() : null;
+  const lateBy = (sameDay && plannedArrMin != null && etaMin != null) ? etaMin - plannedArrMin : null;
+
+  let phaseKey = 'notracking';
+  if (riders.length) phaseKey = (soonestSec != null && soonestSec < 120) ? 'arrived' : 'onway';
+  if (phaseKey === 'onway' && lateBy != null && lateBy > 10) phaseKey = 'late';
+  const phase = ROAD_PHASE[phaseKey];
+
+  const iAmOnLeg = !!(session && (!assigned.length || assigned.includes(session.userId)));
+  const canOfferShare = !!(onToggleShare && iAmOnLeg && !sharingLoc);
+  const fmtKm = (m) => m == null ? '' : m >= 10000 ? `${Math.round(m / 1000)} km` : `${(m / 1000).toFixed(1)} km`;
+  const label = (t) => String(t || '—').trim();
+
+  const timeCol = (heading, planned, live, isLate) => (
+    <div style={{ flex:1, minWidth:0 }}>
+      <div style={{ fontSize:9.5, letterSpacing:'0.06em', color:'#8A7A6D', textTransform:'uppercase' }}>{heading}</div>
+      <div style={{ fontSize:15, fontWeight:800, color: live && isLate ? '#B54030' : '#2E2320', marginTop:2 }}>
+        {fmtTime12(live || planned) || '—'}
+      </div>
+      {live && planned && live !== planned && (
+        <div style={{ fontSize:11, color:'#9A8478', textDecoration:'line-through' }}>{fmtTime12(planned)}</div>
+      )}
+    </div>
+  );
+
+  return (
+    <div data-no-tab-swipe style={{ marginTop:8, border:'1px solid #E2D8C8', borderRadius:12, background:'#FFFDF8', overflow:'hidden' }}>
+      <button type="button" onClick={()=>setOpen(o=>!o)} aria-expanded={open}
+        aria-label={`${label(from)} to ${label(to)}${open ? '' : ' — show live status'}`}
+        style={{ width:'100%', border:'none', background:'transparent', padding:'9px 10px', textAlign:'left', cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}>
+        <span style={{ flex:1, minWidth:0 }}>
+          <span style={{ display:'block', fontSize:12.5, fontWeight:800, color:'#2E2320', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            🚗 {label(from)} <span style={{ fontWeight:600, color:'#7A685F' }}>→</span> {label(to)}
+          </span>
+          {open ? (
+            <span style={{ display:'inline-block', marginTop:4, fontSize:9.5, fontWeight:800, letterSpacing:'0.06em', color:phase.tone, border:`1px solid ${phase.tone}`, borderRadius:5, padding:'2px 6px' }}>
+              {phase.label}
+            </span>
+          ) : (
+            <span style={{ display:'inline-block', marginTop:4, fontSize:10, color:'#8A7A6D' }}>Tap for live status</span>
+          )}
+        </span>
+        <span aria-hidden="true" style={{ flexShrink:0, color:'#8A7A6D', transform:open?'rotate(180deg)':'none', transition:'transform .15s', display:'grid', placeItems:'center' }}>
+          <NativeStatusIcon name="chevron" size={16} />
+        </span>
+      </button>
+
+      {open && (
+        <div style={{ borderTop:'1px solid #EDE3D6', padding:'10px', background:'#FFFBF3' }}>
+          {phaseKey === 'late' && lateBy != null && (
+            <div style={{ fontSize:11, lineHeight:1.45, color:'#8A5A2A', background:'#FFF3D6', border:'1px solid #F0DFB6', borderRadius:8, padding:'7px 9px', marginBottom:10 }}>
+              Running about {fmtDur(Math.round(lateBy))} behind the planned arrival.
+            </div>
+          )}
+
+          {/* One car per traveller, each at its own point along the route. */}
+          <div style={{ position:'relative', height:22 }}>
+            {baseline && !baseline.failed && (
+              <div style={{ position:'absolute', top:0, left:0, right:0, textAlign:'center', fontSize:10, color:'#8A7A6D' }}>
+                {fmtKm(baseline.meters)} · {fmtDur(Math.round(baseline.seconds / 60))}
+              </div>
+            )}
+            <div style={{ position:'absolute', top:17, left:0, right:0, height:2, background:'#DCCFC0', borderRadius:2 }} />
+            <span aria-hidden="true" style={{ position:'absolute', top:14, left:0, width:8, height:8, borderRadius:'50%', background:'#8B2A14' }} />
+            <span aria-hidden="true" style={{ position:'absolute', top:14, right:0, width:8, height:8, borderRadius:'50%', background: phaseKey==='arrived' ? '#8B2A14' : '#DCCFC0' }} />
+            {rem.map(x => {
+              const p = totalM ? Math.min(0.97, Math.max(0.03, 1 - (x.meters / totalM))) : 0.03;
+              return (
+                <span key={x.uid} aria-hidden="true" title={firstNameOf(x.uid)}
+                  style={{ position:'absolute', top:8, left:`calc(10px + (100% - 32px) * ${p})`, fontSize:12, transition:'left .4s' }}>🚗</span>
+              );
+            })}
+          </div>
+          <div style={{ display:'flex', justifyContent:'space-between', gap:8, fontSize:12, fontWeight:800, color:'#2E2320', marginTop:5 }}>
+            <span style={{ minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{label(from)}</span>
+            <span style={{ minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'right' }}>{label(to)}</span>
+          </div>
+
+          {rem.length > 0 && (
+            <div style={{ fontSize:10, color:'#8A7A6D', marginTop:4, lineHeight:1.5 }}>
+              {rem.map((x, i) => (
+                <span key={x.uid}>{i ? ' · ' : ''}{firstNameOf(x.uid)} {fmtDur(Math.round(x.sec / 60))}</span>
+              ))} remaining
+            </div>
+          )}
+
+          <div style={{ display:'flex', gap:10, marginTop:11, paddingTop:10, borderTop:'1px solid #EDE3D6' }}>
+            {timeCol('Depart', startTime, '', false)}
+            {timeCol('Arrive', endTime, etaHHMM, lateBy != null && lateBy > 10)}
+          </div>
+
+          <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginTop:10, fontSize:10, color:'#A2917F' }}>
+            {riders.length ? (
+              <span>Live from {riders.length === 1 ? `${firstNameOf(riders[0].user_id)}'s phone` : `${riders.length} phones`}
+                {rem.length ? '' : ' · working out the route…'}</span>
+            ) : (
+              <span style={{ color:'#B07A2A', fontWeight:700 }}>Not tracking — showing the planned times</span>
+            )}
+            {rem.length > 0 && <span>· free-flow, no traffic</span>}
+          </div>
+
+          {canOfferShare && (
+            <button type="button" onClick={onToggleShare}
+              style={{ width:'100%', marginTop:9, border:'none', borderRadius:9, padding:'9px 12px', background:'#1A73E8', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+              📍 Share my location to track this drive
+            </button>
+          )}
+
+          <div style={{ display:'flex', gap:7, marginTop:9 }}>
+            <button type="button" onClick={()=>window.open(gmapsNavUrl(to), '_blank', 'noopener')}
+              style={{ flex:1, minWidth:0, border:'none', borderRadius:9, padding:'8px 10px', background:'#E8DDD5', color:'#6E2118', fontSize:11.5, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>
+              🧭 Navigate
+            </button>
+            <button type="button" onClick={()=>window.open(gmapsDirUrl(from, to), '_blank', 'noopener')}
+              style={{ flex:1, minWidth:0, border:'1px solid #D7CCC0', borderRadius:9, padding:'8px 10px', background:'#fff', color:'#6E2118', fontSize:11.5, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>
+              🗺 Route
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Inline flight tracker for a By Air leg — replaces the old "Show Live" pop-up so the
 // traveller never leaves the Status tab. Collapsed it is one summary line; the chevron
 // opens the route diagram and the estimated-vs-scheduled detail.
@@ -1973,10 +2219,6 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
     const iv = setInterval(load, 20000); // refresh every 20s
     return () => { cancelled = true; clearInterval(iv); };
   }, [trip.id, session, shareToken, sharingLoc]);
-  const nameForLoc = (userId) => {
-    const m = (trip.members || []).find(x => x.userId === userId);
-    return (m && m.name) || (memberPics[userId] || {}).name || userId;
-  };
   const copyShare = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
@@ -1988,7 +2230,6 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
   };
 
   const LINE = '#3D0C02';
-  const [livePopup, setLivePopup] = useState(null); // { kind:'maps'|'flight', from, to, mode, flightNo, name }
   const [sentenceView, setSentenceView] = useState(true); // "Description" toggle — status sentences above the markers, on by default
   // Travelers who count for an item: its assignees, or everyone when unassigned
   const assignedRoster = (item) => {
@@ -2378,13 +2619,12 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                       {it.travel && it.travel.mode === 'By Air' && (
                         <FlightTrackCard travel={it.travel} dayISO={(it.ref && it.ref.dayISO) || ''} />
                       )}
-                      {it.travel && it.travel.mode !== 'By Air' && it.anyActive && (
-                        <div style={{ marginTop:8 }}>
-                          <button onClick={()=>setLivePopup({ kind:'maps', ...it.travel })}
-                            style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#1A73E8', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
-                            <span style={{ fontSize:14 }}>🗺</span> View on Map
-                          </button>
-                        </div>
+                      {/* By Road: the inline tracker replaces the map pop-up. Navigate and
+                          Route moved inside it — launching turn-by-turn is worth keeping,
+                          unlike the flight pop-up which only linked out to a worse view. */}
+                      {it.travel && it.travel.mode !== 'By Air' && (
+                        <RoadTrackCard travel={it.travel} locations={locations} members={trip.members}
+                          session={session} sharingLoc={sharingLoc} onToggleShare={onToggleShare} />
                       )}
                     </div>
                   </div>
@@ -2430,22 +2670,6 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
           <div style={{ display:'flex', justifyContent:'flex-end', marginTop:14 }}>
             <button onClick={()=>setStatusModal(null)} style={{ padding:'8px 18px', borderRadius:8, border:'none', background:'#6E1A10', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer' }}>Done</button>
           </div>
-        </Modal>
-      )}
-
-      {/* The flight pop-up is gone — By Air now renders inline via FlightTrackCard. */}
-      {livePopup && (
-        <Modal title="View on Map" onClose={()=>setLivePopup(null)}>
-          <div style={{ fontSize:13.5, color:'#6E1A10', marginBottom:6 }}>{livePopup.name}</div>
-          <div style={{ display:'flex', alignItems:'center', gap:8, background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:9, padding:'12px 14px', marginBottom:14 }}>
-            <span style={{ fontSize:18 }}>🚗</span>
-            <span style={{ fontSize:14, fontWeight:600, color:'#2E2320' }}>{livePopup.from || '?'} <span style={{ color:'#B0967A' }}>→</span> {livePopup.to || '?'}</span>
-          </div>
-          {/* Navigate from where I actually am (travellers only — a viewer would get their own route) */}
-          {update && (
-            <Btn onClick={()=>{ window.open(gmapsNavUrl(livePopup.to), '_blank', 'noopener'); setLivePopup(null); }} style={{ background:'#1A73E8', width:'100%', marginBottom:8 }}>🧭 Navigate from my location</Btn>
-          )}
-          <Btn variant="soft" onClick={()=>{ window.open(gmapsDirUrl(livePopup.from, livePopup.to), '_blank', 'noopener'); setLivePopup(null); }} style={{ width:'100%' }}>🗺 See the route on Google Maps</Btn>
         </Modal>
       )}
     </div>
