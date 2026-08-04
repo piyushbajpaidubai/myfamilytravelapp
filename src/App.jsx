@@ -359,12 +359,23 @@ async function roadRoute(from, to) {
   const b = await geocodeOnce(to);   if (!b) return null;
   return osrmLeg(a, b);
 }
-// What's left of the drive from where a traveller actually is. Only the destination
-// needs geocoding — the origin arrives as live coordinates.
-async function roadRouteFromCoords(lat, lon, toText) {
-  const b = await geocodeOnce(toText); if (!b) return null;
-  return osrmLeg({ lat, lon }, b);
+// What's left of the drive from where a traveller actually is. Used only on legs whose
+// endpoints were resolved from a pasted Maps link, so the destination is real
+// coordinates rather than a name we would have to guess at mid-drive.
+async function roadRouteFromCoords(lat, lon, dest) {
+  if (!dest || dest.lat == null || dest.lon == null) return null;
+  return osrmLeg({ lat, lon }, dest);
 }
+
+// Records the moment a traveller marks a leg on-going — the app stores only the status
+// value, so without this there is no way to know how long they have been under way.
+// Cleared when they go back to not-started so a re-start begins from zero.
+const stampStart = (existing, userId, status) => {
+  const map = { ...(existing || {}) };
+  if (status === 'active' && !map[userId]) map[userId] = new Date().toISOString();
+  if (status === 'todo') delete map[userId];
+  return map;
+};
 // Straight-line km, used only to decide whether someone has moved far enough to be
 // worth re-routing. Not shown to anyone.
 const havKm = (aLat, aLon, bLat, bLon) => {
@@ -528,7 +539,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
   const [taskForm, setTaskForm] = useState({ time:"", text:"", assignees:[] });
   // evForm covers both single-day activities (time/endTime/category) and multi-day spans (startDate/endDate/…)
   // duration = 'single' | 'multi' decides which; type only matters for multi-day spans
-  const [evForm, setEvForm] = useState({ duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", assignees:[], locationLink:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" });
+  const [evForm, setEvForm] = useState({ duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", assignees:[], locationLink:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"", fromGeo:null, toGeo:null });
   // Activity state: { [eventId]: inputText }
   const [activityInput, setActivityInput] = useState({});
   // Which event is showing the activity input box
@@ -556,10 +567,17 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     setMapsBusy(true); setMapsMsg(null);
     try {
       const route = await routeFromMapsLink(text);
-      setEvForm(cur => ({ ...cur, from: route.from || cur.from, to: route.to || cur.to }));
-      setMapsMsg({ ok:true, text: route.from
-        ? `Filled in: ${route.from} → ${route.to}`
-        : `Filled in destination: ${route.to} (Maps had no starting point — add one above)` });
+      // Resolve to coordinates HERE, once, while we still have the names Maps itself
+      // produced — never mid-drive off whatever the traveller typed. Storing them is
+      // also what switches this leg to live GPS tracking on the Status tab.
+      const [g1, g2] = await Promise.all([
+        route.from ? geocodeOnce(route.from) : Promise.resolve(null),
+        route.to ? geocodeOnce(route.to) : Promise.resolve(null),
+      ]);
+      setEvForm(cur => ({ ...cur, from: route.from || cur.from, to: route.to || cur.to,
+        fromGeo: g1 || null, toGeo: g2 || null }));
+      setMapsMsg({ ok:true, text: (route.from ? `Filled in: ${route.from} → ${route.to}` : `Filled in destination: ${route.to} (Maps had no starting point — add one above)`)
+        + (g2 ? ' · live tracking on for this drive' : ' · couldn’t pin the map location, so this drive runs on your entered times') });
       setMapsLink('');
     } catch (e) {
       setMapsMsg({ ok:false, text: e.message });
@@ -743,7 +761,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
 
   const delDay = (id) => update({ days: (trip.days||[]).filter(d=>d.id!==id) });
 
-  const blankForm = { duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", assignees:[], locationLink:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"" };
+  const blankForm = { duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", assignees:[], locationLink:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"", fromGeo:null, toGeo:null };
   const [editingEvent, setEditingEvent] = useState(null); // { dayId, evId } when the modal is editing an existing activity
   const [editingSpan, setEditingSpan] = useState(null); // spanId when the modal is editing an existing travel/stay span
   const closeModal = () => { setShowEvent(null); setEvForm(blankForm); setEditingEvent(null); setEditingSpan(null); };
@@ -768,7 +786,8 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     const single = !!s.startDate && s.startDate === s.endDate;
     setEvForm({ ...blankForm, duration: single ? 'single' : 'multi', type: s.type || 'Travel',
       title: s.title||'', location: s.location||'', from: s.from||'', to: s.to||'', mode: s.mode||'By Road', flightNo: s.flightNo||'',
-      assignees: s.assignees||[], startDate: s.startDate||'', startTime: s.startTime||'', endDate: s.endDate||'', spanEndTime: s.endTime||'' });
+      assignees: s.assignees||[], startDate: s.startDate||'', startTime: s.startTime||'', endDate: s.endDate||'', spanEndTime: s.endTime||'',
+      fromGeo: s.fromGeo||null, toGeo: s.toGeo||null });
     setEstimateMsg('');
     setEditingEvent(null);
     setEditingSpan(s.id);
@@ -832,7 +851,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
       else if (!f.from || !f.to) { alert('Please fill in the From and To locations.'); return; }
     }
     const endDate = f.duration === 'single' ? f.startDate : f.endDate; // single-day travel stays same-day
-    const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, mode:f.mode, flightNo:f.flightNo, assignees:f.assignees||[], startDate:f.startDate, startTime:f.startTime, endDate, endTime:f.spanEndTime };
+    const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, mode:f.mode, flightNo:f.flightNo, assignees:f.assignees||[], startDate:f.startDate, startTime:f.startTime, endDate, endTime:f.spanEndTime, fromGeo:f.fromGeo||null, toGeo:f.toGeo||null };
     // Editing an existing span: update in place, keeping its status history and docs.
     if (editingSpan) {
       update(t => ({ spans:(t.spans||[]).map(sp => sp.id===editingSpan ? { ...sp, ...fields } : sp) }));
@@ -855,7 +874,9 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
   const cycleSpanStatus = (id, dayISO) =>
     update(t => ({ spans:(t.spans||[]).map(s => {
       if (s.id !== id) return s;
-      if (myId) { const mds = { ...(s.memberDayStatus||{}) }; mds[myId] = { ...(mds[myId]||{}), [dayISO]: nextStatus(spanMemStOf(s, myId, dayISO)) }; return { ...s, memberDayStatus: mds }; }
+      if (myId) { const mds = { ...(s.memberDayStatus||{}) }; const next = nextStatus(spanMemStOf(s, myId, dayISO));
+        mds[myId] = { ...(mds[myId]||{}), [dayISO]: next };
+        return { ...s, memberDayStatus: mds, startedAt: stampStart(s.startedAt, myId, next) }; }
       return { ...s, dayStatus: { ...(s.dayStatus||{}), [dayISO]: nextStatus(spanStOf(s, dayISO)) } };
     }) }));
   const attachSpanDoc = async (id, file) => {
@@ -1426,8 +1447,8 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
                 </div>
               )}
               <div style={{ display:"flex", gap:10 }}>
-                <div style={{ flex:1 }}><Input label={evForm.mode==='By Air' ? 'From' : 'From *'} value={evForm.from} onChange={e=>setEvForm({...evForm,from:e.target.value})} placeholder={evForm.mode==='By Air' ? 'e.g. Delhi (DEL)' : 'e.g. Dehradun'} /></div>
-                <div style={{ flex:1 }}><Input label={evForm.mode==='By Air' ? 'To' : 'To *'} value={evForm.to} onChange={e=>setEvForm({...evForm,to:e.target.value})} placeholder={evForm.mode==='By Air' ? 'e.g. Dubai (DXB)' : 'e.g. Kedarnath'} /></div>
+                <div style={{ flex:1 }}><Input label={evForm.mode==='By Air' ? 'From' : 'From *'} value={evForm.from} onChange={e=>setEvForm({...evForm,from:e.target.value,fromGeo:null})} placeholder={evForm.mode==='By Air' ? 'e.g. Delhi (DEL)' : 'e.g. Dehradun'} /></div>
+                <div style={{ flex:1 }}><Input label={evForm.mode==='By Air' ? 'To' : 'To *'} value={evForm.to} onChange={e=>setEvForm({...evForm,to:e.target.value,toGeo:null})} placeholder={evForm.mode==='By Air' ? 'e.g. Dubai (DXB)' : 'e.g. Kedarnath'} /></div>
               </div>
               {evForm.duration === 'multi' ? (
                 <>
@@ -1786,43 +1807,65 @@ const ROAD_PHASE = {
   arrived:    { label:'ARRIVED',      tone:'#2F7A2F' },
 };
 
-// Inline tracker for a By Road leg — the counterpart of the flight card.
+// Local Date from a stored date + "HH:MM", or null. Everything on a drive is local
+// wall-clock — there is no second timezone the way a flight has.
+const dateTimeOf = (dISO, hhmm) => {
+  const d = /^(\d{4})-(\d{2})-(\d{2})/.exec(dISO || '');
+  const t = /^(\d{1,2}):(\d{2})/.exec(hhmm || '');
+  if (!d || !t) return null;
+  return new Date(+d[1], +d[2] - 1, +d[3], +t[1], +t[2]);
+};
+
+// Inline tracker for a By Road leg. Two modes, chosen by whether the leg has real
+// coordinates on it:
 //
-// A drive has no flight number and nobody publishes it, so there is no feed to query.
-// The road equivalent of ADS-B is the traveller's own phone: the Status tab already
-// polls live positions every 20s (and, until now, discarded them). Distance and drive
-// time come from OSRM. No provider, no key.
+//   Manual (default) — From/To are whatever the traveller typed and are never resolved
+//   to anywhere. The car moves on arithmetic alone: the entered times give the duration,
+//   and each traveller's clock starts when THEY mark the leg on-going. Enter 7pm→8pm and
+//   half an hour in you are halfway, whenever you actually set off. Nothing can be
+//   geocoded wrong because nothing is geocoded.
 //
-// Better than the flight card in one respect — the position is first-hand and seconds
-// old, so it cannot go quietly stale the way a third-party record can. Worse in
-// another: OSRM's free routing knows nothing about traffic, so the ETA is free-flow.
-function RoadTrackCard({ travel, locations, members, session, sharingLoc, onToggleShare }) {
+//   GPS — only when the route came from a pasted Google Maps link, so the endpoints were
+//   resolved once, at paste time, from names Maps itself supplied. Cars then follow real
+//   positions and Share Location applies.
+//
+// The first version resolved typed names at runtime, which is how "D3" became a 6196km
+// drive: the baseline came from a mis-geocoded origin while the remaining distance came
+// from GPS, so every car pinned itself to the destination.
+function RoadTrackCard({ travel, marks, locations, members, session, sharingLoc, onToggleShare }) {
   const [open, setOpen] = useState(false);
-  const [baseline, setBaseline] = useState(null); // whole leg: { seconds, meters }
-  const [legs, setLegs] = useState({});           // userId -> { seconds, meters, at }
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const lastCalcRef = useRef({});                 // userId -> { at, lat, lon } of the last route we asked for
-  const { from, to, startTime, endTime, startDate, endDate } = travel;
-  const assigneeKey = ((travel.assignees && travel.assignees.length) ? travel.assignees : []).join(',');
+  const [baseline, setBaseline] = useState(null);
+  const [legs, setLegs] = useState({});
+  const lastCalcRef = useRef({});
+  const { from, to, startTime, endTime, startDate, endDate, fromGeo, toGeo } = travel;
 
-  // Whoever is on this leg and currently broadcasting. `locations` is pre-filtered to
-  // travellers who switched sharing on, so an empty list means nobody is tracking.
-  const assigned = assigneeKey ? assigneeKey.split(',') : [];
-  const riders = (locations || []).filter(l => !assigned.length || assigned.includes(l.user_id));
+  const gpsMode = !!(toGeo && toGeo.lat != null && toGeo.lon != null);
+  const startAt = dateTimeOf(startDate, startTime);
+  const endAt = dateTimeOf(endDate || startDate, endTime);
+  let durationMin = (startAt && endAt) ? Math.round((endAt - startAt) / 60000) : null;
+  // An arrival at or before the departure on the same date cannot be right. Say so
+  // rather than inventing a duration from it — that is what produced "6h 56m behind".
+  const timesContradict = durationMin != null && durationMin <= 0;
+  if (timesContradict) durationMin = null;
 
-  // Whole-route baseline, once, when the card is opened.
   useEffect(() => {
-    if (!open || baseline || !from || !to) return undefined;
+    if (!open) return undefined;
+    const id = setInterval(() => setNowMs(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, [open]);
+
+  // ── GPS mode only: one baseline, then throttled per-traveller legs ──
+  useEffect(() => {
+    if (!open || !gpsMode || baseline || !fromGeo || fromGeo.lat == null) return undefined;
     let dead = false;
-    roadRoute(from, to).then(r => { if (!dead) setBaseline(r || { failed:true }); });
+    osrmLeg(fromGeo, toGeo).then(r => { if (!dead) setBaseline(r || { failed: true }); });
     return () => { dead = true; };
-  }, [open, baseline, from, to]);
+  }, [open, gpsMode, baseline, fromGeo, toGeo]);
 
-  // Remaining drive per traveller. Throttled hard: the position poll ticks every 20s,
-  // but re-routing that often would hammer a free public OSRM instance for an answer
-  // that barely moves. Re-ask only after 3 minutes, or 5km of travel.
+  const assigneeKey = ((travel.assignees && travel.assignees.length) ? travel.assignees : []).join(',');
   useEffect(() => {
-    if (!open || !to) return undefined;
+    if (!open || !gpsMode) return undefined;
     const onLeg = assigneeKey ? assigneeKey.split(',') : [];
     const list = (locations || []).filter(l => !onLeg.length || onLeg.includes(l.user_id));
     if (!list.length) return undefined;
@@ -1832,74 +1875,74 @@ function RoadTrackCard({ travel, locations, members, session, sharingLoc, onTogg
         const prev = lastCalcRef.current[r.user_id];
         const movedKm = prev ? havKm(prev.lat, prev.lon, r.lat, r.lon) : Infinity;
         const age = prev ? Date.now() - prev.at : Infinity;
-        // Parked (or stuck): the route cannot have changed, so don't ask. Still refresh
-        // occasionally in case the destination or road conditions did.
-        if (movedKm < 0.5 && age < 15 * 60000) continue;
+        if (movedKm < 0.5 && age < 15 * 60000) continue;   // parked: the route cannot have changed
         if (age < 3 * 60000 && movedKm < 5) continue;
         lastCalcRef.current[r.user_id] = { at: Date.now(), lat: r.lat, lon: r.lon };
-        const leg = await roadRouteFromCoords(r.lat, r.lon, to);
+        const leg = await roadRouteFromCoords(r.lat, r.lon, toGeo);
         if (dead) return;
         if (leg) setLegs(p => ({ ...p, [r.user_id]: { ...leg, at: Date.now() } }));
       }
     })();
     return () => { dead = true; };
-  }, [open, to, locations, assigneeKey]);
-
-  // Between recomputes, count the remaining time down rather than leaving it frozen.
-  useEffect(() => {
-    if (!open || !riders.length) return undefined;
-    const id = setInterval(() => setNowMs(Date.now()), 30000);
-    return () => clearInterval(id);
-  }, [open, riders.length]);
+  }, [open, gpsMode, toGeo, locations, assigneeKey]);
 
   const nameOf = (uid) => { const m = (members || []).find(x => x.userId === uid); return (m && m.name) || uid; };
   const firstNameOf = (uid) => String(nameOf(uid)).trim().split(/\s+/)[0];
-
-  // A route is computed at a moment; decay it by the time since so it stays truthful.
-  const rem = riders.map(r => {
-    const l = legs[r.user_id];
-    if (!l) return null;
-    return { uid: r.user_id, sec: Math.max(0, l.seconds - (nowMs - l.at) / 1000), meters: l.meters };
-  }).filter(Boolean);
-
-  const groupSec = rem.length ? Math.max(...rem.map(x => x.sec)) : null; // the one furthest behind sets the group ETA
-  const soonestSec = rem.length ? Math.min(...rem.map(x => x.sec)) : null;
-  const totalM = baseline && !baseline.failed ? baseline.meters : null;
-
-  const etaDate = groupSec != null ? new Date(nowMs + groupSec * 1000) : null;
-  const etaHHMM = etaDate ? `${String(etaDate.getHours()).padStart(2,'0')}:${String(etaDate.getMinutes()).padStart(2,'0')}` : '';
-  // Only judge lateness on a same-day leg — comparing wall-clock across midnight lies.
-  const sameDay = !startDate || !endDate || startDate === endDate;
-  const plannedArrMin = hhmmToMin(endTime);
-  const etaMin = etaDate ? etaDate.getHours() * 60 + etaDate.getMinutes() : null;
-  const lateBy = (sameDay && plannedArrMin != null && etaMin != null) ? etaMin - plannedArrMin : null;
-
-  let phaseKey = 'notracking';
-  if (riders.length) phaseKey = (soonestSec != null && soonestSec < 120) ? 'arrived' : 'onway';
-  if (phaseKey === 'onway' && lateBy != null && lateBy > 10) phaseKey = 'late';
-  const phase = ROAD_PHASE[phaseKey];
-
-  const iAmOnLeg = !!(session && (!assigned.length || assigned.includes(session.userId)));
-  const canOfferShare = !!(onToggleShare && iAmOnLeg && !sharingLoc);
-  const fmtKm = (m) => m == null ? '' : m >= 10000 ? `${Math.round(m / 1000)} km` : `${(m / 1000).toFixed(1)} km`;
   const label = (t) => String(t || '—').trim();
 
-  const timeCol = (heading, planned, live, isLate) => (
+  // ── Where each traveller's car sits ──
+  let cars = [];
+  if (gpsMode) {
+    const onLeg = assigneeKey ? assigneeKey.split(',') : [];
+    const totalM = baseline && !baseline.failed ? baseline.meters : null;
+    cars = (locations || []).filter(l => !onLeg.length || onLeg.includes(l.user_id)).map(r => {
+      const l = legs[r.user_id];
+      if (!l) return null;
+      const sec = Math.max(0, l.seconds - (nowMs - l.at) / 1000);
+      return { uid: r.user_id, progress: totalM ? Math.min(0.97, Math.max(0.03, 1 - (l.meters / totalM))) : 0.03,
+        remainingMin: Math.round(sec / 60), done: false };
+    }).filter(Boolean);
+  } else {
+    // Manual: each traveller's own clock, started when they marked the leg on-going.
+    // A leg from before this existed has no stamp, so it falls back to the entered
+    // departure time — which is what the old behaviour implied anyway.
+    cars = (marks || []).map(mk => {
+      if (mk.status === 'todo') return null;
+      if (mk.status === 'done') return { uid: mk.userId, progress: 1, remainingMin: 0, done: true };
+      const stamped = (travel.startedAt || {})[mk.userId];
+      const anchor = stamped ? new Date(stamped) : startAt;
+      if (!anchor || isNaN(anchor.getTime()) || !durationMin) {
+        return { uid: mk.userId, progress: 0.03, remainingMin: null, done: false };
+      }
+      const elapsedMin = (nowMs - anchor.getTime()) / 60000;
+      // Held at 97% once the entered time is up: the clock says they should be there,
+      // but only the traveller marking it done actually confirms arrival.
+      return { uid: mk.userId, progress: Math.min(0.97, Math.max(0.03, elapsedMin / durationMin)),
+        remainingMin: Math.max(0, Math.round(durationMin - elapsedMin)), done: false };
+    }).filter(Boolean);
+  }
+
+  const moving = cars.filter(c => !c.done);
+  const allDone = cars.length > 0 && cars.every(c => c.done);
+  const phaseKey = allDone ? 'arrived' : cars.length ? 'onway' : 'notracking';
+  const phase = ROAD_PHASE[phaseKey];
+  const overdue = !gpsMode && moving.some(c => c.remainingMin === 0);
+
+  const iAmOnLeg = !!(session && (!assigneeKey || assigneeKey.split(',').includes(session.userId)));
+  const canOfferShare = !!(gpsMode && onToggleShare && iAmOnLeg && !sharingLoc);
+  const fmtKm = (m) => m == null ? '' : m >= 10000 ? `${Math.round(m / 1000)} km` : `${(m / 1000).toFixed(1)} km`;
+
+  const timeCol = (heading, planned) => (
     <div style={{ flex:1, minWidth:0 }}>
       <div style={{ fontSize:9.5, letterSpacing:'0.06em', color:'#8A7A6D', textTransform:'uppercase' }}>{heading}</div>
-      <div style={{ fontSize:15, fontWeight:800, color: live && isLate ? '#B54030' : '#2E2320', marginTop:2 }}>
-        {fmtTime12(live || planned) || '—'}
-      </div>
-      {live && planned && live !== planned && (
-        <div style={{ fontSize:11, color:'#9A8478', textDecoration:'line-through' }}>{fmtTime12(planned)}</div>
-      )}
+      <div style={{ fontSize:15, fontWeight:800, color:'#2E2320', marginTop:2 }}>{fmtTime12(planned) || '—'}</div>
     </div>
   );
 
   return (
     <div data-no-tab-swipe style={{ marginTop:8, border:'1px solid #E2D8C8', borderRadius:12, background:'#FFFDF8', overflow:'hidden' }}>
       <button type="button" onClick={()=>setOpen(o=>!o)} aria-expanded={open}
-        aria-label={`${label(from)} to ${label(to)}${open ? '' : ' — show live status'}`}
+        aria-label={`${label(from)} to ${label(to)}${open ? '' : ' — show progress'}`}
         style={{ width:'100%', border:'none', background:'transparent', padding:'9px 10px', textAlign:'left', cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}>
         <span style={{ flex:1, minWidth:0 }}>
           <span style={{ display:'block', fontSize:12.5, fontWeight:800, color:'#2E2320', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
@@ -1910,7 +1953,7 @@ function RoadTrackCard({ travel, locations, members, session, sharingLoc, onTogg
               {phase.label}
             </span>
           ) : (
-            <span style={{ display:'inline-block', marginTop:4, fontSize:10, color:'#8A7A6D' }}>Tap for live status</span>
+            <span style={{ display:'inline-block', marginTop:4, fontSize:10, color:'#8A7A6D' }}>Tap for progress</span>
           )}
         </span>
         <span aria-hidden="true" style={{ flexShrink:0, color:'#8A7A6D', transform:open?'rotate(180deg)':'none', transition:'transform .15s', display:'grid', placeItems:'center' }}>
@@ -1920,56 +1963,58 @@ function RoadTrackCard({ travel, locations, members, session, sharingLoc, onTogg
 
       {open && (
         <div style={{ borderTop:'1px solid #EDE3D6', padding:'10px', background:'#FFFBF3' }}>
-          {phaseKey === 'late' && lateBy != null && (
+          {timesContradict && (
             <div style={{ fontSize:11, lineHeight:1.45, color:'#8A5A2A', background:'#FFF3D6', border:'1px solid #F0DFB6', borderRadius:8, padding:'7px 9px', marginBottom:10 }}>
-              Running about {fmtDur(Math.round(lateBy))} behind the planned arrival.
+              The arrival time is not after the departure time, so there is no duration to work from. Fix the times on this leg in the Schedule tab.
+            </div>
+          )}
+          {overdue && !timesContradict && (
+            <div style={{ fontSize:11, lineHeight:1.45, color:'#8A5A2A', background:'#FFF3D6', border:'1px solid #F0DFB6', borderRadius:8, padding:'7px 9px', marginBottom:10 }}>
+              Past the {fmtDur(durationMin)} you allowed. Mark the drive complete when you arrive.
             </div>
           )}
 
-          {/* One car per traveller, each at its own point along the route. */}
           <div style={{ position:'relative', height:22 }}>
-            {baseline && !baseline.failed && (
+            {(durationMin || (gpsMode && baseline && !baseline.failed)) && (
               <div style={{ position:'absolute', top:0, left:0, right:0, textAlign:'center', fontSize:10, color:'#8A7A6D' }}>
-                {fmtKm(baseline.meters)} · {fmtDur(Math.round(baseline.seconds / 60))}
+                {gpsMode && baseline && !baseline.failed ? `${fmtKm(baseline.meters)} · ` : ''}{durationMin ? fmtDur(durationMin) : ''}
               </div>
             )}
             <div style={{ position:'absolute', top:17, left:0, right:0, height:2, background:'#DCCFC0', borderRadius:2 }} />
             <span aria-hidden="true" style={{ position:'absolute', top:14, left:0, width:8, height:8, borderRadius:'50%', background:'#8B2A14' }} />
-            <span aria-hidden="true" style={{ position:'absolute', top:14, right:0, width:8, height:8, borderRadius:'50%', background: phaseKey==='arrived' ? '#8B2A14' : '#DCCFC0' }} />
-            {rem.map(x => {
-              const p = totalM ? Math.min(0.97, Math.max(0.03, 1 - (x.meters / totalM))) : 0.03;
-              return (
-                <span key={x.uid} aria-hidden="true" title={firstNameOf(x.uid)}
-                  style={{ position:'absolute', top:8, left:`calc(10px + (100% - 32px) * ${p})`, fontSize:12, transition:'left .4s' }}>🚗</span>
-              );
-            })}
+            <span aria-hidden="true" style={{ position:'absolute', top:14, right:0, width:8, height:8, borderRadius:'50%', background: allDone ? '#8B2A14' : '#DCCFC0' }} />
+            {cars.map(c => (
+              <span key={c.uid} aria-hidden="true" title={firstNameOf(c.uid)}
+                style={{ position:'absolute', top:8, left:`calc(10px + (100% - 32px) * ${c.progress})`, fontSize:12, transition:'left .6s' }}>🚗</span>
+            ))}
           </div>
           <div style={{ display:'flex', justifyContent:'space-between', gap:8, fontSize:12, fontWeight:800, color:'#2E2320', marginTop:5 }}>
             <span style={{ minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{label(from)}</span>
             <span style={{ minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'right' }}>{label(to)}</span>
           </div>
 
-          {rem.length > 0 && (
+          {cars.length > 0 && (
             <div style={{ fontSize:10, color:'#8A7A6D', marginTop:4, lineHeight:1.5 }}>
-              {rem.map((x, i) => (
-                <span key={x.uid}>{i ? ' · ' : ''}{firstNameOf(x.uid)} {fmtDur(Math.round(x.sec / 60))}</span>
-              ))} remaining
+              {cars.map((c, i) => (
+                <span key={c.uid}>{i ? ' · ' : ''}{firstNameOf(c.uid)} {c.done ? 'arrived'
+                  : c.remainingMin == null ? 'under way' : c.remainingMin === 0 ? 'due now' : `${fmtDur(c.remainingMin)} left`}</span>
+              ))}
             </div>
           )}
 
           <div style={{ display:'flex', gap:10, marginTop:11, paddingTop:10, borderTop:'1px solid #EDE3D6' }}>
-            {timeCol('Depart', startTime, '', false)}
-            {timeCol('Arrive', endTime, etaHHMM, lateBy != null && lateBy > 10)}
+            {timeCol('Depart', startTime)}
+            {timeCol('Arrive', endTime)}
           </div>
 
           <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginTop:10, fontSize:10, color:'#A2917F' }}>
-            {riders.length ? (
-              <span>Live from {riders.length === 1 ? `${firstNameOf(riders[0].user_id)}'s phone` : `${riders.length} phones`}
-                {rem.length ? '' : ' · working out the route…'}</span>
-            ) : (
-              <span style={{ color:'#B07A2A', fontWeight:700 }}>Not tracking — showing the planned times</span>
-            )}
-            {rem.length > 0 && <span>· free-flow, no traffic</span>}
+            {gpsMode
+              ? (cars.length
+                  ? <span>Live from {cars.length === 1 ? `${firstNameOf(cars[0].uid)}'s phone` : `${cars.length} phones`} · free-flow, no traffic</span>
+                  : <span style={{ color:'#B07A2A', fontWeight:700 }}>Not tracking — turn on Share Location</span>)
+              : (cars.length
+                  ? <span>Based on the times you entered, not a live position</span>
+                  : <span>Starts moving when a traveller marks this drive on-going</span>)}
           </div>
 
           {canOfferShare && (
@@ -2245,7 +2290,8 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
       const s0 = (trip.spans || []).find(s => s.id === ref.spanId);
       newStatus = nextStatus(spanMemStOf(s0 || {}, userId, ref.dayISO));
       update(t => ({ spans:(t.spans||[]).map(s => s.id===ref.spanId
-        ? { ...s, memberDayStatus:{ ...(s.memberDayStatus||{}), [userId]:{ ...((s.memberDayStatus||{})[userId]||{}), [ref.dayISO]: newStatus } } } : s) }));
+        ? { ...s, memberDayStatus:{ ...(s.memberDayStatus||{}), [userId]:{ ...((s.memberDayStatus||{})[userId]||{}), [ref.dayISO]: newStatus } },
+            startedAt: stampStart(s.startedAt, userId, newStatus) } : s) }));
     } else if (ref.kind === 'event') {
       const e0 = ((trip.days || []).find(d => d.id === ref.dayId) || {}).events || [];
       newStatus = nextStatus(memStOf(e0.find(e => e.id === ref.evId) || {}, userId));
@@ -2334,7 +2380,8 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
       const hasLink = isTravel && (s.mode === 'By Air' ? !!s.flightNo : (s.from || s.to));
       // Scheduled times ride along so the flight card can render before (or without) any live lookup.
       const extra = { ref:{ kind:'span', spanId:s.id, dayISO:day.date }, titleText: s.title || '(untitled)', ...(hasLink ? { travel: { mode:s.mode, from:s.from, to:s.to, flightNo:s.flightNo, name:s.title || 'Travel',
-        startDate:s.startDate, startTime:s.startTime, endDate:s.endDate, endTime:s.endTime } } : {}) };
+        startDate:s.startDate, startTime:s.startTime, endDate:s.endDate, endTime:s.endTime,
+        assignees:s.assignees||[], startedAt:s.startedAt||{}, fromGeo:s.fromGeo||null, toGeo:s.toGeo||null } } : {}) };
       push(s.id+'_'+day.id, spanSegLabel(s, day.date), `${spanIcon(s)} ${s.title || '(untitled)'}`.trim(), statuses, extra, sr);
     };
     const pushEvent = (ev) => {
@@ -2623,7 +2670,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                           Route moved inside it — launching turn-by-turn is worth keeping,
                           unlike the flight pop-up which only linked out to a worse view. */}
                       {it.travel && it.travel.mode !== 'By Air' && (
-                        <RoadTrackCard travel={it.travel} locations={locations} members={trip.members}
+                        <RoadTrackCard travel={it.travel} marks={it.marks} locations={locations} members={trip.members}
                           session={session} sharingLoc={sharingLoc} onToggleShare={onToggleShare} />
                       )}
                     </div>
