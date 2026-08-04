@@ -354,11 +354,6 @@ async function osrmLeg(a, b) {
     return { seconds: j.routes[0].duration, meters: j.routes[0].distance };
   } catch (e) { return null; }
 }
-async function roadRoute(from, to) {
-  const a = await geocodeOnce(from); if (!a) return null;
-  const b = await geocodeOnce(to);   if (!b) return null;
-  return osrmLeg(a, b);
-}
 // What's left of the drive from where a traveller actually is. Used only on legs whose
 // endpoints were resolved from a pasted Maps link, so the destination is real
 // coordinates rather than a name we would have to guess at mid-drive.
@@ -384,15 +379,6 @@ const havKm = (aLat, aLon, bLat, bLon) => {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 };
 // Add seconds to a (YYYY-MM-DD, HH:MM) → { date, time }, UTC math to avoid timezone drift
-const addSeconds = (dateISO, timeHM, secs) => {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateISO || '');
-  if (!m) return null;
-  const t = /^(\d{1,2}):(\d{2})/.exec(timeHM || '00:00');
-  const base = new Date(Date.UTC(+m[1], +m[2]-1, +m[3], t ? +t[1] : 0, t ? +t[2] : 0));
-  const end = new Date(base.getTime() + secs * 1000);
-  const p = n => String(n).padStart(2, '0');
-  return { date: `${end.getUTCFullYear()}-${p(end.getUTCMonth()+1)}-${p(end.getUTCDate())}`, time: `${p(end.getUTCHours())}:${p(end.getUTCMinutes())}` };
-};
 // Icon for a span: travel shows mode-specific (road/air), else the type icon
 const spanIcon = (s) => {
   if ((SPAN_TYPES[s.type] || {}).kind === 'travel') return s.mode === 'By Air' ? '✈️' : '🚗';
@@ -544,9 +530,6 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
   const [activityInput, setActivityInput] = useState({});
   // Which event is showing the activity input box
   const [addingActivityFor, setAddingActivityFor] = useState(null);
-  // Auto-fill arrival (road route estimate) state
-  const [estimating, setEstimating] = useState(false);
-  const [estimateMsg, setEstimateMsg] = useState('');
   // "Go to Google Maps" round-trip: the pasted link, and what to tell the user about it
   const [mapsLink, setMapsLink] = useState('');
   const [mapsBusy, setMapsBusy] = useState(false);
@@ -769,14 +752,12 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
   const openAddEvent = (day) => {
     const defTrav = (myId && members.some(m => m.userId === myId)) ? myId : (members[0] ? members[0].userId : '');
     setEvForm({ ...blankForm, startDate:day.date, endDate:day.date, expTraveler:defTrav });
-    setEstimateMsg('');
     setEditingEvent(null);
     setShowEvent(day.id);
   };
   // Open the same pop-up pre-filled to EDIT an existing single-day activity.
   const openEditEvent = (day, ev) => {
     setEvForm({ ...blankForm, duration:'single', type:'Activity', time:ev.time||'', endTime:ev.endTime||'', title:ev.title||'', location:ev.location||'', locationLink:ev.locationLink||'', category:ev.category||'Sightseeing', assignees:ev.assignees||[], startDate:day.date, endDate:day.date });
-    setEstimateMsg('');
     setEditingEvent({ dayId:day.id, evId:ev.id });
     setEditingSpan(null);
     setShowEvent(day.id);
@@ -788,28 +769,11 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
       title: s.title||'', location: s.location||'', from: s.from||'', to: s.to||'', mode: s.mode||'By Road', flightNo: s.flightNo||'',
       assignees: s.assignees||[], startDate: s.startDate||'', startTime: s.startTime||'', endDate: s.endDate||'', spanEndTime: s.endTime||'',
       fromGeo: s.fromGeo||null, toGeo: s.toGeo||null });
-    setEstimateMsg('');
     setEditingEvent(null);
     setEditingSpan(s.id);
     setShowEvent('span-edit'); // truthy so the modal opens; submitSpan ignores the day for spans
   };
   // Estimate driving time From→To and fill in the arrival date/time (By Road)
-  const autoFillArrival = async () => {
-    const f = evForm;
-    if (!f.from || !f.to) { setEstimateMsg('Enter both From and To first.'); return; }
-    if (!f.startTime) { setEstimateMsg('Enter the depart time first.'); return; }
-    setEstimating(true); setEstimateMsg('Calculating route…');
-    const route = await roadRoute(f.from, f.to);
-    setEstimating(false);
-    if (!route) { setEstimateMsg('Could not find a driving route for those places. Check the spellings.'); return; }
-    const arr = addSeconds(f.startDate, f.startTime, route.seconds);
-    if (!arr) { setEstimateMsg('Could not compute the arrival time.'); return; }
-    setEvForm(prev => ({ ...prev, spanEndTime: arr.time, ...(prev.duration === 'multi' ? { endDate: arr.date } : {}) }));
-    const h = Math.floor(route.seconds / 3600), mn = Math.round((route.seconds % 3600) / 60);
-    const km = Math.round(route.meters / 1000);
-    const nextDay = f.duration === 'single' && arr.date !== f.startDate;
-    setEstimateMsg(`≈ ${h}h ${mn}m · ${km} km${nextDay ? ' — arrives next day, switch to Multi-day' : ''}`);
-  };
   // Optional expense entered in the add popup → an expense object tagged to the new item (or null)
   const expenseFromForm = (itemId) => evForm.expAmount
     ? { id:uid(), desc:"", amount:evForm.expAmount, category:evForm.expCat, eventId:itemId, travelerId:evForm.expTraveler }
@@ -1467,15 +1431,9 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
                   <div style={{ flex:1 }}><Input label="Arrive time" type="time" value={evForm.spanEndTime} onChange={e=>setEvForm({...evForm,spanEndTime:e.target.value})} /></div>
                 </div>
               )}
-              {evForm.mode === 'By Road' && (
-                <div style={{ marginTop:-4, marginBottom:12 }}>
-                  <button type="button" onClick={autoFillArrival} disabled={estimating}
-                    style={{ background:'none', border:'1px dashed #C8B09A', borderRadius:6, padding:'4px 12px', fontSize:12, color:'#8B2A14', cursor:'pointer', fontWeight:500, opacity: estimating?0.6:1 }}>
-                    ⟳ Auto-fill arrival from route
-                  </button>
-                  {estimateMsg && <div style={{ fontSize:11.5, color:'#8A7A6D', marginTop:6, lineHeight:1.4 }}>{estimateMsg}</div>}
-                </div>
-              )}
+              {/* "Auto-fill arrival from route" is gone: it geocoded whatever was typed,
+                  which is the behaviour that produced a 6196km drive. Arrival times are
+                  entered by the traveller and the status card runs on those. */}
               <div style={{ marginBottom:12 }}><div style={{ fontSize:12, color:'#A83020', marginBottom:4 }}>Travelers</div><Assignees members={members} value={evForm.assignees} onChange={list=>setEvForm({...evForm,assignees:list})} /></div>
               {expenseFields}
               <div style={{ display:"flex",gap:8,marginTop:8 }}>
