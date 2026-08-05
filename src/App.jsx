@@ -1896,6 +1896,7 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
 // ---- Status Tab ----  (per-traveler rollup of event/activity/span statuses per day)
 const ROAD_PHASE = {
   notracking: { label:'NOT TRACKING', tone:'#8A7A6D' },
+  notstarted: { label:'NOT STARTED',  tone:'#8A7A6D' },
   onway:      { label:'ON THE WAY',   tone:'#2F7A2F' },
   late:       { label:'RUNNING LATE', tone:'#B54030' },
   arrived:    { label:'ARRIVED',      tone:'#2F7A2F' },
@@ -1990,6 +1991,12 @@ function RoadTrackCard({ travel, marks, locations, members, session, sharingLoc,
     const onLeg = assigneeKey ? assigneeKey.split(',') : [];
     const totalM = baseline && !baseline.failed ? baseline.meters : null;
     cars = (locations || []).filter(l => !onLeg.length || onLeg.includes(l.user_id)).map(r => {
+      // The traveller's own status still governs. A phone broadcasting its position says
+      // where someone is, not that this leg has begun — sharing is switched on for the
+      // whole trip, so it is on well before departure and stays on after arrival.
+      const mk = (marks || []).find(m => m.userId === r.user_id);
+      if (mk && mk.status === 'todo') return null;
+      if (mk && mk.status === 'done') return { uid: r.user_id, progress: 1, remainingMin: 0, done: true };
       const l = legs[r.user_id];
       if (!l) return null;
       const sec = Math.max(0, l.seconds - (nowMs - l.at) / 1000);
@@ -2017,8 +2024,16 @@ function RoadTrackCard({ travel, marks, locations, members, session, sharingLoc,
   }
 
   const moving = cars.filter(c => !c.done);
-  const allDone = cars.length > 0 && cars.every(c => c.done);
-  const phaseKey = allDone ? 'arrived' : cars.length ? 'onway' : 'notracking';
+  // Read the phase off the marks, not off who happens to be broadcasting. Marks also
+  // outlast a location: someone who arrives and stops sharing is still ARRIVED.
+  const marked = marks || [];
+  const allTodo = marked.length > 0 && marked.every(m => m.status === 'todo');
+  const allMarkedDone = marked.length > 0 && marked.every(m => m.status === 'done');
+  // "Every car has arrived" only means everyone has in manual mode, where each mark makes
+  // a car. In GPS mode a car needs a phone sharing, so the one traveller broadcasting
+  // could be parked at the destination while two others are still driving.
+  const allDone = allMarkedDone || (!gpsMode && cars.length > 0 && cars.every(c => c.done));
+  const phaseKey = allDone ? 'arrived' : allTodo ? 'notstarted' : cars.length ? 'onway' : 'notracking';
   const phase = ROAD_PHASE[phaseKey];
   const overdue = !gpsMode && moving.some(c => c.remainingMin === 0);
 
@@ -2114,7 +2129,9 @@ function RoadTrackCard({ travel, marks, locations, members, session, sharingLoc,
             {gpsMode
               ? (cars.length
                   ? <span>Live from {cars.length === 1 ? `${firstNameOf(cars[0].uid)}'s phone` : `${cars.length} phones`} · free-flow, no traffic</span>
-                  : <span style={{ color:'#B07A2A', fontWeight:700 }}>Not tracking — turn on Share Location</span>)
+                  : allTodo
+                    ? <span>Starts moving when a traveller marks this drive on-going</span>
+                    : <span style={{ color:'#B07A2A', fontWeight:700 }}>Not tracking — turn on Share Location</span>)
               : (cars.length
                   ? <span>Based on the times you entered, not a live position</span>
                   : <span>Starts moving when a traveller marks this drive on-going</span>)}
