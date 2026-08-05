@@ -32,7 +32,7 @@ const ITEM_FIELDS = {
   location:  { type:'string', description:'Where it happens. "" if not stated.' },
   from:      { type:'string', description:'Travel origin, with airport code in brackets when the document gives one. "" for other kinds.' },
   to:        { type:'string', description:'Travel destination, same convention. "" for other kinds.' },
-  mode:      { type:'string', enum:['By Air','By Road',''], description:'Travel only; "" otherwise.' },
+  mode:      { type:'string', enum:['By Air','By Road',''], description:'For kind=travel this is required — choose "By Air" or "By Road", never "". Airport codes at both ends, a flight number, an airline name or a terminal all mean By Air. "" only for kinds other than travel.' },
   flightNo:  { type:'string', description:'Airline code and number as printed, e.g. "EK 507". "" if not a flight.' },
   date:      { type:'string', description:'YYYY-MM-DD for an event or task; "" for travel and stay.' },
   startDate: { type:'string', description:'YYYY-MM-DD for travel and stay; "" for event and task.' },
@@ -60,6 +60,8 @@ Rules that matter more than completeness:
 - Do not convert timezones or adjust times. Copy the local time exactly as printed.
 - A date with no year: infer the year from the trip dates you are given, and only from those.
 - Split a multi-leg journey into one travel item per leg, each with its own flight number.
+- Every travel item needs a mode. A leg between two airports is By Air even when the
+  document gives no flight number for it — an onward sector on a ticket often omits one.
 - A hotel is one stay item spanning check-in to check-out, not one per night.
 - Only tag people the document names. Never distribute an unattributed item across everyone.
 - Include items whose dates fall outside the trip — they are flagged for the traveller, not dropped by you.`;

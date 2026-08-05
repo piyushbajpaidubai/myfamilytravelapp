@@ -5361,6 +5361,19 @@ const initialsOf = (...candidates) => {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 };
 
+// Travel mode, worked out rather than defaulted. The old code read `it.mode || 'By Road'`,
+// which turned the model's "the document doesn't say" into a confident wrong answer — a
+// Mumbai→Dubai flight listed as a drive. What the document *does* give us is enough to
+// tell: a flight number, or an airport code at both ends, means flying. A single code is
+// not enough, because a road transfer to the airport has one too.
+const AIRPORT_CODE = /\([A-Z]{3}\)/;
+const inferTravelMode = (it) => {
+  if (it.mode === 'By Air' || it.mode === 'By Road') return it.mode;   // stated, so trust it
+  if (String(it.flightNo || '').replace(/\s/g, '')) return 'By Air';
+  if (AIRPORT_CODE.test(it.from || '') && AIRPORT_CODE.test(it.to || '')) return 'By Air';
+  return 'By Road';
+};
+
 // Every name the itinerary mentions that matchTravellers could not place, de-duplicated
 // case-insensitively so "Swayam" and "swayam" propose one traveller, not two.
 const unmatchedTravellers = (items, members) => {
@@ -5414,6 +5427,7 @@ function reviewItinerary(trip, extraction) {
          (it.flightNo && String(s.flightNo || '').replace(/\s/g,'').toUpperCase() === String(it.flightNo).replace(/\s/g,'').toUpperCase())));
     }
     return { ...it, _i:i, date, outside, dupe, include: !outside && !dupe,
+      mode: it.kind === 'travel' ? inferTravelMode(it) : (it.mode || ''),
       assignees: matchTravellers(it.people, trip.members) };
   });
 }
@@ -5444,7 +5458,7 @@ function mergeItinerary(trip, rows) {
       ensureDay(it.startDate); ensureDay(it.endDate);
       spans.push({ id:uid(), type: it.kind === 'stay' ? 'Accommodation' : 'Travel',
         title:it.title||'', location:it.location||'', from:it.from||'', to:it.to||'',
-        mode: it.kind === 'stay' ? '' : (it.mode || 'By Road'), flightNo:it.flightNo||'',
+        mode: it.kind === 'stay' ? '' : inferTravelMode(it), flightNo:it.flightNo||'',
         assignees:it.assignees||[], startDate:it.startDate||'', startTime:it.startTime||'',
         endDate:it.endDate||it.startDate||'', endTime:it.endTime||'', docs:[] });
     }
@@ -5624,6 +5638,19 @@ function ImportReview({ trip, doc, onClose, onApply }) {
                           {field(r.kind === 'task' ? r.text : r.title,
                             v => set(r._i, r.kind === 'task' ? { text:v } : { title:v }), '100%', 'Description')}
                         </div>
+                        {r.kind === 'travel' && (
+                          <div style={{ display:'flex', gap:5, marginTop:6 }}>
+                            {['By Air','By Road'].map(m => (
+                              <button key={m} type="button" onClick={()=>set(r._i, { mode:m })}
+                                aria-pressed={r.mode === m}
+                                style={{ border:'1px solid ' + (r.mode === m ? '#6E1A10' : '#DCCDBE'), borderRadius:14,
+                                  padding:'3px 9px', fontSize:10.5, fontWeight:700, cursor:'pointer',
+                                  background: r.mode === m ? '#F3D9CB' : '#fff', color:'#5E463C' }}>
+                                {m === 'By Air' ? '✈ By Air' : '🚗 By Road'}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         {(r.from || r.to) && (
                           <div style={{ fontSize:11, color:'#7A685F', marginTop:5 }}>{r.from || '?'} → {r.to || '?'}{r.flightNo ? ` · ${r.flightNo}` : ''}</div>
                         )}
