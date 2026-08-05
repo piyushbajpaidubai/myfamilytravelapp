@@ -1235,7 +1235,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     const expanded = !!expandedItems[detailKey];
     const roster = itemPeople(item);
     return <button type="button" aria-expanded={expanded} aria-label={`${expanded?'Collapse':'Expand'} ${item.title} details`} onClick={()=>toggleItemDetails(detailKey)} style={{ width:'100%',minHeight:48,border:'none',borderTop:'1px solid #D8C8B8',background:expanded?'#E4D7C8':'#E9DED1',padding:'8px 13px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8 }}>
-      <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} title={`${member.name||member.userId}: ${STATUS_WORD[memStOf(item,member.userId)]}`} style={{ width:31,height:31,marginLeft:index===0?0:-7,borderRadius:'50%',boxSizing:'border-box',overflow:'hidden',border:RING_W+'px solid '+STATUS_META[memStOf(item,member.userId)].ring,background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={AVATAR_IMG}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}<span style={{ marginLeft:7,color:'#7C675D',fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{itemPeopleLabel(item)}</span></span>
+      <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} title={`${member.name||member.userId}: ${STATUS_WORD[memStOf(item,member.userId)]}`} style={{ width:31,height:31,marginLeft:index===0?0:-7,borderRadius:'50%',boxSizing:'border-box',overflow:'hidden',border:RING_W+'px solid '+STATUS_META[memStOf(item,member.userId)].ring,background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={AVATAR_IMG}/>:initialsOf(member.name, member.userId)}</span>)}<span style={{ marginLeft:7,color:'#7C675D',fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{itemPeopleLabel(item)}</span></span>
       <span style={{ color:'#6E2118',transform:expanded?'rotate(180deg)':'none',transition:'transform .15s',display:'grid',placeItems:'center',flexShrink:0 }}><NativeStatusIcon name="chevron" size={16}/></span>
     </button>;
   };
@@ -1262,12 +1262,12 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
           <span style={{ display:'block',marginTop:6,fontSize:14,fontWeight:850,textDecoration:status==='done'?'line-through':'none',opacity:status==='done'?0.65:1 }}>{task.text}</span>
         </button>
         <button type="button" disabled={!canEdit} aria-expanded={peopleOpen} aria-label={`${peopleOpen?'Close':'Edit'} tagged travelers for task ${task.text}`} onClick={()=>toggleTaskPeople(peopleKey)} style={{ width:'100%',minHeight:42,padding:'6px 13px',border:'none',borderTop:'1px solid #D6BDAA',background:peopleOpen?'#DFCDBE':'#E9DED1',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,textAlign:'left',cursor:canEdit?'pointer':'default',opacity:1 }}>
-          <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} title={`${member.name||member.userId}: ${STATUS_WORD[memStOf(task,member.userId)]}`} style={{ width:29,height:29,marginLeft:index===0?0:-7,borderRadius:'50%',boxSizing:'border-box',overflow:'hidden',border:RING_W+'px solid '+STATUS_META[memStOf(task,member.userId)].ring,background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={AVATAR_IMG}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>)}<span style={{ marginLeft:7,color:'#6F574C',fontSize:10.5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{peopleLabel}</span></span>
+          <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} title={`${member.name||member.userId}: ${STATUS_WORD[memStOf(task,member.userId)]}`} style={{ width:29,height:29,marginLeft:index===0?0:-7,borderRadius:'50%',boxSizing:'border-box',overflow:'hidden',border:RING_W+'px solid '+STATUS_META[memStOf(task,member.userId)].ring,background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={AVATAR_IMG}/>:initialsOf(member.name, member.userId)}</span>)}<span style={{ marginLeft:7,color:'#6F574C',fontSize:10.5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{peopleLabel}</span></span>
           {canEdit&&<span style={{ color:'#6E2118',transform:peopleOpen?'rotate(180deg)':'none',transition:'transform .15s',display:'grid',placeItems:'center',flexShrink:0 }}><NativeStatusIcon name="chevron" size={15}/></span>}
         </button>
         {peopleOpen&&canEdit&&<div role="region" aria-label={`Traveler tags for task ${task.text}`} style={{ padding:'9px 10px 10px',borderTop:'1px solid #D6BDAA',background:'#F8F0E7',display:'flex',flexWrap:'wrap',gap:6 }}>
           <button type="button" aria-pressed={everyoneSelected} onClick={()=>setDayTaskAssignees(day.id,task.id,[])} style={{ minHeight:31,padding:'4px 9px',border:`1px solid ${everyoneSelected?'#8B2A14':'#D5C5B8'}`,borderRadius:18,background:everyoneSelected?'#8B2A14':'#fff',color:everyoneSelected?'#fff':'#6F574C',fontSize:10.5,fontWeight:750,cursor:'pointer' }}>Everyone</button>
-          {members.map(member=>{ const selected=selectedIds.includes(member.userId); return <button key={member.userId} type="button" aria-pressed={selected} onClick={()=>toggleMember(member.userId)} style={{ minHeight:31,padding:'3px 8px 3px 4px',border:`1px solid ${selected?'#8B2A14':'#D5C5B8'}`,borderRadius:18,background:selected?'#F3D9CB':'#fff',color:'#5E463C',fontSize:10.5,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5 }}><span style={{ width:22,height:22,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:8,fontWeight:800 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={AVATAR_IMG}/>:((member.name||member.userId||'?')[0]||'?').toUpperCase()}</span>{(member.name||member.userId).split(' ')[0]}</button>;})}
+          {members.map(member=>{ const selected=selectedIds.includes(member.userId); return <button key={member.userId} type="button" aria-pressed={selected} onClick={()=>toggleMember(member.userId)} style={{ minHeight:31,padding:'3px 8px 3px 4px',border:`1px solid ${selected?'#8B2A14':'#D5C5B8'}`,borderRadius:18,background:selected?'#F3D9CB':'#fff',color:'#5E463C',fontSize:10.5,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5 }}><span style={{ width:22,height:22,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:8,fontWeight:800 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={AVATAR_IMG}/>:initialsOf(member.name, member.userId)}</span>{(member.name||member.userId).split(' ')[0]}</button>;})}
           {/* Tasks had no delete path at all — matches the activity/span action styling. */}
           <button type="button" onClick={()=>delDayTask(day.id,task.id,task.text)} aria-label={`Delete task ${task.text}`} style={{ ...nativeActionStyle(true),width:'100%',minHeight:38,marginTop:3 }}>♲ Delete task</button>
         </div>}
@@ -1873,7 +1873,7 @@ const joinNames = (names) => names.length <= 1 ? (names[0] || '')
 function MemberMark({ name, userId, status, pic, size=24, onClick }) {
   const s = STATUS_META[status] ? status : 'todo';
   const ring = STATUS_META[s].ring;
-  const initial = ((name || userId || '?').trim().charAt(0) || '?').toUpperCase();
+  const initial = initialsOf(name, userId);
   const badge = Math.round(size * 0.46);
   const title = onClick ? `${name || userId}: ${STATUS_WORD[s]} — tap to update` : `${name || userId}: ${STATUS_WORD[s]}`;
   return (
@@ -2614,7 +2614,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
               return (
                 <div key={tr.userId} style={{ display:'grid', gridTemplateColumns:'38px minmax(0, 1fr) auto', gap:10, alignItems:'flex-start', padding:'11px 2px', borderBottom:'1px solid #E8DED2' }}>
                   <span style={{ width:41, height:41, borderRadius:'50%', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#8A6A50', marginTop:1, border:RING_W+'px solid '+st.ring, boxSizing:'border-box' }}>
-                    {picOf(tr.userId) ? <img src={picOf(tr.userId)} alt="" style={AVATAR_IMG} /> : ((tr.name||tr.userId||'?').trim().charAt(0)||'?').toUpperCase()}
+                    {picOf(tr.userId) ? <img src={picOf(tr.userId)} alt="" style={AVATAR_IMG} /> : initialsOf(tr.name, tr.userId)}
                   </span>
                   <span style={{ minWidth:0 }}>
                     <strong style={{ display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'#2E2320' }}>{tr.name || tr.userId}{session && tr.userId===session.userId ? ' (you)' : ''}</strong>
@@ -2762,7 +2762,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                                         {shown.map((mark, mi) => { const tap = tapOf(mark); return (
                                           <button key={mark.userId} type="button" disabled={!tap} onClick={tap} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`} title={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`}
                                             style={{ width:AV, height:AV, flexShrink:0, marginLeft:mi===0?0:LAP, borderRadius:'50%', boxSizing:'border-box', border:RING_W+'px solid '+STATUS_META[mark.status].ring, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:17, fontWeight:700, color:'#7B675A', padding:0, cursor: tap?'pointer':'default', zIndex:7-mi }}>
-                                            {picOf(mark.userId) ? <img src={picOf(mark.userId)} alt="" style={AVATAR_IMG} /> : ((mark.name||mark.userId||'?').trim().charAt(0)||'?').toUpperCase()}
+                                            {picOf(mark.userId) ? <img src={picOf(mark.userId)} alt="" style={AVATAR_IMG} /> : initialsOf(mark.name, mark.userId)}
                                           </button>
                                         ); })}
                                         {over && <button type="button" onClick={openModal} aria-label="Show all travellers" title={`+${it.marks.length-5} more — tap to see all`}
@@ -3241,7 +3241,9 @@ async function directoryGetProfile(session) {
 // Fetch several travelers' name+photo at once → { userId: { name, pic } }
 async function directoryGetProfiles(userIds) {
   try {
-    const ids = (userIds || []).map(u => normUserId(u)).filter(Boolean);
+    // Trip-local travellers have no profile row — drop them here so every caller is
+    // spared the round trip, and so a roster of only local travellers asks nothing.
+    const ids = accountIds((userIds || []).map(u => normUserId(u))).filter(Boolean);
     if (!ids.length) return {};
     const list = ids.map(u => encodeURIComponent(u)).join(',');
     let legacy = false;
@@ -3270,7 +3272,7 @@ async function directorySaveProfile(session, name, profileObj) {
 // ---- Viewer home: view-only account sees just the trips shared with them ----
 function ViewerHome({ session, profile, trips, onOpenAccount }) {
   const firstName = ((session && session.name) || '').trim().split(/\s+/)[0] || 'Viewer';
-  const initial = firstName.charAt(0).toUpperCase() || '?';
+  const initial = initialsOf((session && session.name) || firstName);
   return (
     <div style={{ fontFamily:'var(--font-body)', maxWidth:680, margin:'0 auto', minHeight:'100vh', background:'#F0EBE0', paddingBottom:'env(safe-area-inset-bottom, 0px)', color:'#6E1A10' }}>
       <div style={{ background:'#5C1A1A', boxShadow:'0 2px 12px rgba(0,0,0,0.18)' }}>
@@ -3334,7 +3336,7 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
   useEffect(() => { const on = () => setWide(window.innerWidth >= 1000); window.addEventListener('resize', on); return () => window.removeEventListener('resize', on); }, []);
 
   const firstName = ((session && session.name) || '').trim().split(/\s+/)[0] || 'Traveler';
-  const initial = firstName.charAt(0).toUpperCase() || '?';
+  const initial = initialsOf((session && session.name) || firstName);
   const roleLabel = ((session && session.role) || 'captain') === 'captain' ? 'Trip captain' : (session && session.role === 'viewer' ? 'Viewer' : 'Traveler');
 
   // Today / greeting
@@ -3972,13 +3974,18 @@ function MainApp() {
     setSavedStatus(ok ? 'saved' : 'failed');
     setTimeout(() => setSavedStatus(''), ok ? 2500 : 5000);
   };
-  const [tripForm, setTripForm] = useState({ name:"", destination:"", startDate:"", endDate:"" });
+  const [tripForm, setTripForm] = useState({ name:"", destination:"", startDate:"", days:"" });
   const [createErr, setCreateErr] = useState('');
 
   const createTrip = async () => {
-    if (!tripForm.name) return;
+    if (!tripForm.name) { setCreateErr('Please give the trip a name.'); return; }
+    // The start date is what an uploaded itinerary is checked against, so it is no
+    // longer optional — without it there is nothing to verify the document against.
+    if (!tripForm.startDate) { setCreateErr('Please enter the trip’s start date — an uploaded itinerary is checked against it.'); return; }
+    setCreateErr('');
     recordHistory();
-    const t = { ...defaultTrip(), ...tripForm };
+    const { days, ...rest } = tripForm;
+    const t = { ...defaultTrip(), ...rest, endDate: endDateFromDays(tripForm.startDate, days) };
     if (session) { t.ownerId = session.userId; t.members = [{ userId: session.userId, name: session.name, role:'captain' }]; }
     if (cloudMode.current === 'rls' && session) {
       // The row must exist before the auto-save can patch it
@@ -4116,8 +4123,26 @@ function MainApp() {
     });
     syncRoster(tripId, 'member_uids', member.uid, true);
   };
+  // A traveller with no account — see LOCAL_PREFIX. Deliberately does not touch
+  // syncRoster: there is no auth uid to grant, and that is the point.
+  const addLocalMember = (tripId, name) => {
+    const clean = String(name || '').trim().replace(/\s+/g, ' ');
+    if (!clean) return null;
+    const userId = newLocalId();
+    updateTrip(tripId, t => {
+      const owner = t.ownerId || (session ? session.userId : '');
+      const members = Array.isArray(t.members) ? [...t.members] : [];
+      if (session && owner === session.userId && !members.some(m => m.userId === session.userId)) {
+        members.push({ userId: session.userId, name: session.name, role: 'captain' });
+      }
+      members.push({ userId, name: clean, role: 'traveler', local: true });
+      return { ownerId: owner, members };
+    });
+    return userId;
+  };
   const removeMember = async (tripId, userId) => {
     updateTrip(tripId, t => ({ members: (t.members || []).filter(m => m.userId !== userId) }));
+    if (isLocalMember(userId)) return;   // never had an auth uid to revoke
     syncRoster(tripId, 'member_uids', await uidOf(userId), false);
   };
   // Promote/demote a member's per-trip role (creator only, gated in the UI)
@@ -4385,7 +4410,7 @@ function MainApp() {
               {profile && profile.pic
                 ? <img src={profile.pic} alt="" style={AVATAR_IMG} />
                 : session
-                  ? <span style={{ fontSize:15, fontWeight:800, letterSpacing:0 }}>{((session.name||session.userId||'?').trim().charAt(0)||'?').toUpperCase()}</span>
+                  ? <span style={{ fontSize:15, fontWeight:800, letterSpacing:0 }}>{initialsOf(session.name, session.userId)}</span>
                   : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>}
             </button>
           </div>
@@ -4408,7 +4433,7 @@ function MainApp() {
                   <button key={m.userId} type="button" aria-pressed={on} title={`${on?'Remove':'Add'} ${(m.name||m.userId)}${m.userId===me?' (you)':''}`}
                     onClick={()=>toggleFocus(m.userId)}
                     style={{ width:38, height:38, marginLeft:i===0?0:-8, borderRadius:"50%", overflow:"hidden", border:on?"2px solid #6E1A10":"2px solid #F0EBE0", boxShadow:on?"0 0 0 2px #6E1A10":"0 0 0 1px #CFC2B5", background:"#A88977", color:"#fff", display:"grid", placeItems:"center", fontSize:13, fontWeight:800, cursor:"pointer", padding:0, transform:on?"translateY(-2px)":"none", zIndex:on?30:20-i, flexShrink:0 }}>
-                    {hdrPicOf(m.userId) ? <img src={hdrPicOf(m.userId)} alt="" style={AVATAR_IMG}/> : ((m.name||m.userId||'?')[0]||'?').toUpperCase()}
+                    {hdrPicOf(m.userId) ? <img src={hdrPicOf(m.userId)} alt="" style={AVATAR_IMG}/> : initialsOf(m.name, m.userId)}
                   </button>
                 ); };
                 return (<>
@@ -4461,8 +4486,17 @@ function MainApp() {
         <Modal title="New Trip" onClose={()=>setShowNewTrip(false)}>
           <Input label="Trip Name *" placeholder="e.g. Tokyo Summer 2026" value={tripForm.name} onChange={e=>setTripForm({...tripForm,name:e.target.value})} />
           <Input label="Destination" placeholder="e.g. Tokyo, Japan" value={tripForm.destination} onChange={e=>setTripForm({...tripForm,destination:e.target.value})} />
-          <Input label="Start Date" type="date" value={tripForm.startDate} onChange={e=>setTripForm({...tripForm,startDate:e.target.value})} />
-          <Input label="End Date" type="date" value={tripForm.endDate} onChange={e=>setTripForm({...tripForm,endDate:e.target.value})} />
+          <Input label="Start Date *" type="date" value={tripForm.startDate} onChange={e=>setTripForm({...tripForm,startDate:e.target.value})} />
+          {/* Length is optional: an uploaded itinerary usually decides how long the trip
+              really is, and guessing an end date here would flag its later days as
+              falling outside the trip. Left blank, the trip simply has no end yet. */}
+          <Input label="Number of days" type="number" min="1" placeholder="Optional — leave blank if you don't know yet"
+            value={tripForm.days} onChange={e=>setTripForm({...tripForm,days:e.target.value})} />
+          <div style={{ fontSize:11, color:'#8A7A6D', marginTop:-4, marginBottom:8, lineHeight:1.45 }}>
+            {tripForm.startDate && tripForm.days
+              ? `Ends ${fmtDate(endDateFromDays(tripForm.startDate, tripForm.days))}`
+              : 'The start date is checked against any itinerary you upload.'}
+          </div>
           {createErr && <div style={{ fontSize:12.5, color:'#B3261E', background:'#FBEAE7', border:'1px solid #F1C6C0', borderRadius:7, padding:'8px 10px', marginBottom:12 }}>{createErr}</div>}
           <div style={{ display:"flex",gap:8,justifyContent:"flex-end" }}>
             <Btn variant="ghost" onClick={()=>{ setCreateErr(''); setShowNewTrip(false); }}>Cancel</Btn>
@@ -4508,7 +4542,7 @@ function MainApp() {
             <button type="button" onClick={()=>{ setFocusTravellers([]); }} style={{ textAlign:'left', border:'1px solid #E0D2C5', borderRadius:10, padding:'10px 12px', background: focusTravellers.length===0?'#F1E7DD':'#fff', color:'#6E1A10', fontSize:13, fontWeight:700, cursor:'pointer' }}>Everyone</button>
             {(trip.members||[]).map(m => { const on = focusTravellers.includes(m.userId); return (
               <button key={m.userId} type="button" onClick={()=>toggleFocus(m.userId)} style={{ display:'flex', alignItems:'center', gap:10, textAlign:'left', border:'1px solid '+(on?'#6E1A10':'#E0D2C5'), borderRadius:10, padding:'8px 12px', background: on?'#F1E7DD':'#fff', color:'#5E463C', fontSize:13, fontWeight:700, cursor:'pointer' }}>
-                <span style={{ width:28,height:28,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>{hdrPicOf(m.userId)?<img src={hdrPicOf(m.userId)} alt="" style={AVATAR_IMG}/>:((m.name||m.userId||'?')[0]||'?').toUpperCase()}</span>
+                <span style={{ width:28,height:28,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>{hdrPicOf(m.userId)?<img src={hdrPicOf(m.userId)} alt="" style={AVATAR_IMG}/>:initialsOf(m.name, m.userId)}</span>
                 <span style={{ flex:1, minWidth:0 }}>{m.name||m.userId}{session && m.userId===session.userId?' (you)':''}</span>
                 <span style={{ width:20, height:20, borderRadius:5, border:'2px solid '+(on?'#3C8A3C':'#CFC2B5'), background:on?'#3C8A3C':'#fff', color:'#fff', display:'grid', placeItems:'center', fontSize:13, flexShrink:0 }}>{on?'✓':''}</span>
               </button>
@@ -4522,6 +4556,7 @@ function MainApp() {
           session={session}
           rlsActive={cloudMode.current === 'rls'}
           onAdd={(m)=>addMember(trip.id, m)}
+          onAddLocal={(name)=>addLocalMember(trip.id, name)}
           onRemove={(uid)=>removeMember(trip.id, uid)}
           onAddViewer={(m)=>addViewer(trip.id, m)}
           onRemoveViewer={(uid)=>removeViewer(trip.id, uid)}
@@ -4611,7 +4646,7 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
 
   // ── Logged-in view ──
   if (session) {
-    const initial = ((session.name || session.userId || '?').trim().charAt(0) || '?').toUpperCase();
+    const initial = initialsOf(session.name, session.userId);
     return (
       <Modal title="Traveler Account" onClose={onClose}>
         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom:18 }}>
@@ -4717,19 +4752,21 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
 }
 
 // ---- Trip travelers: view the roster, add/remove by User ID ----
-function TravelersModal({ trip, session, rlsActive, onAdd, onRemove, onAddViewer, onRemoveViewer, onSetRole, onNeedLogin, onClose }) {
+function TravelersModal({ trip, session, rlsActive, onAdd, onAddLocal, onRemove, onAddViewer, onRemoveViewer, onSetRole, onNeedLogin, onClose }) {
   const [userId, setUserId] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [viewerId, setViewerId] = useState('');
   const [vBusy, setVBusy] = useState(false);
   const [vErr, setVErr] = useState('');
+  const [localName, setLocalName] = useState('');
+  const [localErr, setLocalErr] = useState('');
 
   const owner = trip.ownerId || '';
   const members = trip.members || [];
   const myId = session ? session.userId : null;
   const isOwner = !!session && (owner === myId || !owner); // logged-in user manages legacy (unowned) trips too
-  const initial = (s) => ((s || '?').trim().charAt(0) || '?').toUpperCase();
+  const initial = (s) => initialsOf(s);
 
   const add = async () => {
     setErr('');
@@ -4743,6 +4780,19 @@ function TravelersModal({ trip, session, rlsActive, onAdd, onRemove, onAddViewer
     if (rlsActive && !found.uid) { setErr('“' + uidv + '” needs to sign in once before they can be given access to a trip.'); return; }
     onAdd(found);
     setUserId('');
+  };
+
+  const addLocal = () => {
+    const clean = localName.trim().replace(/\s+/g, ' ');
+    if (!clean) { setLocalErr('Please enter a name.'); return; }
+    // Same-name collision is a real risk on a school trip; the itinerary matcher works
+    // on first names, so two Swayams would be indistinguishable to it.
+    if (members.some(m => String(m.name || '').trim().toLowerCase() === clean.toLowerCase())) {
+      setLocalErr('“' + clean + '” is already on this trip. Add a surname or initial to tell them apart.'); return;
+    }
+    setLocalErr('');
+    onAddLocal(clean);
+    setLocalName('');
   };
 
   const viewers = trip.viewers || [];
@@ -4809,6 +4859,20 @@ function TravelersModal({ trip, session, rlsActive, onAdd, onRemove, onAddViewer
             placeholder="their unique User ID" />
           {err && <div style={{ fontSize:12.5, color:'#B3261E', background:'#FBEAE7', border:'1px solid #F1C6C0', borderRadius:7, padding:'8px 10px', marginBottom:12 }}>{err}</div>}
           <Btn onClick={add} disabled={busy} style={{ opacity: busy?0.6:1 }}>{busy ? 'Checking…' : 'Add traveler'}</Btn>
+
+          {/* Someone with no account at all — a child on a school trip, a guest.
+              They hold no permissions, so only a captain can move their status. */}
+          <div style={{ marginTop:14, paddingTop:12, borderTop:'1px dashed #DCCDBE' }}>
+            <Input label="Add traveler without an account" value={localName}
+              onChange={e=>{ setLocalName(e.target.value); setLocalErr(''); }}
+              onKeyDown={e=>{ if (e.key === 'Enter') addLocal(); }}
+              placeholder="their name, e.g. Swayam Kumar" />
+            <div style={{ fontSize:11, color:'#8A7A6D', marginTop:-6, marginBottom:10, lineHeight:1.45 }}>
+              For anyone who can’t have their own login. They appear on this trip only, and you update their status for them. A surname gives them two initials on their icon.
+            </div>
+            {localErr && <div style={{ fontSize:12.5, color:'#B3261E', background:'#FBEAE7', border:'1px solid #F1C6C0', borderRadius:7, padding:'8px 10px', marginBottom:12 }}>{localErr}</div>}
+            <Btn onClick={addLocal}>Add without an account</Btn>
+          </div>
         </div>
       )}
 
@@ -4923,7 +4987,7 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
   const focusName = focus ? ((allMembers.find(m => m.userId === focus) || {}).name || focus) : null;
   const assignedIds = (item) => (item && item.assignees && item.assignees.length) ? item.assignees : allMembers.map(m => m.userId);
   const showItem = (item) => !focus || assignedIds(item).includes(focus);
-  const avatar = (m, i, status) => <span key={m.userId} title={`${m.name||m.userId}${status?': '+STATUS_WORD[status]:''}`} style={{ width:26, height:26, marginLeft:i===0?0:-7, borderRadius:'50%', overflow:'hidden', border:RING_W+'px solid '+(status?STATUS_META[status].ring:'#F0EBE0'), background:'#A88977', color:'#fff', display:'grid', placeItems:'center', fontSize:10, fontWeight:800, flexShrink:0, boxSizing:'border-box' }}>{picOf(m.userId) ? <img src={picOf(m.userId)} alt="" style={AVATAR_IMG}/> : ((m.name||m.userId||'?')[0]||'?').toUpperCase()}</span>;
+  const avatar = (m, i, status) => <span key={m.userId} title={`${m.name||m.userId}${status?': '+STATUS_WORD[status]:''}`} style={{ width:26, height:26, marginLeft:i===0?0:-7, borderRadius:'50%', overflow:'hidden', border:RING_W+'px solid '+(status?STATUS_META[status].ring:'#F0EBE0'), background:'#A88977', color:'#fff', display:'grid', placeItems:'center', fontSize:10, fontWeight:800, flexShrink:0, boxSizing:'border-box' }}>{picOf(m.userId) ? <img src={picOf(m.userId)} alt="" style={AVATAR_IMG}/> : initialsOf(m.name, m.userId)}</span>;
   // statusFn(uid) supplies each traveller's status on this item, coloured as a ring.
   const assignedAvatars = (item, statusFn) => {
     const people = assignedIds(item).map(id => allMembers.find(m => m.userId === id)).filter(Boolean);
@@ -4958,7 +5022,7 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
       {matches.length > 0 && allMembers.length > 0 && (
         <div style={{ maxWidth:680, margin:'0 auto', padding:'10px 16px 0', display:'flex', alignItems:'center', gap:8 }}>
           <div style={{ display:'flex', alignItems:'center' }}>
-            {orderedMembers.slice(0,6).map((m,i) => { const on=focus===m.userId; return <button key={m.userId} type="button" aria-pressed={on} title={`Show only ${m.name||m.userId}'s plan`} onClick={()=>setFocus(on?null:m.userId)} style={{ width:41, height:41, marginLeft:i===0?0:-9, borderRadius:'50%', overflow:'hidden', border:on?'2px solid #6E1A10':'2px solid #F0EBE0', boxShadow:on?'0 0 0 2px #6E1A10':'0 0 0 1px #CFC2B5', background:'#A88977', color:'#fff', display:'grid', placeItems:'center', fontSize:14, fontWeight:800, cursor:'pointer', padding:0, transform:on?'translateY(-1px)':'none', zIndex:on?2:1 }}>{picOf(m.userId) ? <img src={picOf(m.userId)} alt="" style={AVATAR_IMG}/> : ((m.name||m.userId||'?')[0]||'?').toUpperCase()}</button>; })}
+            {orderedMembers.slice(0,6).map((m,i) => { const on=focus===m.userId; return <button key={m.userId} type="button" aria-pressed={on} title={`Show only ${m.name||m.userId}'s plan`} onClick={()=>setFocus(on?null:m.userId)} style={{ width:41, height:41, marginLeft:i===0?0:-9, borderRadius:'50%', overflow:'hidden', border:on?'2px solid #6E1A10':'2px solid #F0EBE0', boxShadow:on?'0 0 0 2px #6E1A10':'0 0 0 1px #CFC2B5', background:'#A88977', color:'#fff', display:'grid', placeItems:'center', fontSize:14, fontWeight:800, cursor:'pointer', padding:0, transform:on?'translateY(-1px)':'none', zIndex:on?2:1 }}>{picOf(m.userId) ? <img src={picOf(m.userId)} alt="" style={AVATAR_IMG}/> : initialsOf(m.name, m.userId)}</button>; })}
             {orderedMembers.length>6 && <button type="button" onClick={()=>setShowFocusPicker(true)} title="More travellers" style={{ marginLeft:7, width:38, height:38, borderRadius:'50%', border:'1px solid #CFC2B5', background:'#fff', color:'#6E1A10', fontSize:18, fontWeight:800, cursor:'pointer' }}>+</button>}
           </div>
           {focus && <button type="button" onClick={()=>setFocus(null)} style={{ marginLeft:'auto', border:'none', background:'transparent', color:'#8B2A14', fontSize:11.5, fontWeight:800, cursor:'pointer' }}>Show all ✕</button>}
@@ -5247,6 +5311,56 @@ async function extractItinerary(trip, doc) {
 // Match a name off the PDF to somebody actually on the trip. First name, case-insensitive
 // — an agent writes "Sneha" where the roster says "Sneha Bajpai". No match means the item
 // is simply left untagged rather than guessed at.
+// Trip length is entered as a day count, which is how people actually describe a trip,
+// and stored as an end date, which is what the schedule works in. Day 1 is the start
+// date itself, so a 5-day trip ends four days later. Blank means open-ended.
+const endDateFromDays = (startDate, days) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(startDate || '');
+  const n = parseInt(days, 10);
+  if (!m || !n || n < 1) return '';
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + n - 1));
+  return d.toISOString().slice(0, 10);
+};
+
+// ── Trip-local travellers ────────────────────────────────────────────────────────
+// Somebody on the trip who has no account: a child, or a guest whose name only ever
+// appears on an itinerary. They are ordinary entries in trip.members with a synthetic
+// id, so every roster, filter and status control already handles them — but they have
+// no auth uid, which is the important part. syncRoster() skips a member with no uid,
+// so a local traveller never reaches member_uids and therefore grants nobody access to
+// the trip row. They are a name and a status, and nothing else.
+const LOCAL_PREFIX = 'local:';
+const isLocalMember = (userId) => String(userId || '').startsWith(LOCAL_PREFIX);
+const newLocalId = () => LOCAL_PREFIX + Math.random().toString(36).slice(2, 10);
+// Only real accounts have profile rows; asking the directory about a local id is a
+// guaranteed miss, so filter them out before the lookup rather than after.
+const accountIds = (ids) => (ids || []).filter(id => id && !isLocalMember(id));
+
+// Avatar letters when there is no photo: first and last initial. A single-word name
+// gives one letter — an itinerary usually carries only a first name, so most trip-local
+// travellers show one until a surname is added.
+const initialsOf = (...candidates) => {
+  const name = candidates.map(c => String(c || '').trim()).find(Boolean) || '';
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+};
+
+// Every name the itinerary mentions that matchTravellers could not place, de-duplicated
+// case-insensitively so "Swayam" and "swayam" propose one traveller, not two.
+const unmatchedTravellers = (items, members) => {
+  const seen = new Map();
+  (items || []).forEach(it => (it.people || []).forEach(raw => {
+    const name = String(raw || '').trim().replace(/\s+/g, ' ');
+    if (!name) return;
+    if (matchTravellers([name], members).length) return;   // already on the trip
+    const key = name.toLowerCase();
+    if (!seen.has(key)) seen.set(key, { name, include: true });
+  }));
+  return [...seen.values()];
+};
+
 const matchTravellers = (names, members) => {
   const out = [];
   (names || []).forEach(n => {
@@ -5335,18 +5449,38 @@ function mergeItinerary(trip, rows) {
 function ImportReview({ trip, doc, onClose, onApply }) {
   const [rows, setRows] = useState(null);
   const [busy, setBusy] = useState(true);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState('');
+  const [sample, setSample] = useState(false);      // the reader isn't switched on yet
+  // Names on the itinerary that belong to nobody on the trip. Proposed as travellers
+  // without accounts rather than silently dropped — a school group is mostly these.
+  const [newPeople, setNewPeople] = useState([]);
+  const [dateOverride, setDateOverride] = useState(false);
 
   useEffect(() => {
     let dead = false;
     extractItinerary(trip, doc)
-      .then(ex => { if (!dead) { setRows(reviewItinerary(trip, ex)); setBusy(false); } })
-      .catch(() => { if (!dead) { setFailed(true); setBusy(false); } });
+      .then(ex => {
+        if (dead) return;
+        const reviewed = reviewItinerary(trip, ex);
+        setRows(reviewed);
+        setSample(ex.source === 'Sample extraction');
+        setNewPeople(unmatchedTravellers(ex.items, trip.members));
+        setBusy(false);
+      })
+      .catch(e => { if (!dead) { setFailed((e && e.message) || 'Couldn’t read that document.'); setBusy(false); } });
     return () => { dead = true; };
   }, [trip, doc]);
 
   const set = (i, patch) => setRows(rs => rs.map(r => r._i === i ? { ...r, ...patch } : r));
+  const setPerson = (i, patch) => setNewPeople(ps => ps.map((p, n) => n === i ? { ...p, ...patch } : p));
   const list = rows || [];
+  // The check-off: the trip's start date is what the admin entered by hand, so the
+  // itinerary's first day has to agree with it before anything merges. Getting this
+  // wrong means importing somebody else's trip into this one.
+  const tripStart = tripDateRange(trip).start || trip.startDate || '';
+  const firstItemDate = list.map(r => r.date).filter(Boolean).sort()[0] || '';
+  const dateMismatch = !!(tripStart && firstItemDate && tripStart !== firstItemDate);
+  const blocked = dateMismatch && !dateOverride;
   const selected = list.filter(r => r.include);
   const outside = list.filter(r => r.outside).length;
   const dupes = list.filter(r => r.dupe).length;
@@ -5377,15 +5511,69 @@ function ImportReview({ trip, doc, onClose, onApply }) {
 
       <div style={{ maxWidth:640, margin:'0 auto', padding:'14px 16px 120px' }}>
         {busy && <p style={{ fontSize:13, color:'#8A7A6D', textAlign:'center', padding:'40px 0' }}>Reading the itinerary…</p>}
-        {failed && <p style={{ fontSize:13, color:'#B54030', textAlign:'center', padding:'40px 0' }}>Couldn’t read that document. Nothing has been changed.</p>}
+        {failed && <p style={{ fontSize:13, color:'#B54030', textAlign:'center', padding:'40px 0', lineHeight:1.55 }}>{failed}<br /><span style={{ color:'#8A7A6D' }}>Nothing has been changed.</span></p>}
 
         {!busy && !failed && (
           <>
-            {/* The extraction is stubbed but the merge is real — anything ticked here
-                genuinely lands in the trip. Say so plainly until a PDF is actually read. */}
-            <div style={{ fontSize:11.5, color:'#8A5A2A', background:'#FFF3D6', border:'1px solid #F0DFB6', borderRadius:10, padding:'9px 11px', marginBottom:10, lineHeight:1.5 }}>
-              <strong>Sample data — this document hasn’t been read yet.</strong> The layout is real and anything you add really does go into the schedule, so use a test trip.
-            </div>
+            {/* Only when the reader is switched off. Once the key is set this document
+                really has been read, and claiming otherwise would be worse than useless. */}
+            {sample && (
+              <div style={{ fontSize:11.5, color:'#8A5A2A', background:'#FFF3D6', border:'1px solid #F0DFB6', borderRadius:10, padding:'9px 11px', marginBottom:10, lineHeight:1.5 }}>
+                <strong>Sample data — this document hasn’t been read yet.</strong> The itinerary reader isn’t switched on, so these are placeholder items. Anything you add still goes into the schedule for real.
+              </div>
+            )}
+
+            {/* The date check-off. Blocking rather than warning: the likeliest cause of a
+                mismatch is the document belonging to a different trip entirely. */}
+            {dateMismatch && (
+              <div style={{ fontSize:12, color: blocked ? '#8B2A14' : '#8A5A2A', background: blocked ? '#FBE9E4' : '#FFF3D6',
+                border:'1px solid ' + (blocked ? '#E8C0B4' : '#F0DFB6'), borderRadius:10, padding:'11px 12px', marginBottom:12, lineHeight:1.55 }}>
+                <strong>{blocked ? 'The dates don’t match.' : 'Importing despite a date mismatch.'}</strong>
+                <div style={{ marginTop:5 }}>
+                  This trip starts <strong>{fmtDate(tripStart)}</strong>, but the itinerary begins <strong>{fmtDate(firstItemDate)}</strong>.
+                </div>
+                {blocked && (
+                  <>
+                    <div style={{ color:'#7A5A50', marginTop:5 }}>
+                      Check the document belongs to this trip. If the difference is deliberate — an itinerary that opens with a task the day before — you can go ahead.
+                    </div>
+                    <button type="button" onClick={()=>setDateOverride(true)}
+                      style={{ marginTop:9, border:'1px solid #C8B09A', borderRadius:8, padding:'7px 11px', background:'#fff', color:'#6E1A10', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                      Import anyway
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Names the itinerary carries that belong to nobody on the trip. */}
+            {!blocked && newPeople.length > 0 && (
+              <div style={{ border:'1px solid #D6C3B2', borderRadius:11, background:'#FFFDF8', padding:'11px 12px', marginBottom:12 }}>
+                <div style={{ fontSize:12.5, fontWeight:800, color:'#3D2E26' }}>
+                  {newPeople.length} name{newPeople.length===1?'':'s'} not on this trip
+                </div>
+                <div style={{ fontSize:11, color:'#8A7A6D', marginTop:3, lineHeight:1.5 }}>
+                  These become travellers on this trip only — no account, no sign-in, and only you can move their status. Add a surname to get two initials on their icon.
+                </div>
+                {newPeople.map((p, i) => (
+                  <div key={i} style={{ display:'flex', alignItems:'center', gap:8, marginTop:8 }}>
+                    <button type="button" onClick={()=>setPerson(i, { include: !p.include })}
+                      aria-pressed={p.include} aria-label={`${p.include?'Skip':'Add'} ${p.name}`}
+                      style={{ flexShrink:0, width:22, height:22, borderRadius:6, border:'1.5px solid ' + (p.include ? '#6E1A10' : '#C6B8AC'),
+                        background: p.include ? '#6E1A10' : '#fff', color:'#fff', fontSize:13, fontWeight:800, cursor:'pointer', display:'grid', placeItems:'center' }}>
+                      {p.include ? '✓' : ''}
+                    </button>
+                    <span style={{ flexShrink:0, width:28, height:28, borderRadius:'50%', background:'#A88977', color:'#fff',
+                      display:'grid', placeItems:'center', fontSize:11, fontWeight:800, opacity: p.include ? 1 : 0.5 }}>
+                      {initialsOf(p.name)}
+                    </span>
+                    <input value={p.name} onChange={e=>setPerson(i, { name: e.target.value })}
+                      style={{ flex:1, minWidth:0, boxSizing:'border-box', padding:'6px 8px', border:'1px solid #DCCDBE',
+                        borderRadius:7, fontSize:12.5, color:'#3D2E26', background:'#fff', opacity: p.include ? 1 : 0.6 }} />
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{ fontSize:11.5, color:'#6E2118', background:'#F5EFE2', border:'1px solid #E2D8C8', borderRadius:10, padding:'9px 11px', marginBottom:14, lineHeight:1.5 }}>
               Found <strong>{list.length}</strong> items · <strong>{selected.length}</strong> selected
               {outside > 0 && <> · <span style={{ color:'#B07A2A', fontWeight:700 }}>{outside} outside your trip dates</span></>}
@@ -5393,7 +5581,7 @@ function ImportReview({ trip, doc, onClose, onApply }) {
               <div style={{ color:'#8A7A6D', marginTop:4 }}>Nothing is added until you tap Add below. Check the times.</div>
             </div>
 
-            {dates.map(d => (
+            {!blocked && dates.map(d => (
               <div key={d} style={{ marginBottom:16 }}>
                 <div style={{ fontSize:11, fontWeight:800, letterSpacing:'0.08em', color:'#8B2A14', textTransform:'uppercase', marginBottom:7 }}>
                   {d === '—' ? 'No date' : fmtDate(d)}
@@ -5449,10 +5637,10 @@ function ImportReview({ trip, doc, onClose, onApply }) {
         <div style={{ position:'fixed', left:0, right:0, bottom:0, background:'#F5EFE2', borderTop:'1px solid #D8CFC2',
           padding:'11px 16px calc(env(safe-area-inset-bottom, 0px) + 11px)', display:'flex', gap:9, alignItems:'center' }}>
           <button onClick={onClose} style={{ flexShrink:0, border:'1px solid #C8B09A', borderRadius:9, padding:'10px 14px', background:'transparent', color:'#8B2A14', fontSize:13, fontWeight:700, cursor:'pointer' }}>Cancel</button>
-          <button disabled={!selected.length} onClick={()=>onApply(rows)}
-            style={{ flex:1, minWidth:0, border:'none', borderRadius:9, padding:'11px 14px', background: selected.length ? '#6E1A10' : '#C6B8AC',
-              color:'#fff', fontSize:13, fontWeight:800, cursor: selected.length ? 'pointer' : 'default', whiteSpace:'nowrap' }}>
-            Add {selected.length} item{selected.length===1?'':'s'} to schedule
+          <button disabled={blocked || !selected.length} onClick={()=>onApply(rows, newPeople.filter(p => p.include && p.name.trim()))}
+            style={{ flex:1, minWidth:0, border:'none', borderRadius:9, padding:'11px 14px', background: (!blocked && selected.length) ? '#6E1A10' : '#C6B8AC',
+              color:'#fff', fontSize:13, fontWeight:800, cursor: (!blocked && selected.length) ? 'pointer' : 'default', whiteSpace:'nowrap' }}>
+            {blocked ? 'Dates must match' : `Add ${selected.length} item${selected.length===1?'':'s'} to schedule`}
           </button>
         </div>
       )}
@@ -5590,11 +5778,23 @@ function DocumentsTab({ trip, update, session, canEdit=true, focus=[] }) {
 
       {importDoc && (
         <ImportReview trip={trip} doc={importDoc} onClose={()=>setImportDoc(null)}
-          onApply={(rows) => {
+          onApply={(rows, newPeople) => {
             const added = rows.filter(r => r.include).length;
-            update(t => mergeItinerary(t, rows));
+            const people = newPeople || [];
+            // One update, in this order on purpose: the new travellers have to exist
+            // before assignees are worked out, or every item naming them imports
+            // untagged and the admin has to tag them all again by hand.
+            update(t => {
+              const members = [...(t.members || [])];
+              people.forEach(p => members.push({
+                userId: newLocalId(), name: p.name.trim().replace(/\s+/g, ' '), role: 'traveler', local: true,
+              }));
+              const retagged = rows.map(r => ({ ...r, assignees: matchTravellers(r.people, members) }));
+              return { members, ...mergeItinerary({ ...t, members }, retagged) };
+            });
             setImportDoc(null);
-            setImportDone(`Added ${added} item${added===1?'':'s'} to the schedule.`);
+            setImportDone(`Added ${added} item${added===1?'':'s'} to the schedule`
+              + (people.length ? ` and ${people.length} traveller${people.length===1?'':'s'}.` : '.'));
             setTimeout(() => setImportDone(''), 4000);
           }} />
       )}
