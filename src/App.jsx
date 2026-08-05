@@ -2043,8 +2043,17 @@ function RoadTrackCard({ travel, marks, locations, members, session, sharingLoc,
             🚗 {label(from)} <span style={{ fontWeight:600, color:'#7A685F' }}>→</span> {label(to)}
           </span>
           {open ? (
-            <span style={{ display:'inline-block', marginTop:4, fontSize:9.5, fontWeight:800, letterSpacing:'0.06em', color:phase.tone, border:`1px solid ${phase.tone}`, borderRadius:5, padding:'2px 6px' }}>
-              {phase.label}
+            <span style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'wrap', marginTop:4 }}>
+              <span style={{ display:'inline-block', fontSize:9.5, fontWeight:800, letterSpacing:'0.06em', color:phase.tone, border:`1px solid ${phase.tone}`, borderRadius:5, padding:'2px 6px' }}>
+                {phase.label}
+              </span>
+              {/* Says which of the two trackers is driving this card: real positions from a
+                  pasted Maps link, or the entered times. */}
+              {gpsMode && (
+                <span style={{ display:'inline-block', fontSize:9.5, fontWeight:800, letterSpacing:'0.06em', color:'#8A6A45', border:'1px solid #C8B09A', background:'#F7EFE3', borderRadius:5, padding:'2px 6px' }}>
+                  GPS MODE
+                </span>
+              )}
             </span>
           ) : (
             <span style={{ display:'inline-block', marginTop:4, fontSize:10, color:'#8A7A6D' }}>Tap for progress</span>
