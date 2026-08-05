@@ -5489,7 +5489,18 @@ function mergeItinerary(trip, rows) {
 const CHAT_FIELDS = {
   event: ['time', 'endTime', 'title', 'location', 'category'],
   task:  ['time', 'text'],
-  span:  ['title', 'location', 'from', 'to', 'mode', 'flightNo', 'startDate', 'startTime', 'endDate', 'endTime'],
+  // type distinguishes a hotel stay from a travel leg. It was missing here while
+  // applyChatEdits read it, so adding a stay could never have worked.
+  span:  ['type', 'title', 'location', 'from', 'to', 'mode', 'flightNo', 'startDate', 'startTime', 'endDate', 'endTime'],
+};
+// A task's wording lives in `text`, an event's in `title`. Being asked for one and given
+// the other is a naming mismatch, not an attempt to write somewhere it shouldn't — so
+// translate it rather than refusing a well-formed request.
+const chatSynonyms = (target, fields) => {
+  const out = { ...fields };
+  if (target === 'task' && out.title != null && out.text == null) { out.text = out.title; delete out.title; }
+  if (target !== 'task' && out.text != null && out.title == null) { out.title = out.text; delete out.text; }
+  return out;
 };
 const CHAT_MAX_EDITS = 25;   // a batch larger than this is a misunderstanding, not an instruction
 
@@ -5563,6 +5574,7 @@ function resolveChatEdits(trip, edits) {
       try { fields = JSON.parse(e.fields); } catch { return { ...base, error: 'The change could not be read.' }; }
       if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return { ...base, error: 'The change could not be read.' };
     }
+    fields = chatSynonyms(target, fields);
     const allowed = CHAT_FIELDS[target];
     const rejectedKeys = Object.keys(fields).filter(k => !allowed.includes(k));
     if (rejectedKeys.length) return { ...base, error: `Not allowed to change: ${rejectedKeys.join(', ')}.` };
