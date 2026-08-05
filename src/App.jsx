@@ -324,8 +324,76 @@ async function routeFromMapsLink(raw) {
   if (!route || (!route.from && !route.to)) {
     throw new Error('No route in that link — in Maps, set both stops and tap Directions before copying.');
   }
-  return route;
+  return { ...route, url: full };   // the caller mines the same URL for coordinates
 }
+
+// ── Coordinates straight out of the link ────────────────────────────────────────
+// Maps returns its own marketing names — "Dubai Design District (D3) by Dubai Holding"
+// — which OpenStreetMap has never heard of, so looking the name up is the weakest link
+// in the chain. The expanded URL already carries every waypoint as !1d<lon>!2d<lat>,
+// and the map centre as @lat,lon,z. Read those and skip the lookup entirely.
+const sanePoint = (p) => !!p && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180 && !(p.lat === 0 && p.lon === 0);
+const mapsAnchor = (url) => {
+  const m = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/.exec(String(url || ''));
+  const p = m ? { lat:+m[1], lon:+m[2] } : null;
+  return sanePoint(p) ? p : null;
+};
+const waypointsFromUrl = (url) => {
+  const out = [];
+  const re = /!1d(-?\d+(?:\.\d+)?)!2d(-?\d+(?:\.\d+)?)/g;   // longitude first in this blob
+  let m;
+  while ((m = re.exec(String(url || '')))) {
+    const p = { lat:+m[2], lon:+m[1] };
+    if (sanePoint(p)) out.push(p);
+  }
+  return out;
+};
+// Rough great-circle km. Only ever used to ask "is this even the right city?".
+const kmApart = (a, b) => {
+  const R = 6371, r = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * r, dLon = (b.lon - a.lon) * r;
+  const s = Math.sin(dLat/2) ** 2 + Math.cos(a.lat*r) * Math.cos(b.lat*r) * Math.sin(dLon/2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+};
+// Two different jobs, so two different tolerances. A waypoint read out of the link is
+// authoritative — the bound only exists to catch a misparse, and reading lat/lon the wrong
+// way round throws a Dubai point ~4100km, so 2000 is plenty without rejecting a real long
+// haul (Dubai→Riyadh already puts an endpoint 433km from the route's centre).
+const WAYPOINT_SANITY_KM = 2000;
+// A simplified name is a guess, so it has to land on the route to be believed.
+const NAME_NEAR_KM = 500;
+// Plainer forms of a place name, for when the full one draws a blank.
+const nameVariants = (q) => {
+  const s = String(q || '').trim();
+  const out = [s];
+  const push = (v) => { const c = v.replace(/\s{2,}/g,' ').replace(/[\s,\-–—]+$/,'').trim(); if (c && !out.includes(c)) out.push(c); };
+  push(s.replace(/\s+by\s+.+$/i, ''));               // "… by Dubai Holding"
+  push(s.replace(/\s*\([^)]*\)\s*/g, ' '));           // "… (D3)"
+  push(s.replace(/\s+by\s+.+$/i, '').replace(/\s*\([^)]*\)\s*/g, ' '));
+  push(s.split(/\s+[-–—]\s+/)[0]);
+  push(s.split(',')[0]);
+  return out;
+};
+// Simplifying a name is how "Marina Gate 1 (Tower A) by Select Group" becomes plain
+// "Marina Gate 1" — which OSM happily places in Egypt. Only trust a simplified match
+// if it lands near the route the link was drawn on; with no anchor, don't simplify.
+async function geocodeNear(q, anchor) {
+  const first = await geocodeOnce(q);
+  if (!anchor) return first;                                            // nothing to judge against
+  if (first && kmApart(first, anchor) <= NAME_NEAR_KM) return first;
+  for (const v of nameVariants(q).slice(1)) {
+    const hit = await geocodeOnce(v);
+    if (hit && kmApart(hit, anchor) <= NAME_NEAR_KM) return hit;
+  }
+  return first;   // nothing landed on the route; the exact-name match is still the best we have
+}
+// "08:30" + 23 → "08:53", wrapping at midnight.
+const addMinutesHHMM = (hhmm, mins) => {
+  const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || '');
+  if (!m) return '';
+  const t = ((+m[1] * 60 + +m[2] + Math.round(mins)) % 1440 + 1440) % 1440;
+  return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0');
+};
 
 // ── Free driving routes (OpenStreetMap Nominatim + OSRM; no API key) ────────────
 // A place name resolves to the same coordinates every time, so results are cached for
@@ -537,6 +605,8 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
   const [mapsLink, setMapsLink] = useState('');
   const [mapsBusy, setMapsBusy] = useState(false);
   const [mapsMsg, setMapsMsg] = useState(null); // { ok:boolean, text:string }
+  // Driving minutes for the route the link described — only known once both ends are pinned.
+  const [routeMin, setRouteMin] = useState(null);
 
   // Open Maps with whatever the user has already typed, so the route starts half-built.
   const openMapsForRoute = () => {
@@ -553,17 +623,33 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     setMapsBusy(true); setMapsMsg(null);
     try {
       const route = await routeFromMapsLink(text);
-      // Resolve to coordinates HERE, once, while we still have the names Maps itself
-      // produced — never mid-drive off whatever the traveller typed. Storing them is
-      // also what switches this leg to live GPS tracking on the Status tab.
+      // Resolve to coordinates HERE, once, while we still have the route Maps itself
+      // drew — never mid-drive off whatever the traveller typed. Storing them is also
+      // what switches this leg to live GPS tracking on the Status tab.
+      const anchor = mapsAnchor(route.url);
+      // A waypoint out of step with the map centre means the blob wasn't what we think
+      // it was — drop it and fall back to the name rather than trust a stray number.
+      const wps = waypointsFromUrl(route.url).filter(p => !anchor || kmApart(p, anchor) <= WAYPOINT_SANITY_KM);
+      const linkFrom = wps.length >= 2 ? wps[0] : null;
+      const linkTo = wps.length >= 1 ? wps[wps.length - 1] : null;
       const [g1, g2] = await Promise.all([
-        route.from ? geocodeOnce(route.from) : Promise.resolve(null),
-        route.to ? geocodeOnce(route.to) : Promise.resolve(null),
+        linkFrom || (route.from ? geocodeNear(route.from, anchor) : null),
+        linkTo || (route.to ? geocodeNear(route.to, anchor) : null),
       ]);
       setEvForm(cur => ({ ...cur, from: route.from || cur.from, to: route.to || cur.to,
         fromGeo: g1 || null, toGeo: g2 || null }));
+
+      // With both ends pinned we can price the drive, and offer that as the arrival time.
+      const leg = (g1 && g2) ? await osrmLeg(g1, g2) : null;
+      const mins = leg ? Math.max(1, Math.round(leg.seconds / 60)) : null;
+      setRouteMin(mins);
+      if (mins) setEvForm(cur => (cur.startTime && !cur.spanEndTime)
+        ? { ...cur, spanEndTime: addMinutesHHMM(cur.startTime, mins) }   // never overwrite a time they typed
+        : cur);
+
       setMapsMsg({ ok:true, text: (route.from ? `Filled in: ${route.from} → ${route.to}` : `Filled in destination: ${route.to} (Maps had no starting point — add one above)`)
-        + (g2 ? ' · live tracking on for this drive' : ' · couldn’t pin the map location, so this drive runs on your entered times') });
+        + (g2 ? ' · live tracking on for this drive' : ' · couldn’t pin the map location, so this drive runs on your entered times')
+        + (mins ? ` · Maps route is about ${fmtDur(mins)}` : '') });
     } catch (e) {
       setMapsMsg({ ok:false, text: e.message });
     } finally { setMapsBusy(false); }
@@ -774,7 +860,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
   const [editingSpan, setEditingSpan] = useState(null); // spanId when the modal is editing an existing travel/stay span
   // The pasted link now stays in its box after it's applied, so clear it with the form —
   // otherwise the next activity opens showing the previous one's route.
-  const closeModal = () => { setShowEvent(null); setEvForm(blankForm); setEditingEvent(null); setEditingSpan(null); setMapsLink(''); setMapsMsg(null); autoAppliedRef.current = ''; };
+  const closeModal = () => { setShowEvent(null); setEvForm(blankForm); setEditingEvent(null); setEditingSpan(null); setMapsLink(''); setMapsMsg(null); setRouteMin(null); autoAppliedRef.current = ''; };
   // Open "add" modal from a day; prefill span dates to that day + default the optional expense to the current traveler
   const openAddEvent = (day) => {
     const defTrav = (myId && members.some(m => m.userId === myId)) ? myId : (members[0] ? members[0].userId : '');
@@ -1437,6 +1523,18 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
                       {mapsBusy ? '…' : '📋 Paste'}
                     </button>
                   </div>
+                  {/* Only offered once the link pinned both ends — a hand-typed From/To
+                      clears the coordinates, and with them any claim to know the drive time. */}
+                  {routeMin != null && !!evForm.fromGeo && !!evForm.toGeo && (
+                    <button type="button" onClick={()=>{
+                      if (!evForm.startTime) { setMapsMsg({ ok:false, text:'Enter the depart time first, then I can work out the arrival.' }); return; }
+                      setEvForm(cur => ({ ...cur, spanEndTime: addMinutesHHMM(cur.startTime, routeMin) }));
+                      setMapsMsg({ ok:true, text:`Arrival set to ${fmtDur(routeMin)} after departure, from the Maps route.` });
+                    }}
+                      style={{ width:'100%', marginTop:7, border:'1px solid #C8B09A', borderRadius:8, padding:'8px 11px', fontSize:12.5, fontWeight:700, background:'#FBF6F0', color:'#6E1A10', cursor:'pointer' }}>
+                      ⏱ Set arrival from route ({fmtDur(routeMin)} drive)
+                    </button>
+                  )}
                   {!!mapsLink.trim() && (
                     <button type="button" onClick={useMapsLink} disabled={mapsBusy}
                       style={{ width:'100%', marginTop:7, border:'1px solid #C8B09A', borderRadius:8, padding:'8px 11px', fontSize:12.5, fontWeight:700, background:'#FBF6F0', color:'#6E1A10', cursor: mapsBusy?'default':'pointer', opacity: mapsBusy?0.6:1 }}>
