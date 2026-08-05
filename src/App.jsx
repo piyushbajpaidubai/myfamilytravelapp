@@ -298,6 +298,9 @@ function parseMapsDirUrl(raw) {
   }
   return null;
 }
+// Enough of a Maps URL to be worth resolving. Module scope on purpose: a component-scope
+// value would count as a dependency of the auto-apply effect below.
+const MAPS_LINK_RE = /https?:\/\/[^\s]*(?:google\.[a-z.]+\/maps|maps\.app\.goo\.gl\/|goo\.gl\/maps\/)[^\s]/i;
 // Expands a short link first (server hop), then parses. Throws a user-readable message.
 async function routeFromMapsLink(raw) {
   const text = String(raw || '').trim();
@@ -561,10 +564,31 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
         fromGeo: g1 || null, toGeo: g2 || null }));
       setMapsMsg({ ok:true, text: (route.from ? `Filled in: ${route.from} → ${route.to}` : `Filled in destination: ${route.to} (Maps had no starting point — add one above)`)
         + (g2 ? ' · live tracking on for this drive' : ' · couldn’t pin the map location, so this drive runs on your entered times') });
-      setMapsLink('');
     } catch (e) {
       setMapsMsg({ ok:false, text: e.message });
     } finally { setMapsBusy(false); }
+  };
+
+  // Android's WebView doesn't reliably hand clipboard text to onPaste, and
+  // navigator.clipboard is often refused outright — so depend on neither. Anything
+  // that ends up in the box gets applied on its own a moment later, whether it was
+  // pasted, typed or autofilled. Held in a ref so the effect stays keyed on the text.
+  const applyMapsRef = useRef(null);
+  applyMapsRef.current = applyMapsLink;
+  const autoAppliedRef = useRef('');
+  useEffect(() => {
+    const text = String(mapsLink || '').trim();
+    if (!text || autoAppliedRef.current === text || !MAPS_LINK_RE.test(text)) return undefined;
+    const id = setTimeout(() => { autoAppliedRef.current = text; applyMapsRef.current(text); }, 500);
+    return () => clearTimeout(id);
+  }, [mapsLink]);
+
+  // The deliberate route through: the button and the Enter key. Marks the text as done
+  // so the pending auto-apply doesn't resolve the same link a second time.
+  const useMapsLink = () => {
+    const text = String(mapsLink || '').trim();
+    autoAppliedRef.current = text;
+    applyMapsLink(text);
   };
 
   // Clipboard read needs a user gesture and can be refused; fall back to the paste box.
@@ -573,6 +597,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
       const text = await navigator.clipboard.readText();
       if (!text) { setMapsMsg({ ok:false, text:'Clipboard is empty — copy the link in Maps first.' }); return; }
       setMapsLink(text);
+      autoAppliedRef.current = text.trim();
       await applyMapsLink(text);
     } catch (e) {
       setMapsMsg({ ok:false, text:'Couldn’t read the clipboard — paste the link into the box below.' });
@@ -747,7 +772,9 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
   const blankForm = { duration:"single", type:"Activity", time:"", endTime:"", title:"", location:"", from:"", to:"", mode:"By Road", flightNo:"", category:"Sightseeing", assignees:[], locationLink:"", startDate:"", startTime:"", endDate:"", spanEndTime:"", expAmount:"", expCat:"Food", expTraveler:"", fromGeo:null, toGeo:null };
   const [editingEvent, setEditingEvent] = useState(null); // { dayId, evId } when the modal is editing an existing activity
   const [editingSpan, setEditingSpan] = useState(null); // spanId when the modal is editing an existing travel/stay span
-  const closeModal = () => { setShowEvent(null); setEvForm(blankForm); setEditingEvent(null); setEditingSpan(null); };
+  // The pasted link now stays in its box after it's applied, so clear it with the form —
+  // otherwise the next activity opens showing the previous one's route.
+  const closeModal = () => { setShowEvent(null); setEvForm(blankForm); setEditingEvent(null); setEditingSpan(null); setMapsLink(''); setMapsMsg(null); autoAppliedRef.current = ''; };
   // Open "add" modal from a day; prefill span dates to that day + default the optional expense to the current traveler
   const openAddEvent = (day) => {
     const defTrav = (myId && members.some(m => m.userId === myId)) ? myId : (members[0] ? members[0].userId : '');
@@ -813,6 +840,12 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     if (f.type === 'Travel') {
       if (f.mode === 'By Air') { if (!f.flightNo) { alert('Please enter the flight number.'); return; } }
       else if (!f.from || !f.to) { alert('Please fill in the From and To locations.'); return; }
+      // The Status card places the vehicle by clock arithmetic between these two times.
+      // Without both there is no duration, so the card can only say "under way".
+      if (!f.startTime || !f.spanEndTime) {
+        alert('Please enter both the depart and arrive times — the status tracker needs them to show progress along the journey.');
+        return;
+      }
     }
     const endDate = f.duration === 'single' ? f.startDate : f.endDate; // single-day travel stays same-day
     const fields = { type:f.type, title:f.title, location:f.location, from:f.from, to:f.to, mode:f.mode, flightNo:f.flightNo, assignees:f.assignees||[], startDate:f.startDate, startTime:f.startTime, endDate, endTime:f.spanEndTime, fromGeo:f.fromGeo||null, toGeo:f.toGeo||null };
@@ -1396,8 +1429,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
                   </button>
                   <div style={{ display:'flex', gap:7, marginTop:7 }}>
                     <input value={mapsLink} onChange={e=>setMapsLink(e.target.value)}
-                      onPaste={e=>{ const t = (e.clipboardData||window.clipboardData).getData('text'); if (t) { e.preventDefault(); setMapsLink(t); applyMapsLink(t); } }}
-                      onKeyDown={e=>{ if (e.key==='Enter') { e.preventDefault(); applyMapsLink(mapsLink); } }}
+                      onKeyDown={e=>{ if (e.key==='Enter') { e.preventDefault(); useMapsLink(); } }}
                       placeholder="Paste the Maps link…"
                       style={{ flex:1, minWidth:0, boxSizing:'border-box', padding:'8px 10px', border:'1px solid #DCCDBE', borderRadius:8, fontSize:12.5, color:'#4E3D36', background:'#fff' }} />
                     <button type="button" onClick={pasteMapsLink} disabled={mapsBusy}
@@ -1405,6 +1437,12 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
                       {mapsBusy ? '…' : '📋 Paste'}
                     </button>
                   </div>
+                  {!!mapsLink.trim() && (
+                    <button type="button" onClick={useMapsLink} disabled={mapsBusy}
+                      style={{ width:'100%', marginTop:7, border:'1px solid #C8B09A', borderRadius:8, padding:'8px 11px', fontSize:12.5, fontWeight:700, background:'#FBF6F0', color:'#6E1A10', cursor: mapsBusy?'default':'pointer', opacity: mapsBusy?0.6:1 }}>
+                      {mapsBusy ? 'Reading the link…' : '↧ Use this link'}
+                    </button>
+                  )}
                   <div style={{ fontSize:11, lineHeight:1.45, marginTop:6, color: mapsMsg ? (mapsMsg.ok ? '#2F7A2F' : '#B54030') : '#8A7A6D' }}>
                     {mapsMsg ? mapsMsg.text : 'Optional — fills From and To for you. You can also just type them in below.'}
                   </div>
@@ -1418,17 +1456,17 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
                 <>
                   <div style={{ display:"flex", gap:10 }}>
                     <div style={{ flex:1.4 }}><Input label="Depart date *" type="date" value={evForm.startDate} onChange={e=>setEvForm({...evForm,startDate:e.target.value})} /></div>
-                    <div style={{ flex:1 }}><Input label="Depart time" type="time" value={evForm.startTime} onChange={e=>setEvForm({...evForm,startTime:e.target.value})} /></div>
+                    <div style={{ flex:1 }}><Input label={evForm.type === 'Travel' ? 'Depart time *' : 'Depart time'} type="time" value={evForm.startTime} onChange={e=>setEvForm({...evForm,startTime:e.target.value})} /></div>
                   </div>
                   <div style={{ display:"flex", gap:10 }}>
                     <div style={{ flex:1.4 }}><Input label="Arrive date *" type="date" value={evForm.endDate} onChange={e=>setEvForm({...evForm,endDate:e.target.value})} /></div>
-                    <div style={{ flex:1 }}><Input label="Arrive time" type="time" value={evForm.spanEndTime} onChange={e=>setEvForm({...evForm,spanEndTime:e.target.value})} /></div>
+                    <div style={{ flex:1 }}><Input label={evForm.type === 'Travel' ? 'Arrive time *' : 'Arrive time'} type="time" value={evForm.spanEndTime} onChange={e=>setEvForm({...evForm,spanEndTime:e.target.value})} /></div>
                   </div>
                 </>
               ) : (
                 <div style={{ display:"flex", gap:10 }}>
-                  <div style={{ flex:1 }}><Input label="Depart time" type="time" value={evForm.startTime} onChange={e=>setEvForm({...evForm,startTime:e.target.value})} /></div>
-                  <div style={{ flex:1 }}><Input label="Arrive time" type="time" value={evForm.spanEndTime} onChange={e=>setEvForm({...evForm,spanEndTime:e.target.value})} /></div>
+                  <div style={{ flex:1 }}><Input label={evForm.type === 'Travel' ? 'Depart time *' : 'Depart time'} type="time" value={evForm.startTime} onChange={e=>setEvForm({...evForm,startTime:e.target.value})} /></div>
+                  <div style={{ flex:1 }}><Input label={evForm.type === 'Travel' ? 'Arrive time *' : 'Arrive time'} type="time" value={evForm.spanEndTime} onChange={e=>setEvForm({...evForm,spanEndTime:e.target.value})} /></div>
                 </div>
               )}
               {/* "Auto-fill arrival from route" is gone: it geocoded whatever was typed,
