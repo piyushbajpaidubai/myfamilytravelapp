@@ -5265,20 +5265,25 @@ function extractItineraryStub(trip) {
     ],
   };
 }
-const EXTRACT_FN = 'https://mytravelhub.netlify.app/.netlify/functions/extractitinerary';
+const EXTRACT_START_FN = 'https://mytravelhub.netlify.app/.netlify/functions/extractitinerary-background';
+const EXTRACT_POLL_FN = 'https://mytravelhub.netlify.app/.netlify/functions/extractitinerary';
+const POLL_EVERY_MS = 2500;
+const POLL_FOR_MS = 5 * 60000;   // the reader has 15 minutes; well past this it is stuck
 
-// Reads the itinerary through the Netlify function, which holds the API key. The reply
-// is newline-delimited JSON: keepalive lines while the model works, then one result.
-// Awaiting the whole body is enough — the streaming exists to keep the connection open
-// server-side, not because the page needs the tokens as they arrive.
+// Reads the itinerary through Netlify. The reading itself runs as a background function
+// so it gets fifteen minutes instead of ten seconds — but a background function answers
+// 202 and can never hand a result back, so we invent a job id, hand it over, and then
+// poll the status endpoint for what it wrote.
 async function extractItinerary(trip, doc) {
   const url = doc && (doc.url || doc.href || '');
   if (!url) throw new Error('That document has no file to read.');
+  const jobId = 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 
-  const res = await fetch(EXTRACT_FN, {
+  const started = await fetch(EXTRACT_START_FN, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      jobId,
       url,
       trip: {
         name: trip.name || '',
@@ -5288,24 +5293,34 @@ async function extractItinerary(trip, doc) {
       },
     }),
   });
+  // A background invocation answers 202. Anything else means it never started, and the
+  // status code is the only clue — not checking it is what made the last failure
+  // unreadable, so say the number out loud.
+  if (!started.ok) throw new Error('The itinerary reader could not be started (error ' + started.status + ').');
 
-  const body = await res.text();
-  let result = null;
-  for (const raw of body.split('\n')) {
-    const s = raw.trim();
-    if (!s) continue;
-    let obj; try { obj = JSON.parse(s); } catch { continue; }
-    if (obj.type === 'progress') continue;      // keepalive
-    result = obj;                               // done or error — last one wins
+  const deadline = Date.now() + POLL_FOR_MS;
+  let lastSeen = 'pending';
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, POLL_EVERY_MS));
+    let rec = null;
+    try {
+      const res = await fetch(EXTRACT_POLL_FN + '?job=' + encodeURIComponent(jobId));
+      if (res.ok) rec = await res.json();
+    } catch (e) { /* a dropped poll is not a failed import — try again */ }
+    if (!rec) continue;
+    lastSeen = rec.status || lastSeen;
+    // Before the API key is set, fall back to the sample so the review screen still
+    // works. It labels itself "Sample extraction" and the review banner says so.
+    if (rec.status === 'not-configured') return extractItineraryStub(trip);
+    if (rec.status === 'error') throw new Error(rec.error || 'Could not read that itinerary.');
+    if (rec.status === 'done') {
+      if (!rec.data || !Array.isArray(rec.data.items)) throw new Error('Nothing dated was found in that document.');
+      return rec.data;
+    }
   }
-  if (!result) throw new Error('The itinerary reader did not reply. Check your connection and try again.');
-  // Before the API key is set, fall back to the sample so the review screen still works.
-  // It labels itself "Sample extraction", and the review banner already warns the reading
-  // is unverified — nobody can mistake it for their own document.
-  if (result.error === 'not-configured') return extractItineraryStub(trip);
-  if (result.type === 'error') throw new Error(result.error || 'Could not read that itinerary.');
-  if (!result.data || !Array.isArray(result.data.items)) throw new Error('Nothing dated was found in that document.');
-  return result.data;
+  throw new Error(lastSeen === 'pending'
+    ? 'The itinerary reader never started. Try again in a moment.'
+    : 'The itinerary is taking longer than expected. Try again, or split the PDF.');
 }
 
 // Match a name off the PDF to somebody actually on the trip. First name, case-insensitive
