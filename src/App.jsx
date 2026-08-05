@@ -5201,8 +5201,47 @@ function extractItineraryStub(trip) {
     ],
   };
 }
-async function extractItinerary(trip /*, doc */) {
-  return extractItineraryStub(trip);
+const EXTRACT_FN = 'https://mytravelhub.netlify.app/.netlify/functions/extractitinerary';
+
+// Reads the itinerary through the Netlify function, which holds the API key. The reply
+// is newline-delimited JSON: keepalive lines while the model works, then one result.
+// Awaiting the whole body is enough — the streaming exists to keep the connection open
+// server-side, not because the page needs the tokens as they arrive.
+async function extractItinerary(trip, doc) {
+  const url = doc && (doc.url || doc.href || '');
+  if (!url) throw new Error('That document has no file to read.');
+
+  const res = await fetch(EXTRACT_FN, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      url,
+      trip: {
+        name: trip.name || '',
+        startDate: tripDateRange(trip).start || trip.startDate || '',
+        endDate: tripDateRange(trip).end || trip.endDate || '',
+        members: (trip.members || []).map(m => m.name).filter(Boolean),
+      },
+    }),
+  });
+
+  const body = await res.text();
+  let result = null;
+  for (const raw of body.split('\n')) {
+    const s = raw.trim();
+    if (!s) continue;
+    let obj; try { obj = JSON.parse(s); } catch { continue; }
+    if (obj.type === 'progress') continue;      // keepalive
+    result = obj;                               // done or error — last one wins
+  }
+  if (!result) throw new Error('The itinerary reader did not reply. Check your connection and try again.');
+  // Before the API key is set, fall back to the sample so the review screen still works.
+  // It labels itself "Sample extraction", and the review banner already warns the reading
+  // is unverified — nobody can mistake it for their own document.
+  if (result.error === 'not-configured') return extractItineraryStub(trip);
+  if (result.type === 'error') throw new Error(result.error || 'Could not read that itinerary.');
+  if (!result.data || !Array.isArray(result.data.items)) throw new Error('Nothing dated was found in that document.');
+  return result.data;
 }
 
 // Match a name off the PDF to somebody actually on the trip. First name, case-insensitive

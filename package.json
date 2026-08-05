@@ -4,6 +4,7 @@
   "description": "Travel Itinerary Planner - Schedule, Budget & Packing app built with React",
   "private": true,
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@capacitor/android": "^6.2.1",
     "@capacitor/core": "^6.2.1",
     "@capacitor/geolocation": "^6.1.1",
