@@ -3318,7 +3318,7 @@ function ViewerHome({ session, profile, trips, onOpenAccount }) {
 }
 
 // ---- Dashboard: landing page after sign-in (hero trip, journeys, family status, to-dos, note) ----
-function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpenStatus, onSetTripStatus, onAddTraveller, onNewTrip, onOpenAccount, onMyTrips, onCalendar, onSaveData }) {
+function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpenStatus, onSetTripStatus, onAddTraveller, onNewTrip, onOpenAccount, onMyTrips, onCalendar, onSearch, onSaveData }) {
   const [notes, setNotes] = useState('');
   const [editingNote, setEditingNote] = useState(false);
   const [todoInput, setTodoInput] = useState('');
@@ -3405,6 +3405,7 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
     { icon: '⌂', label: 'Overview', active: true, go: () => {} },
     { icon: '🧳', label: 'My trips', go: onMyTrips },
     { icon: '🗓', label: 'Calendar', go: onCalendar },
+    { icon: '🔍', label: 'Search', go: onSearch },
     { icon: '⚙', label: 'Settings', go: onOpenAccount },
   ];
 
@@ -3810,6 +3811,7 @@ function MainApp() {
   const [showNewTrip, setShowNewTrip] = useState(false);
   const [showToday, setShowToday] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [showPacking, setShowPacking] = useState(false); // Packing moved from a tab to a header-icon overlay
   const [showProfile, setShowProfile] = useState(false);
@@ -4153,6 +4155,7 @@ function MainApp() {
     setActiveTrip(id);
     setActiveTab(selected && tripStatusOf(selected) === 'active' ? 'Status' : 'Schedule');
     setShowSearch(false);
+    setShowChat(false);
     setShowDashboard(false);
   };
 
@@ -4291,6 +4294,7 @@ function MainApp() {
           onAddTraveller={(id)=>{ setActiveTrip(id); setShowDashboard(false); setShowTravelers(true); }}
           onMyTrips={()=>setShowDashboard(false)}
           onCalendar={()=>{ setShowDashboard(false); setShowToday(true); }}
+          onSearch={()=>{ setShowDashboard(false); setShowSearch(true); }}
           onNewTrip={()=>{ setShowDashboard(false); setShowNewTrip(true); }}
           onOpenAccount={()=>setShowAccount(true)}
           onSaveData={(patch)=>{ const p = { ...(profile||{}), ...patch }; setProfile(p); directorySaveProfile(session, p.name || session.name, p); }}
@@ -4344,8 +4348,8 @@ function MainApp() {
             <button onClick={()=>setShowDashboard(true)} aria-label="Dashboard" title="Dashboard" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
               <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
             </button>
-            <button onClick={()=>setShowSearch(true)} aria-label="Search" title="Search" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            <button onClick={()=>{ if(trip) setShowChat(true); }} aria-label="Trip assistant" title="Trip assistant" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM7 9h10v2H7zm0-3h10v2H7zm0 6h7v2H7z"/></svg>
             </button>
             <button onClick={()=>{ if(trip) setShowPacking(true); }} aria-label="Packing" title="Packing list" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
               <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M17 6h-2V3a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3H7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm-6-2h2v2h-2V4zm2 15h-2v-9h2v9z"/></svg>
@@ -4570,6 +4574,14 @@ function MainApp() {
         <ProfileModal initial={profile} onSave={saveProfile} onClose={()=>setShowProfile(false)} session={session} />
       )}
 
+      {showChat && trip && (
+        <TripChat trip={trip} onClose={()=>setShowChat(false)}
+          onApply={(resolved)=>{
+            // Through updateTrip, which records history — so the header's undo reverses
+            // a whole applied batch, and nothing new was needed to make that true.
+            updateTrip(trip.id, t => applyChatEdits(t, resolved) || {});
+          }} />
+      )}
       {showSearch && (
         <SearchModal trips={trips} onGoToTrip={goToTrip} onClose={()=>setShowSearch(false)} />
       )}
@@ -5471,6 +5483,200 @@ function mergeItinerary(trip, rows) {
   return { days, spans };
 }
 
+// ── Trip assistant: summary out, edits back ──────────────────────────────────────
+// What the assistant is allowed to touch. An operation naming anything else is rejected
+// here, before it can be previewed — the model's output is a proposal, not an authority.
+const CHAT_FIELDS = {
+  event: ['time', 'endTime', 'title', 'location', 'category'],
+  task:  ['time', 'text'],
+  span:  ['title', 'location', 'from', 'to', 'mode', 'flightNo', 'startDate', 'startTime', 'endDate', 'endTime'],
+};
+const CHAT_MAX_EDITS = 25;   // a batch larger than this is a misunderstanding, not an instruction
+
+// The schedule as the assistant sees it. Ids lead every line: they are how an edit gets
+// addressed, so "the second one" can never resolve into the wrong item.
+function tripSummaryForChat(trip) {
+  const names = (trip.members || []).map(m => m.name || m.userId).filter(Boolean);
+  const nameOf = (uid) => { const m = (trip.members || []).find(x => x.userId === uid); return (m && m.name) || uid; };
+  const who = (ids) => `[${(ids || []).map(nameOf).join(', ')}]`;
+  const r = tripDateRange(trip);
+  const out = [
+    `TRIP: ${trip.name || 'unnamed'}`,
+    `DATES: ${r.start || trip.startDate || 'unknown'} to ${r.end || trip.endDate || 'open-ended'}`,
+    `TRAVELLERS: ${names.join(', ') || 'none yet'}`,
+    '',
+  ];
+  const spansOn = (date) => (trip.spans || []).filter(s => (s.startDate || '') === date);
+  const dates = [...new Set([
+    ...(trip.days || []).map(d => (d.date || '').slice(0, 10)),
+    ...(trip.spans || []).map(s => s.startDate || ''),
+  ].filter(Boolean))].sort();
+
+  dates.forEach(date => {
+    out.push(`DAY ${date}`);
+    spansOn(date).forEach(s => {
+      const kind = s.type === 'Accommodation' ? 'stay  ' : 'travel';
+      const route = (s.from || s.to) ? `  ${s.from || '?'} -> ${s.to || '?'}` : (s.location ? `  @${s.location}` : '');
+      const fl = s.flightNo ? `  flight ${s.flightNo}` : '';
+      out.push(`  span ${s.id}  ${kind}  ${s.mode || '-'}  ${s.startTime || '--:--'}-${s.endTime || '--:--'}  "${s.title || ''}"${route}${fl}  ${who(s.assignees)}`);
+    });
+    const day = (trip.days || []).find(d => (d.date || '').slice(0, 10) === date);
+    (day ? day.events || [] : []).forEach(e => {
+      out.push(`  event ${e.id} ${e.time || '--:--'}-${e.endTime || '--:--'} "${e.title || ''}"${e.location ? ` @${e.location}` : ''}  ${who(e.assignees)}`);
+    });
+    (day ? day.tasks || [] : []).forEach(t => {
+      out.push(`  task  ${t.id} ${t.time || '--:--'} "${t.text || ''}"  ${who(t.assignees)}`);
+    });
+  });
+  return out.join('\n');
+}
+
+// Where an id lives, or null. The assistant is told to use ids from the summary; this is
+// what enforces it.
+const findChatTarget = (trip, target, id) => {
+  if (!id) return null;
+  if (target === 'span') { const s = (trip.spans || []).find(x => x.id === id); return s ? { item: s } : null; }
+  for (const d of trip.days || []) {
+    const list = target === 'task' ? (d.tasks || []) : (d.events || []);
+    const item = list.find(x => x.id === id);
+    if (item) return { day: d, item };
+  }
+  return null;
+};
+
+const chatLabel = (target, item) => target === 'task'
+  ? (item.text || '(untitled task)')
+  : (item.title || '(untitled)');
+
+// Turn the model's proposals into something the app can both show and apply. Every
+// rejection carries a reason: silently dropping an edit would make the preview a lie.
+function resolveChatEdits(trip, edits) {
+  const list = Array.isArray(edits) ? edits.slice(0, CHAT_MAX_EDITS) : [];
+  return list.map((e, i) => {
+    const op = String(e.op || '');
+    const target = String(e.target || '');
+    const base = { _i: i, op, target, id: String(e.id || ''), because: String(e.because || '') };
+    if (!CHAT_FIELDS[target]) return { ...base, error: 'Unknown kind of item.' };
+
+    let fields = {};
+    if (e.fields) {
+      try { fields = JSON.parse(e.fields); } catch { return { ...base, error: 'The change could not be read.' }; }
+      if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return { ...base, error: 'The change could not be read.' };
+    }
+    const allowed = CHAT_FIELDS[target];
+    const rejectedKeys = Object.keys(fields).filter(k => !allowed.includes(k));
+    if (rejectedKeys.length) return { ...base, error: `Not allowed to change: ${rejectedKeys.join(', ')}.` };
+
+    // Names → ids, against this trip's roster only. An unknown name is refused rather
+    // than dropped, so the preview never quietly loses a tag the person asked for.
+    let assignees = null;
+    if (Array.isArray(e.assignees) && e.assignees.length) {
+      const ids = matchTravellers(e.assignees, trip.members);
+      if (ids.length !== e.assignees.length) {
+        const known = (trip.members || []).map(m => m.name || m.userId);
+        return { ...base, error: `Not on this trip: ${e.assignees.filter(n => !matchTravellers([n], trip.members).length).join(', ')}. On the trip: ${known.join(', ')}.` };
+      }
+      assignees = ids;
+    }
+
+    if (op === 'add') {
+      const date = String(e.date || '');
+      if (target !== 'span' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ...base, error: 'No date to add it to.' };
+      const title = fields.title || fields.text || '';
+      if (!String(title).trim()) return { ...base, error: 'Nothing to add — no title given.' };
+      return { ...base, date, fields, assignees, label: String(title), changes: [], adds: true };
+    }
+
+    const found = findChatTarget(trip, target, base.id);
+    if (!found) return { ...base, error: 'That item is not in this trip.' };
+    const item = found.item;
+    const label = chatLabel(target, item);
+
+    if (op === 'delete') return { ...base, label, item, day: found.day, removes: true, changes: [] };
+
+    if (op === 'move') {
+      const date = String(e.date || '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ...base, error: 'No day to move it to.' };
+      if (target === 'span') return { ...base, error: 'Move a travel leg by changing its dates instead.' };
+      const from = (found.day && (found.day.date || '').slice(0, 10)) || '';
+      if (from === date) return { ...base, error: 'It is already on that day.' };
+      return { ...base, label, item, day: found.day, date, moves: true, changes: [{ field: 'day', from, to: date }] };
+    }
+
+    if (op === 'retag') {
+      if (!assignees) return { ...base, error: 'No travellers given to tag.' };
+      const nameOf = (uid) => { const m = (trip.members || []).find(x => x.userId === uid); return (m && m.name) || uid; };
+      return { ...base, label, item, day: found.day, assignees,
+        changes: [{ field: 'travellers', from: (item.assignees || []).map(nameOf).join(', ') || 'nobody', to: assignees.map(nameOf).join(', ') }] };
+    }
+
+    if (op === 'update') {
+      const changes = Object.keys(fields)
+        .filter(k => String(item[k] || '') !== String(fields[k] || ''))
+        .map(k => ({ field: k, from: String(item[k] || '') || '—', to: String(fields[k] || '') || '—' }));
+      if (!changes.length) return { ...base, error: 'That is already how it is.' };
+      return { ...base, label, item, day: found.day, fields, changes };
+    }
+    return { ...base, error: 'Unknown change.' };
+  });
+}
+
+// Build the trip patch. Only edits that resolved cleanly are applied; the rest were shown
+// with their reason and are simply not here.
+function applyChatEdits(trip, resolved) {
+  const good = (resolved || []).filter(r => !r.error);
+  if (!good.length) return null;
+  let days = (trip.days || []).map(d => ({ ...d, events: [...(d.events || [])], tasks: [...(d.tasks || [])] }));
+  let spans = [...(trip.spans || [])];
+  const ensureDay = (date) => {
+    let d = days.find(x => (x.date || '').slice(0, 10) === date);
+    if (!d) { d = { id: uid(), date, label: '', events: [], tasks: [] }; days.push(d); }
+    return d;
+  };
+  const listOf = (day, target) => target === 'task' ? day.tasks : day.events;
+
+  good.forEach(r => {
+    if (r.target === 'span') {
+      if (r.op === 'delete') { spans = spans.filter(s => s.id !== r.id); return; }
+      if (r.op === 'add') {
+        spans.push({ id: uid(), type: r.fields.type === 'Accommodation' ? 'Accommodation' : 'Travel',
+          title: '', location: '', from: '', to: '', mode: '', flightNo: '', docs: [],
+          startDate: '', startTime: '', endDate: '', endTime: '', ...r.fields, assignees: r.assignees || [] });
+        return;
+      }
+      spans = spans.map(s => s.id !== r.id ? s
+        : { ...s, ...(r.fields || {}), ...(r.assignees ? { assignees: r.assignees } : {}) });
+      return;
+    }
+
+    if (r.op === 'add') {
+      const d = ensureDay(r.date);
+      if (r.target === 'task') d.tasks.push({ id: uid(), time: r.fields.time || '', text: r.fields.text || '', assignees: r.assignees || [], status: 'todo' });
+      else d.events.push({ id: uid(), time: r.fields.time || '', endTime: r.fields.endTime || '', title: r.fields.title || '',
+        location: r.fields.location || '', locationLink: '', category: r.fields.category || 'Sightseeing',
+        assignees: r.assignees || [], activities: [], docs: [] });
+      return;
+    }
+
+    const dayIdx = days.findIndex(d => listOf(d, r.target).some(x => x.id === r.id));
+    if (dayIdx < 0) return;
+    const list = listOf(days[dayIdx], r.target);
+    const pos = list.findIndex(x => x.id === r.id);
+    const item = list[pos];
+
+    if (r.op === 'delete') { list.splice(pos, 1); return; }
+    if (r.op === 'move') { list.splice(pos, 1); listOf(ensureDay(r.date), r.target).push(item); return; }
+    list[pos] = { ...item, ...(r.fields || {}), ...(r.assignees ? { assignees: r.assignees } : {}) };
+  });
+
+  days.forEach(d => {
+    d.events.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    d.tasks.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  });
+  days.sort((a, b) => (a.date || '') > (b.date || '') ? 1 : -1);
+  return { days, spans };
+}
+
 // Review before anything is written. Nothing here is merged until "Add" is tapped, and
 // every time and title is editable — a misread departure time is the whole risk of
 // importing, so correcting one has to be a single tap, not a reason to abandon.
@@ -5685,6 +5891,170 @@ function ImportReview({ trip, doc, onClose, onApply }) {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+const CHAT_FN = 'https://mytravelhub.netlify.app/.netlify/functions/tripchat';
+
+// Same start-and-poll shape as the itinerary import: an ordinary function takes the call
+// (its CORS headers survive) and hands off to a background one that has room to think.
+async function askTripChat(trip, history) {
+  const jobId = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  const started = await fetch(CHAT_FN, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jobId, summary: tripSummaryForChat(trip), history }),
+  });
+  if (!started.ok && started.status !== 202) throw new Error('The assistant could not be reached (error ' + started.status + ').');
+
+  const deadline = Date.now() + 2 * 60000;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 2000));
+    let rec = null;
+    try {
+      const res = await fetch(CHAT_FN + '?job=' + encodeURIComponent(jobId));
+      if (res.ok) rec = await res.json();
+    } catch (e) { /* a dropped poll is not a failure — try again */ }
+    if (!rec) continue;
+    if (rec.status === 'not-configured') throw new Error('The assistant isn’t switched on yet.');
+    if (rec.status === 'error') throw new Error(rec.error || 'Could not answer that.');
+    if (rec.status === 'done' && rec.data) return rec.data;
+  }
+  throw new Error('That took longer than expected. Try again, or ask for less at once.');
+}
+
+// ---- Trip assistant: ask for a change in words, approve it before it happens ----
+function TripChat({ trip, onClose, onApply }) {
+  const [turns, setTurns] = useState([]);      // { role, text, resolved? }
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const endRef = useRef(null);
+  useEffect(() => { if (endRef.current) endRef.current.scrollIntoView({ behavior:'smooth' }); }, [turns, busy]);
+
+  const send = async () => {
+    const text = draft.trim();
+    if (!text || busy) return;
+    const history = [...turns.map(t => ({ role:t.role, text:t.text })), { role:'user', text }];
+    setTurns(t => [...t, { role:'user', text }]);
+    setDraft('');
+    setBusy(true);
+    try {
+      const out = await askTripChat(trip, history);
+      // Resolved against the trip here, not taken on trust: the preview below is built
+      // from what would actually happen, never from the assistant's description of it.
+      const resolved = out.status === 'proposed' ? resolveChatEdits(trip, out.edits) : [];
+      setTurns(t => [...t, { role:'assistant', text: out.reply || '', resolved }]);
+    } catch (e) {
+      setTurns(t => [...t, { role:'assistant', text: (e && e.message) || 'Something went wrong.', resolved:[], failed:true }]);
+    } finally { setBusy(false); }
+  };
+
+  const applyTurn = (i) => {
+    const turn = turns[i];
+    const good = (turn.resolved || []).filter(r => !r.error);
+    if (!good.length) return;
+    onApply(good);
+    setTurns(ts => ts.map((t, n) => n === i ? { ...t, applied: good.length } : t));
+  };
+
+  const bubble = (mine) => ({
+    maxWidth:'88%', alignSelf: mine ? 'flex-end' : 'flex-start',
+    background: mine ? '#6E1A10' : '#FFFDF8', color: mine ? '#F5ECD7' : '#3D2E26',
+    border: mine ? 'none' : '1px solid #E2D8C8', borderRadius: 13,
+    padding:'9px 12px', fontSize:13, lineHeight:1.5, whiteSpace:'pre-wrap',
+  });
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:220, background:'#F0EBE0', display:'flex', flexDirection:'column',
+      fontFamily:'var(--font-body)' }}>
+      <div style={{ background:'#5C1A1A', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12, padding:'calc(env(safe-area-inset-top, 0px) + 11px) 16px 11px' }}>
+          <button onClick={onClose} aria-label="Close assistant" style={{ width:34, height:34, borderRadius:9,
+            border:'1.5px solid rgba(245,236,215,0.28)', background:'rgba(245,236,215,0.08)', color:'#F5ECD7',
+            display:'grid', placeItems:'center', cursor:'pointer' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+          </button>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:16, fontWeight:800, color:'#F5ECD7', letterSpacing:'0.02em' }}>Trip assistant</div>
+            <div style={{ fontSize:11, color:'rgba(245,236,215,0.72)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{trip.name || 'this trip'}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ flex:1, overflowY:'auto', padding:'14px 16px', display:'flex', flexDirection:'column', gap:10 }}>
+        {!turns.length && (
+          <div style={{ color:'#8A7A6D', fontSize:12.5, lineHeight:1.6, textAlign:'center', padding:'28px 10px' }}>
+            Ask about this trip, or tell me what to change.
+            <div style={{ marginTop:10, color:'#A2917F', fontSize:12 }}>
+              “what time do we land in Dubai?”<br />
+              “move the desert safari to 4pm”<br />
+              “the Mumbai leg is a flight, not a drive”
+            </div>
+            <div style={{ marginTop:14, fontSize:11.5, color:'#8A7A6D' }}>Nothing changes until you approve it.</div>
+          </div>
+        )}
+
+        {turns.map((t, i) => (
+          <div key={i} style={{ display:'flex', flexDirection:'column', gap:7, alignItems: t.role === 'user' ? 'flex-end' : 'flex-start' }}>
+            <div style={{ ...bubble(t.role === 'user'), ...(t.failed ? { color:'#B54030', background:'#FBE9E4', border:'1px solid #E8C0B4' } : {}) }}>{t.text}</div>
+
+            {t.resolved && t.resolved.length > 0 && (
+              <div style={{ width:'100%', border:'1px solid #D6C3B2', borderRadius:12, background:'#FFFDF8', padding:'10px 11px' }}>
+                {t.resolved.map((r, n) => (
+                  <div key={n} style={{ display:'flex', gap:8, alignItems:'flex-start', paddingBottom:7, marginBottom:7,
+                    borderBottom: n < t.resolved.length - 1 ? '1px solid #EFE7DC' : 'none' }}>
+                    <span style={{ flexShrink:0, fontSize:13, lineHeight:'18px' }}>
+                      {r.error ? '⚠️' : r.removes ? '🗑' : r.adds ? '＋' : '✎'}
+                    </span>
+                    <div style={{ minWidth:0, flex:1 }}>
+                      <div style={{ fontSize:12.5, fontWeight:700, color: r.error ? '#8A7A6D' : (r.removes ? '#B54030' : '#3D2E26') }}>
+                        {r.removes ? 'Remove ' : r.adds ? 'Add ' : ''}{r.label || r.id}
+                      </div>
+                      {r.error
+                        ? <div style={{ fontSize:11.5, color:'#B07A2A', marginTop:2 }}>{r.error}</div>
+                        : (r.changes || []).map((c, k) => (
+                            <div key={k} style={{ fontSize:11.5, color:'#7A685F', marginTop:2 }}>
+                              {c.field}: <span style={{ textDecoration:'line-through', opacity:0.75 }}>{c.from}</span> → <strong style={{ color:'#3D2E26' }}>{c.to}</strong>
+                            </div>
+                          ))}
+                      {!r.error && r.adds && r.because && <div style={{ fontSize:11.5, color:'#7A685F', marginTop:2 }}>{r.because}</div>}
+                    </div>
+                  </div>
+                ))}
+
+                {t.applied
+                  ? <div style={{ fontSize:12, fontWeight:700, color:'#2F7A2F' }}>✓ Applied {t.applied} change{t.applied===1?'':'s'} — undo in the header reverses it.</div>
+                  : t.resolved.some(r => !r.error) && (
+                    <button type="button" onClick={()=>applyTurn(i)}
+                      style={{ width:'100%', border:'none', borderRadius:9, padding:'10px 12px', background:'#6E1A10',
+                        color:'#fff', fontSize:12.5, fontWeight:800, cursor:'pointer' }}>
+                      Apply {t.resolved.filter(r => !r.error).length} change{t.resolved.filter(r => !r.error).length===1?'':'s'}
+                    </button>
+                  )}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {busy && <div style={{ ...bubble(false), color:'#8A7A6D' }}>Thinking…</div>}
+        <div ref={endRef} />
+      </div>
+
+      <div style={{ flexShrink:0, background:'#F5EFE2', borderTop:'1px solid #D8CFC2',
+        padding:'10px 14px calc(env(safe-area-inset-bottom, 0px) + 10px)', display:'flex', gap:8, alignItems:'flex-end' }}>
+        <textarea value={draft} onChange={e=>setDraft(e.target.value)} rows={1}
+          onKeyDown={e=>{ if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+          placeholder="Ask, or say what to change…"
+          style={{ flex:1, minWidth:0, boxSizing:'border-box', resize:'none', maxHeight:110, padding:'10px 12px',
+            border:'1px solid #DCCDBE', borderRadius:10, fontSize:13, lineHeight:1.45, color:'#3D2E26',
+            background:'#fff', fontFamily:'inherit' }} />
+        <button onClick={send} disabled={busy || !draft.trim()} aria-label="Send"
+          style={{ flexShrink:0, width:42, height:42, borderRadius:10, border:'none',
+            background: (busy || !draft.trim()) ? '#C6B8AC' : '#6E1A10', color:'#fff',
+            cursor: (busy || !draft.trim()) ? 'default' : 'pointer', display:'grid', placeItems:'center' }}>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+      </div>
     </div>
   );
 }
