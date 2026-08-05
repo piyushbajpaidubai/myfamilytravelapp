@@ -5265,8 +5265,7 @@ function extractItineraryStub(trip) {
     ],
   };
 }
-const EXTRACT_START_FN = 'https://mytravelhub.netlify.app/.netlify/functions/extractitinerary-background';
-const EXTRACT_POLL_FN = 'https://mytravelhub.netlify.app/.netlify/functions/extractitinerary';
+const EXTRACT_FN = 'https://mytravelhub.netlify.app/.netlify/functions/extractitinerary';
 const POLL_EVERY_MS = 2500;
 const POLL_FOR_MS = 5 * 60000;   // the reader has 15 minutes; well past this it is stuck
 
@@ -5279,7 +5278,7 @@ async function extractItinerary(trip, doc) {
   if (!url) throw new Error('That document has no file to read.');
   const jobId = 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 
-  const started = await fetch(EXTRACT_START_FN, {
+  const started = await fetch(EXTRACT_FN, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -5299,12 +5298,12 @@ async function extractItinerary(trip, doc) {
   if (!started.ok) throw new Error('The itinerary reader could not be started (error ' + started.status + ').');
 
   const deadline = Date.now() + POLL_FOR_MS;
-  let lastSeen = 'pending';
+  let lastSeen = 'pending';   // 'queued' once accepted, so a stuck job is distinguishable
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, POLL_EVERY_MS));
     let rec = null;
     try {
-      const res = await fetch(EXTRACT_POLL_FN + '?job=' + encodeURIComponent(jobId));
+      const res = await fetch(EXTRACT_FN + '?job=' + encodeURIComponent(jobId));
       if (res.ok) rec = await res.json();
     } catch (e) { /* a dropped poll is not a failed import — try again */ }
     if (!rec) continue;
@@ -5318,7 +5317,7 @@ async function extractItinerary(trip, doc) {
       return rec.data;
     }
   }
-  throw new Error(lastSeen === 'pending'
+  throw new Error(lastSeen === 'pending' || lastSeen === 'queued'
     ? 'The itinerary reader never started. Try again in a moment.'
     : 'The itinerary is taking longer than expected. Try again, or split the PDF.');
 }
