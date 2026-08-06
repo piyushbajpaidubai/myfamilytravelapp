@@ -5509,7 +5509,10 @@ const CHAT_MAX_EDITS = 25;   // a batch larger than this is a misunderstanding, 
 function tripSummaryForChat(trip) {
   const names = (trip.members || []).map(m => m.name || m.userId).filter(Boolean);
   const nameOf = (uid) => { const m = (trip.members || []).find(x => x.userId === uid); return (m && m.name) || uid; };
-  const who = (ids) => `[${(ids || []).map(nameOf).join(', ')}]`;
+  // An item with nobody tagged applies to everyone — that is how the app has always
+  // rendered it. Reporting a bare "[]" is literally true and completely misleading:
+  // the assistant says "nobody is tagged" while the screen shows every traveller on it.
+  const who = (ids) => (ids && ids.length) ? `[${ids.map(nameOf).join(', ')}]` : '[ALL]';
   const r = tripDateRange(trip);
   const out = [
     `TRIP: ${trip.name || 'unnamed'}`,
