@@ -2681,7 +2681,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, onTo
             <button onClick={copyShare} aria-label={copied ? 'Link copied' : 'Share status'} title={copied ? 'Link copied' : 'Share status link'}
               style={{ width:38, height:38, boxSizing:'border-box', borderRadius:'50%', border:'none', background:'#6E1A10', color:'#F5ECD7', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
               {copied
-                ? <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                ? <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
                 : <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/></svg>}
             </button>
           )}
@@ -4470,24 +4470,21 @@ function MainApp() {
         )}
         {/* Row 2: action toolbar */}
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 20px 6px" }}>
-            <button onClick={()=>setShowDashboard(true)} aria-label="Dashboard" title="Dashboard" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+            <button onClick={()=>setShowDashboard(true)} aria-label="Dashboard" title="Dashboard" style={{ width:42,height:42,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
             </button>
-            <button onClick={()=>{ if(trip) setShowChat(true); }} aria-label="Trip assistant" title="Trip assistant" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM7 9h10v2H7zm0-3h10v2H7zm0 6h7v2H7z"/></svg>
+            <button onClick={()=>{ if(trip) setShowPacking(true); }} aria-label="Packing" title="Packing list" style={{ width:42,height:42,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17 6h-2V3a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3H7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm-6-2h2v2h-2V4zm2 15h-2v-9h2v9z"/></svg>
             </button>
-            <button onClick={()=>{ if(trip) setShowPacking(true); }} aria-label="Packing" title="Packing list" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M17 6h-2V3a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3H7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm-6-2h2v2h-2V4zm2 15h-2v-9h2v9z"/></svg>
-            </button>
-            <button onClick={()=>{ if(trip) exportTripHtml(trip); }} aria-label="Export itinerary" title="Export itinerary" style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            <button onClick={()=>{ if(trip) exportTripHtml(trip); }} aria-label="Export itinerary" title="Export itinerary" style={{ width:42,height:42,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s" }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
             </button>
             <button
               onClick={()=>setShowToday(true)}
               aria-label="Today's plan"
               title="Today's plan"
               style={{
-                width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",
+                width:42,height:42,display:"flex",alignItems:"center",justifyContent:"center",
                 borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",
                 color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s"
               }}
@@ -4500,7 +4497,7 @@ function MainApp() {
               title={past.length ? `Undo last change (${past.length} available)` : 'Nothing to undo'}
               aria-label="Undo"
               style={{
-                width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",
+                width:42,height:42,display:"flex",alignItems:"center",justifyContent:"center",
                 borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",
                 color:"#F5ECD7",padding:0,
                 cursor: past.length ? "pointer" : "not-allowed",
@@ -4515,7 +4512,7 @@ function MainApp() {
               aria-label={savedStatus==='saved'?'Saved':savedStatus==='failed'?"Couldn't save — tap to try again":'Save'}
               title={savedStatus==='saved'?'Saved':savedStatus==='failed'?"Couldn't save — check your connection and tap to try again":'Save'}
               style={{
-                width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",
+                width:42,height:42,display:"flex",alignItems:"center",justifyContent:"center",
                 borderRadius:10,padding:0,cursor:"pointer",transition:"all 0.3s",
                 border: savedStatus==='saved'?'1.5px solid #7DB87A':savedStatus==='failed'?'1.5px solid #E08B7A':'1.5px solid rgba(245,236,215,0.28)',
                 background: savedStatus==='saved'?'rgba(125,184,122,0.22)':savedStatus==='failed'?'rgba(224,139,122,0.22)':'rgba(245,236,215,0.08)',
@@ -4534,7 +4531,7 @@ function MainApp() {
               onClick={()=>setShowAccount(true)}
               aria-label="Traveler account"
               title={session ? `Signed in as ${session.name}` : "Traveler account"}
-              style={{ width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s",overflow:"hidden" }}
+              style={{ width:42,height:42,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,border:"1.5px solid rgba(245,236,215,0.28)",background:"rgba(245,236,215,0.08)",color:"#F5ECD7",padding:0,cursor:"pointer",transition:"all 0.3s",overflow:"hidden" }}
             >
               {profile && profile.pic
                 ? <img src={profile.pic} alt="" style={AVATAR_IMG} />
@@ -4611,6 +4608,18 @@ function MainApp() {
         <div style={{ padding:20 }}>
           {/* Trip identity, travellers and tabs now live in the frozen header above */}
           <SwipeableTabPanels activeTab={activeTab} onChange={setActiveTab} renderTab={renderTripTab} slideTo={slideTo} />
+          <button type="button" onClick={()=>setShowChat(true)}
+            aria-label="Trip assistant" title="Ask the trip assistant"
+            style={{ position:'fixed', right:16, zIndex:150,
+              bottom:'calc(env(safe-area-inset-bottom, 0px) + 18px)',
+              width:58, height:58, borderRadius:'50%', border:'none',
+              background:'#6E1A10', color:'#F5ECD7', cursor:'pointer',
+              display:'grid', placeItems:'center',
+              boxShadow:'0 6px 18px rgba(61,12,2,0.34)' }}>
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 1.5a1 1 0 0 1 1 1V4h3.25A3.75 3.75 0 0 1 20 7.75V9h.75A1.25 1.25 0 0 1 22 10.25v3a1.25 1.25 0 0 1-1.25 1.25H20v1.75A3.75 3.75 0 0 1 16.25 20h-8.5A3.75 3.75 0 0 1 4 16.25V14.5h-.75A1.25 1.25 0 0 1 2 13.25v-3A1.25 1.25 0 0 1 3.25 9H4V7.75A3.75 3.75 0 0 1 7.75 4H11V2.5a1 1 0 0 1 1-1zM9 10.25a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zm6 0a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM8.75 16h6.5a.9.9 0 0 0 0-1.8h-6.5a.9.9 0 0 0 0 1.8z"/>
+            </svg>
+          </button>
           {/* The itinerary-documents pull-up retired here — the Documents tab replaces it. */}
         </div>
       )}
@@ -5271,14 +5280,23 @@ function TodayView({ trips, todayISO, updateTrip, session, onClose }) {
       )}
 
       {matches.length > 0 && !showDocs && (
-        <button type="button" aria-label="Open today's documents" onClick={()=>setShowDocs(true)}
-          style={{ position:'fixed', left:'50%', bottom:'calc(env(safe-area-inset-bottom, 0px) + 10px)', transform:'translateX(-50%)', zIndex:210,
-            width:'min(calc(100% - 28px), 650px)', minHeight:54, border:'1px solid #D4BFB0', borderRadius:14, background:'#F5EFE2', color:'#6E1A10',
-            display:'flex', alignItems:'center', gap:10, padding:'8px 14px', boxShadow:'0 6px 22px rgba(61,12,2,0.18)', cursor:'pointer', textAlign:'left' }}>
-          <span aria-hidden="true" style={{ width:32, height:32, borderRadius:'50%', background:'#6E1A10', color:'#F5ECD7', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:16 }}>⌃</span>
-          <span style={{ minWidth:0, flex:1 }}>
-            <span style={{ display:'block', fontSize:13, fontWeight:700 }}>Today's Itinerary Documents</span>
-            <span style={{ display:'block', fontSize:11, color:'#8A7A6D' }}>{todayDocs.length} file{todayDocs.length===1?'':'s'} for today · pull up</span>
+        // A corner button rather than the full-width pull bar it was: the bar spanned
+        // nearly the whole screen at the bottom, which is where the assistant now floats.
+        // Left corner, so the two can never sit on top of each other.
+        <button type="button" aria-label={`Today's documents — ${todayDocs.length} file${todayDocs.length===1?'':'s'}`}
+          title="Today's itinerary documents" onClick={()=>setShowDocs(true)}
+          style={{ position:'fixed', left:16, bottom:'calc(env(safe-area-inset-bottom, 0px) + 18px)', zIndex:210,
+            width:58, height:58, borderRadius:'50%', border:'none', background:'#F5EFE2', color:'#6E1A10',
+            display:'grid', placeItems:'center', boxShadow:'0 6px 18px rgba(61,12,2,0.28)', cursor:'pointer' }}>
+          <svg width="27" height="27" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm0 7V3.5L19.5 9H14zM8 13h8v1.6H8zm0 3.2h8v1.6H8zm0-6.4h4v1.6H8z"/>
+          </svg>
+          {/* The count is what the bar's subtitle used to carry; without it the button
+              says nothing about how much is behind it. */}
+          <span aria-hidden="true" style={{ position:'absolute', top:-2, right:-2, minWidth:21, height:21,
+            padding:'0 5px', boxSizing:'border-box', borderRadius:11, background:'#6E1A10', color:'#F5ECD7',
+            border:'2px solid #F0EBE0', display:'grid', placeItems:'center', fontSize:11, fontWeight:800, lineHeight:1 }}>
+            {todayDocs.length}
           </span>
         </button>
       )}
@@ -6198,7 +6216,7 @@ function TripChat({ trip, onClose, onApply }) {
           style={{ flexShrink:0, width:42, height:42, borderRadius:10, border:'none',
             background: (busy || !draft.trim()) ? '#C6B8AC' : '#6E1A10', color:'#fff',
             cursor: (busy || !draft.trim()) ? 'default' : 'pointer', display:'grid', placeItems:'center' }}>
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
       </div>
     </div>
