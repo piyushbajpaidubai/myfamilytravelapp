@@ -1903,78 +1903,94 @@ const DISTRESS_MS = 2000;
 function DistressIcon({ children, size = 38, active, canFlag, name, onToggle }) {
   const timer = useRef(null);
   const fired = useRef(false);
-  const [held, setHeld] = useState(false);
-  const [closing, setClosing] = useState(false);
-  // The ring has to mount at its start value before the transition can run, so the end
-  // value is set on the next frame rather than in the same update.
-  useEffect(() => {
-    if (!held) { setClosing(false); return undefined; }
-    const id = requestAnimationFrame(() => setClosing(true));
-    return () => cancelAnimationFrame(id);
-  }, [held]);
-
-  // Guarded because a WebView fires both touchstart and pointerdown for one finger:
-  // whichever arrives first starts the hold, the other is ignored.
   const running = useRef(false);
+  const origin = useRef(null);
+  const [held, setHeld] = useState(false);
+
+  // Two earlier attempts failed on the phone, both because they let the browser decide
+  // when the hold was over. The timer runs on its own — the only thing that can stop it
+  // is this component. So nothing here cancels on pointercancel or touchcancel: Android
+  // fires those the moment it claims the gesture for its own long-press or a pan, which
+  // is precisely when a two-second hold is midway through and must survive.
+  //
+  // What does end a hold is the finger lifting, or genuinely moving — a real scroll moves
+  // far more than a thumb resting on a 38px circle, so distance tells the two apart where
+  // the cancellation events cannot.
+  const MOVE_TOLERANCE = 14;
+
+  const pointOf = (e) => {
+    const t = (e && e.touches && e.touches[0]) || (e && e.changedTouches && e.changedTouches[0]);
+    if (t) return { x: t.clientX, y: t.clientY };
+    if (e && e.clientX != null) return { x: e.clientX, y: e.clientY };
+    return null;
+  };
+
   const start = (e) => {
     if (!canFlag || running.current) return;
     running.current = true;
-    // Capture the pointer so a finger drifting off a 38px circle mid-hold does not end
-    // it, and so the release still reaches us wherever it lands.
-    try {
-      if (e && e.pointerId != null && e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
-    } catch (err) { /* not all pointers can be captured; the hold still works */ }
+    origin.current = pointOf(e);
     fired.current = false;
     setHeld(true);
     clearTimeout(timer.current);
     timer.current = setTimeout(() => {
+      running.current = false;
       fired.current = true;
       setHeld(false);
-      // Raising is instant — somebody who needs help should not face a dialog. Clearing
+      // Raising is instant — somebody who needs help should not meet a dialog. Clearing
       // asks, because a signal silenced by a stray press is the failure that matters.
       if (active && !window.confirm(`Clear the help signal on ${name || 'this traveller'}?`)) return;
       onToggle();
     }, DISTRESS_MS);
   };
-  const cancel = () => { running.current = false; clearTimeout(timer.current); setHeld(false); };
+
+  const stop = () => { running.current = false; clearTimeout(timer.current); setHeld(false); };
+
+  const move = (e) => {
+    if (!running.current || !origin.current) return;
+    const p = pointOf(e);
+    if (!p) return;
+    if (Math.hypot(p.x - origin.current.x, p.y - origin.current.y) > MOVE_TOLERANCE) stop();
+  };
+
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  const badge = Math.max(13, Math.round(size * 0.42));
+  const badge = Math.max(14, Math.round(size * 0.44));
   return (
-    // The header roster overlaps its avatars by 8px, so a later sibling paints over this
-    // one's badge and hides it. Lifting a flagged icon above its neighbours is the point
-    // of the z-index — measured, not guessed.
     <span style={{ position:'relative', display:'inline-flex', flexShrink:0, verticalAlign:'middle',
       zIndex: active ? 3 : undefined,
-      // Android's own long press — text selection and the context callout — fires first
-      // and cancels the pointer stream, which is why a two-second hold did nothing at all.
-      // Suppressing the native gesture is what leaves the hold to run.
-      touchAction:'manipulation', userSelect:'none', WebkitUserSelect:'none', WebkitTouchCallout:'none' }}
-      // Both event families, because a WebView may deliver either; start() ignores the
-      // second. pointerleave is deliberately absent: with the pointer captured it should
-      // not fire, and reacting to it would end a hold on the smallest finger movement.
-      onPointerDown={start} onPointerUp={cancel} onPointerCancel={cancel}
-      onTouchStart={start} onTouchEnd={cancel} onTouchCancel={cancel}
+      // none, not manipulation: manipulation still lets the browser pan from here, and a
+      // pan is exactly what steals the gesture mid-hold.
+      touchAction:'none', userSelect:'none', WebkitUserSelect:'none', WebkitTouchCallout:'none' }}
+      onPointerDown={start} onPointerUp={stop} onPointerMove={move}
+      onTouchStart={start} onTouchEnd={stop} onTouchMove={move}
+      onMouseDown={start} onMouseUp={stop}
       onContextMenu={e=>{ if (canFlag) e.preventDefault(); }}
-      // The tap that ends a completed long press must not also fire the icon's own
-      // onClick — on the roster that would silently re-filter the schedule.
+      // The tap that ends a completed hold must not also fire the icon's own onClick —
+      // on the roster that would silently re-filter the schedule.
       onClickCapture={e=>{ if (fired.current) { e.preventDefault(); e.stopPropagation(); fired.current = false; } }}>
       {children}
-      {held && (
-        // Closes in over the hold. A transition rather than a keyframe animation: this
-        // project has no stylesheet, every style here is inline, and there is nowhere to
-        // declare @keyframes.
-        <span aria-hidden="true" style={{ position:'absolute', inset:-6, borderRadius:'50%',
-          border:'2.5px solid #C42B1C', pointerEvents:'none',
-          opacity: closing ? 0.95 : 0.25, transform: closing ? 'scale(1)' : 'scale(1.35)',
-          transition:`opacity ${DISTRESS_MS}ms linear, transform ${DISTRESS_MS}ms linear` }} />
+
+      {/* Held: a ring drawn straight away, so a long press never reads as a dead tap. */}
+      {held && !active && (
+        <span aria-hidden="true" style={{ position:'absolute', inset:-5, borderRadius:'50%',
+          border:'2.5px solid #C42B1C', opacity:0.9, pointerEvents:'none' }} />
       )}
+
+      {/* Flagged: the circle itself goes red, and the mark sits top-left — the roster
+          overlaps each avatar's right edge with the next one, so the left corner is the
+          only one that cannot be covered. */}
       {active && (
-        <span role="img" aria-label={`${name || 'Traveller'} needs help`} title={`${name || 'Traveller'} needs help`}
-          style={{ position:'absolute', top:-3, right:-3, width:badge, height:badge, borderRadius:'50%',
-            background:'#C42B1C', color:'#fff', border:'2px solid #F5EFE2', boxShadow:'0 1px 3px rgba(0,0,0,0.3)',
-            display:'grid', placeItems:'center', fontSize:Math.round(badge * 0.62), fontWeight:900,
-            lineHeight:1, pointerEvents:'none' }}>!</span>
+        <>
+          <span aria-hidden="true" style={{ position:'absolute', inset:0, borderRadius:'50%',
+            background:'#C42B1C', opacity:0.62, pointerEvents:'none' }} />
+          <span aria-hidden="true" style={{ position:'absolute', inset:-2, borderRadius:'50%',
+            border:'2.5px solid #C42B1C', pointerEvents:'none' }} />
+          <span role="img" aria-label={`${name || 'Traveller'} needs help`} title={`${name || 'Traveller'} needs help`}
+            style={{ position:'absolute', top:-4, left:-4, width:badge, height:badge, borderRadius:'50%',
+              background:'#C42B1C', color:'#fff', border:'2px solid #F5EFE2', boxShadow:'0 1px 3px rgba(0,0,0,0.35)',
+              display:'grid', placeItems:'center', fontSize:Math.round(badge * 0.66), fontWeight:900,
+              lineHeight:1, pointerEvents:'none' }}>!</span>
+        </>
       )}
     </span>
   );
