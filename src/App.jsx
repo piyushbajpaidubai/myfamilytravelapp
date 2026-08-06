@@ -1206,10 +1206,8 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
 
   const scheduleStatusLabel = { todo:'Not started', active:'Ongoing', done:'Complete' };
   const scheduleCategoryIcon = (category) => ({ Food:'☕', Transport:'↗', Sightseeing:'◇', Accommodation:'⌂', Activity:'○', Other:'•' }[category] || '○');
-  const itemPeople = (item) => {
-    const ids = item.assignees || [];
-    return ids.length ? ids.map(id => members.find(member => member.userId===id)).filter(Boolean) : members;
-  };
+  const itemPeople = (item) => (item.assignees || [])
+    .map(id => members.find(member => member.userId===id)).filter(Boolean);
 
   const openDayTask = (dayId) => {
     setTaskForm({ time:"", text:"", assignees:[] });
@@ -1229,7 +1227,7 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
       : day) }));
     closeDayTask();
   };
-  const itemPeopleLabel = (item) => (item.assignees||[]).length ? `${item.assignees.length} assigned` : 'Everyone';
+  const itemPeopleLabel = (item) => (item.assignees||[]).length ? `${item.assignees.length} assigned` : 'No one assigned';
   const nativeActionStyle = (danger=false) => ({ minHeight:44,border:`1px solid ${danger?'#EBCFC9':'#E2D8CC'}`,borderRadius:11,background:danger?'#FFF3F0':'#FAF8F4',color:danger?'#A43828':'#6E2118',fontSize:10.5,fontWeight:750,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:5,padding:'7px 8px',boxSizing:'border-box' });
   const renderPeopleRow = (item, detailKey) => {
     const expanded = !!expandedItems[detailKey];
@@ -1915,8 +1913,17 @@ function DistressIcon({ children, size = 38, active, canFlag, name, onToggle }) 
     return () => cancelAnimationFrame(id);
   }, [held]);
 
-  const start = () => {
-    if (!canFlag) return;
+  // Guarded because a WebView fires both touchstart and pointerdown for one finger:
+  // whichever arrives first starts the hold, the other is ignored.
+  const running = useRef(false);
+  const start = (e) => {
+    if (!canFlag || running.current) return;
+    running.current = true;
+    // Capture the pointer so a finger drifting off a 38px circle mid-hold does not end
+    // it, and so the release still reaches us wherever it lands.
+    try {
+      if (e && e.pointerId != null && e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) { /* not all pointers can be captured; the hold still works */ }
     fired.current = false;
     setHeld(true);
     clearTimeout(timer.current);
@@ -1929,7 +1936,7 @@ function DistressIcon({ children, size = 38, active, canFlag, name, onToggle }) 
       onToggle();
     }, DISTRESS_MS);
   };
-  const cancel = () => { clearTimeout(timer.current); setHeld(false); };
+  const cancel = () => { running.current = false; clearTimeout(timer.current); setHeld(false); };
   useEffect(() => () => clearTimeout(timer.current), []);
 
   const badge = Math.max(13, Math.round(size * 0.42));
@@ -1938,8 +1945,16 @@ function DistressIcon({ children, size = 38, active, canFlag, name, onToggle }) 
     // one's badge and hides it. Lifting a flagged icon above its neighbours is the point
     // of the z-index — measured, not guessed.
     <span style={{ position:'relative', display:'inline-flex', flexShrink:0, verticalAlign:'middle',
-      zIndex: active ? 3 : undefined }}
-      onPointerDown={start} onPointerUp={cancel} onPointerLeave={cancel} onPointerCancel={cancel}
+      zIndex: active ? 3 : undefined,
+      // Android's own long press — text selection and the context callout — fires first
+      // and cancels the pointer stream, which is why a two-second hold did nothing at all.
+      // Suppressing the native gesture is what leaves the hold to run.
+      touchAction:'manipulation', userSelect:'none', WebkitUserSelect:'none', WebkitTouchCallout:'none' }}
+      // Both event families, because a WebView may deliver either; start() ignores the
+      // second. pointerleave is deliberately absent: with the pointer captured it should
+      // not fire, and reacting to it would end a hold on the smallest finger movement.
+      onPointerDown={start} onPointerUp={cancel} onPointerCancel={cancel}
+      onTouchStart={start} onTouchEnd={cancel} onTouchCancel={cancel}
       onContextMenu={e=>{ if (canFlag) e.preventDefault(); }}
       // The tap that ends a completed long press must not also fire the icon's own
       // onClick — on the roster that would silently re-filter the schedule.
@@ -2539,7 +2554,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, onTo
   const travelerSummaries = largeGroup ? roster.map(member => {
     const counts = { todo:0, active:0, done:0 };
     const ongoing = []; // each in-progress activity for this traveller, chronological
-    const applies = (item) => !item || !(item.assignees || []).length || item.assignees.includes(member.userId);
+    const applies = (item) => !item || (item.assignees || []).includes(member.userId);
     days.forEach(day => {
       spansOnDay(trip, day.date).filter(applies).forEach(s => { const st = spanMemStOf(s, member.userId, day.date); counts[st]++; if (st==='active') ongoing.push({ t:s.startTime||'', title:s.title||'(untitled)' }); });
       (day.events || []).forEach(ev => {
@@ -5601,10 +5616,9 @@ const CHAT_MAX_EDITS = 25;   // a batch larger than this is a misunderstanding, 
 function tripSummaryForChat(trip) {
   const names = (trip.members || []).map(m => m.name || m.userId).filter(Boolean);
   const nameOf = (uid) => { const m = (trip.members || []).find(x => x.userId === uid); return (m && m.name) || uid; };
-  // An item with nobody tagged applies to everyone — that is how the app has always
-  // rendered it. Reporting a bare "[]" is literally true and completely misleading:
-  // the assistant says "nobody is tagged" while the screen shows every traveller on it.
-  const who = (ids) => (ids && ids.length) ? `[${ids.map(nameOf).join(', ')}]` : '[ALL]';
+  // An item with nobody on it now belongs to nobody — it used to mean everyone, and the
+  // assistant was told to say so. Saying "everyone" would now be exactly wrong.
+  const who = (ids) => (ids && ids.length) ? `[${ids.map(nameOf).join(', ')}]` : '[nobody assigned]';
   const r = tripDateRange(trip);
   const out = [
     `TRIP: ${trip.name || 'unnamed'}`,
