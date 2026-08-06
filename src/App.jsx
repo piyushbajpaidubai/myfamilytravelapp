@@ -1896,106 +1896,26 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
 // it everywhere the trip is open. Same permission rule as status: your own, or anybody's
 // if you are the trip captain.
 //
-// Held state is deliberate. Two seconds with no feedback reads as a broken tap, so the
-// ring closes while the press is held and the badge only lands when it completes.
-const DISTRESS_MS = 2000;
 
-function DistressIcon({ children, size = 38, active, canFlag, name, onToggle }) {
-  const timer = useRef(null);
-  const fired = useRef(false);
-  const running = useRef(false);
-  const origin = useRef(null);
-  const [held, setHeld] = useState(false);
-
-  // Two earlier attempts failed on the phone, both because they let the browser decide
-  // when the hold was over. The timer runs on its own — the only thing that can stop it
-  // is this component. So nothing here cancels on pointercancel or touchcancel: Android
-  // fires those the moment it claims the gesture for its own long-press or a pan, which
-  // is precisely when a two-second hold is midway through and must survive.
-  //
-  // What does end a hold is the finger lifting, or genuinely moving — a real scroll moves
-  // far more than a thumb resting on a 38px circle, so distance tells the two apart where
-  // the cancellation events cannot.
-  const MOVE_TOLERANCE = 14;
-
-  const pointOf = (e) => {
-    const t = (e && e.touches && e.touches[0]) || (e && e.changedTouches && e.changedTouches[0]);
-    if (t) return { x: t.clientX, y: t.clientY };
-    if (e && e.clientX != null) return { x: e.clientX, y: e.clientY };
-    return null;
-  };
-
-  const start = (e) => {
-    if (!canFlag || running.current) return;
-    running.current = true;
-    origin.current = pointOf(e);
-    fired.current = false;
-    setHeld(true);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      running.current = false;
-      fired.current = true;
-      setHeld(false);
-      // Raising is instant — somebody who needs help should not meet a dialog. Clearing
-      // asks, because a signal silenced by a stray press is the failure that matters.
-      if (active && !window.confirm(`Clear the help signal on ${name || 'this traveller'}?`)) return;
-      onToggle();
-    }, DISTRESS_MS);
-  };
-
-  const stop = () => { running.current = false; clearTimeout(timer.current); setHeld(false); };
-
-  const move = (e) => {
-    if (!running.current || !origin.current) return;
-    const p = pointOf(e);
-    if (!p) return;
-    if (Math.hypot(p.x - origin.current.x, p.y - origin.current.y) > MOVE_TOLERANCE) stop();
-  };
-
-  useEffect(() => () => clearTimeout(timer.current), []);
-
+function DistressIcon({ children, size = 38, active, name }) {
   const badge = Math.max(15, Math.round(size * 0.5));
+  if (!active) return children;
   return (
-    <span style={{ position:'relative', display:'inline-flex', flexShrink:0, verticalAlign:'middle',
-      zIndex: active ? 3 : undefined,
-      // none, not manipulation: manipulation still lets the browser pan from here, and a
-      // pan is exactly what steals the gesture mid-hold.
-      touchAction:'none', userSelect:'none', WebkitUserSelect:'none', WebkitTouchCallout:'none' }}
-      onPointerDown={start} onPointerUp={stop} onPointerMove={move}
-      onTouchStart={start} onTouchEnd={stop} onTouchMove={move}
-      onMouseDown={start} onMouseUp={stop}
-      onContextMenu={e=>{ if (canFlag) e.preventDefault(); }}
-      // The tap that ends a completed hold must not also fire the icon's own onClick —
-      // on the roster that would silently re-filter the schedule.
-      onClickCapture={e=>{ if (fired.current) { e.preventDefault(); e.stopPropagation(); fired.current = false; } }}>
+    // Lifted above its neighbours: the header roster overlaps avatars by 8px, so an
+    // unlifted mark is painted over by whoever comes next.
+    <span style={{ position:'relative', display:'inline-flex', flexShrink:0, verticalAlign:'middle', zIndex:3 }}>
       {children}
-
-      {/* Held: a ring drawn straight away, so a long press never reads as a dead tap. */}
-      {held && !active && (
-        <span aria-hidden="true" style={{ position:'absolute', inset:-5, borderRadius:'50%',
-          border:'2.5px solid #C42B1C', opacity:0.9, pointerEvents:'none' }} />
-      )}
-
-      {/* Flagged: the circle itself goes red, and the mark sits top-left — the roster
-          overlaps each avatar's right edge with the next one, so the left corner is the
-          only one that cannot be covered. */}
-      {active && (
-        <>
-          <span aria-hidden="true" style={{ position:'absolute', inset:0, borderRadius:'50%',
-            background:'#C42B1C', opacity:0.78, pointerEvents:'none' }} />
-          <span aria-hidden="true" style={{ position:'absolute', inset:-2, borderRadius:'50%',
-            border:'2.5px solid #C42B1C', pointerEvents:'none' }} />
-          <span role="img" aria-label={`${name || 'Traveller'} needs help`} title={`${name || 'Traveller'} needs help`}
-            style={{ position:'absolute', top:-4, left:-4, width:badge, height:badge, borderRadius:'50%',
-              background:'#C42B1C', color:'#fff', border:'2px solid #F5EFE2', boxShadow:'0 1px 3px rgba(0,0,0,0.35)',
-              display:'grid', placeItems:'center', fontSize:Math.round(badge * 0.66), fontWeight:900,
-              lineHeight:1, pointerEvents:'none' }}>!</span>
-        </>
-      )}
+      <span aria-hidden="true" style={{ position:'absolute', inset:-2, borderRadius:'50%',
+        border:'2.5px solid #C42B1C', pointerEvents:'none' }} />
+      {/* Top-left, the one corner the next overlapping avatar cannot cover. */}
+      <span role="img" aria-label={`${name || 'Traveller'} needs help`} title={`${name || 'Traveller'} needs help`}
+        style={{ position:'absolute', top:-4, left:-4, width:badge, height:badge, borderRadius:'50%',
+          background:'#C42B1C', color:'#fff', border:'2px solid #F5EFE2', boxShadow:'0 1px 3px rgba(0,0,0,0.35)',
+          display:'grid', placeItems:'center', fontSize:Math.round(badge * 0.66), fontWeight:900,
+          lineHeight:1, pointerEvents:'none' }}>!</span>
     </span>
   );
 }
-
 // ---- Status Tab ----  (per-traveler rollup of event/activity/span statuses per day)
 const ROAD_PHASE = {
   notracking: { label:'NOT TRACKING', tone:'#8A7A6D' },
@@ -2434,7 +2354,7 @@ function FlightTrackCard({ travel, dayISO }) {
   );
 }
 
-function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, onToggleDistress=null, focusUserId=null, focusIds=[], sharingLoc=false, onToggleShare=null, shareToken=null }) {
+function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focusUserId=null, focusIds=[], sharingLoc=false, onToggleShare=null, shareToken=null }) {
   const days = trip.days || [];
   // focusUserId (a traveler's share link) is one traveller; focusIds (header string)
   // may be several. Either narrows the roster to just the selected travellers.
@@ -2717,9 +2637,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, onTo
               return (
                 <div key={tr.userId} style={{ display:'grid', gridTemplateColumns:'38px minmax(0, 1fr) auto', gap:10, alignItems:'flex-start', padding:'11px 2px', borderBottom:'1px solid #E8DED2' }}>
                   <DistressIcon size={41} name={tr.name || tr.userId}
-                    active={!!(trip.distress||{})[tr.userId]}
-                    canFlag={!!session && (canUpdateOthers || tr.userId === session.userId)}
-                    onToggle={()=>onToggleDistress && onToggleDistress(tr.userId)}>
+                    active={!!(trip.distress||{})[tr.userId]}>
                   <span style={{ width:41, height:41, borderRadius:'50%', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#8A6A50', marginTop:1, border:RING_W+'px solid '+st.ring, boxSizing:'border-box' }}>
                     {picOf(tr.userId) ? <img src={picOf(tr.userId)} alt="" style={AVATAR_IMG} /> : initialsOf(tr.name, tr.userId)}
                   </span>
@@ -2869,13 +2787,7 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, onTo
                                       return (<>
                                         {shown.map((mark, mi) => { const tap = tapOf(mark); return (
                                           <DistressIcon key={mark.userId} size={AV} name={mark.name || mark.userId}
-                                            active={!!(trip.distress||{})[mark.userId]}
-                                            // `update` matters as well as permission: without it the button
-                                            // below is disabled, and a disabled button swallows the pointer
-                                            // events this wrapper needs. Claiming the icon is pressable when
-                                            // nothing can reach it is worse than not offering it.
-                                            canFlag={!!session && !!update && (canUpdateOthers || mark.userId === session.userId)}
-                                            onToggle={()=>onToggleDistress && onToggleDistress(mark.userId)}>
+                                            active={!!(trip.distress||{})[mark.userId]}>
                                           <button type="button" disabled={!tap} onClick={tap} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`} title={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`}
                                             style={{ width:AV, height:AV, flexShrink:0, marginLeft:mi===0?0:LAP, borderRadius:'50%', boxSizing:'border-box', border:RING_W+'px solid '+STATUS_META[mark.status].ring, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:17, fontWeight:700, color:'#7B675A', padding:0, cursor: tap?'pointer':'default', zIndex:7-mi }}>
                                             {picOf(mark.userId) ? <img src={picOf(mark.userId)} alt="" style={AVATAR_IMG} /> : initialsOf(mark.name, mark.userId)}
@@ -4324,7 +4236,7 @@ function MainApp() {
     if (tab === 'Budget') return <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} focus={focusTravellers} />;
     if (tab === 'Documents') return <DocumentsTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} canEdit={isTripCaptain(trip)} focus={focusTravellers} />;
     return <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)}
-      onToggleDistress={(uid)=>toggleDistress(trip.id, uid)} focusIds={focusTravellers}
+      focusIds={focusTravellers}
       sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)}
       shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${trip.shareToken ? `&k=${encodeURIComponent(trip.shareToken)}` : ''}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />;
   };
@@ -4557,9 +4469,7 @@ function MainApp() {
                 const hiddenSelected = over ? focusTravellers.filter(id => !shown.some(m=>m.userId===id)).length : 0;
                 const circle = (m,i) => { const on = focusTravellers.includes(m.userId); return (
                   <DistressIcon key={m.userId} size={38} name={m.name||m.userId}
-                    active={!!(trip.distress||{})[m.userId]}
-                    canFlag={!!session && (isTripCaptain(trip) || m.userId === me)}
-                    onToggle={()=>toggleDistress(trip.id, m.userId)}>
+                    active={!!(trip.distress||{})[m.userId]}>
                   <button type="button" aria-pressed={on} title={`${on?'Remove':'Add'} ${(m.name||m.userId)}${m.userId===me?' (you)':''}`}
                     onClick={()=>toggleFocus(m.userId)}
                     style={{ width:38, height:38, marginLeft:i===0?0:-8, borderRadius:"50%", overflow:"hidden", border:on?"2px solid #6E1A10":"2px solid #F0EBE0", boxShadow:on?"0 0 0 2px #6E1A10":"0 0 0 1px #CFC2B5", background:"#A88977", color:"#fff", display:"grid", placeItems:"center", fontSize:13, fontWeight:800, cursor:"pointer", padding:0, transform:on?"translateY(-2px)":"none", zIndex:on?30:20-i, flexShrink:0 }}>
@@ -4698,6 +4608,8 @@ function MainApp() {
           trip={trip}
           session={session}
           rlsActive={cloudMode.current === 'rls'}
+          distress={trip.distress || {}}
+          onToggleDistress={(uid)=>toggleDistress(trip.id, uid)}
           onAdd={(m)=>addMember(trip.id, m)}
           onAddLocal={(name)=>addLocalMember(trip.id, name)}
           onRemove={(uid)=>removeMember(trip.id, uid)}
@@ -4903,7 +4815,7 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
 }
 
 // ---- Trip travelers: view the roster, add/remove by User ID ----
-function TravelersModal({ trip, session, rlsActive, onAdd, onAddLocal, onRemove, onAddViewer, onRemoveViewer, onSetRole, onNeedLogin, onClose }) {
+function TravelersModal({ trip, session, rlsActive, distress = {}, onToggleDistress, onAdd, onAddLocal, onRemove, onAddViewer, onRemoveViewer, onSetRole, onNeedLogin, onClose }) {
   const [userId, setUserId] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -4985,6 +4897,20 @@ function TravelersModal({ trip, session, rlsActive, onAdd, onAddLocal, onRemove,
                 {m.userId === myId && <span style={{ fontSize:10, fontWeight:700, color:'#3C8A3C', background:'#DCEEDC', borderRadius:4, padding:'1px 6px' }}>YOU</span>}
               </div>
               <div style={{ fontSize:12, color:'#9A8478' }}>@{m.userId}</div>
+              {/* Your own, or anyone's if you are the captain — the rule the status
+                  controls use. A tap, because a two-second hold never survived Android. */}
+              {!!session && (isOwner || m.userId === myId) && (
+                <button type="button" onClick={()=>onToggleDistress && onToggleDistress(m.userId)}
+                  aria-pressed={!!distress[m.userId]}
+                  style={{ marginTop:6, display:'inline-flex', alignItems:'center', gap:6,
+                    border:'1px solid ' + (distress[m.userId] ? '#C42B1C' : '#D5C5B8'), borderRadius:16,
+                    padding:'5px 11px', minHeight:32, cursor:'pointer', fontSize:11.5, fontWeight:700,
+                    background: distress[m.userId] ? '#C42B1C' : '#fff',
+                    color: distress[m.userId] ? '#fff' : '#8A7A6D' }}>
+                  <span aria-hidden="true" style={{ fontWeight:900 }}>!</span>
+                  {distress[m.userId] ? 'Needs help — tap to clear' : 'Mark as needing help'}
+                </button>
+              )}
             </div>
             {isOwner && m.userId !== owner && (
               <div style={{ display:'flex', flexDirection:'column', gap:4, alignItems:'flex-end', flexShrink:0 }}>
