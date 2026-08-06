@@ -1893,6 +1893,78 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
   );
 }
 
+// ── Distress signal ──────────────────────────────────────────────────────────────
+// A traveller in trouble holds their own icon for two seconds and a red badge appears on
+// it everywhere the trip is open. Same permission rule as status: your own, or anybody's
+// if you are the trip captain.
+//
+// Held state is deliberate. Two seconds with no feedback reads as a broken tap, so the
+// ring closes while the press is held and the badge only lands when it completes.
+const DISTRESS_MS = 2000;
+
+function DistressIcon({ children, size = 38, active, canFlag, name, onToggle }) {
+  const timer = useRef(null);
+  const fired = useRef(false);
+  const [held, setHeld] = useState(false);
+  const [closing, setClosing] = useState(false);
+  // The ring has to mount at its start value before the transition can run, so the end
+  // value is set on the next frame rather than in the same update.
+  useEffect(() => {
+    if (!held) { setClosing(false); return undefined; }
+    const id = requestAnimationFrame(() => setClosing(true));
+    return () => cancelAnimationFrame(id);
+  }, [held]);
+
+  const start = () => {
+    if (!canFlag) return;
+    fired.current = false;
+    setHeld(true);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      fired.current = true;
+      setHeld(false);
+      // Raising is instant — somebody who needs help should not face a dialog. Clearing
+      // asks, because a signal silenced by a stray press is the failure that matters.
+      if (active && !window.confirm(`Clear the help signal on ${name || 'this traveller'}?`)) return;
+      onToggle();
+    }, DISTRESS_MS);
+  };
+  const cancel = () => { clearTimeout(timer.current); setHeld(false); };
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const badge = Math.max(13, Math.round(size * 0.42));
+  return (
+    // The header roster overlaps its avatars by 8px, so a later sibling paints over this
+    // one's badge and hides it. Lifting a flagged icon above its neighbours is the point
+    // of the z-index — measured, not guessed.
+    <span style={{ position:'relative', display:'inline-flex', flexShrink:0, verticalAlign:'middle',
+      zIndex: active ? 3 : undefined }}
+      onPointerDown={start} onPointerUp={cancel} onPointerLeave={cancel} onPointerCancel={cancel}
+      onContextMenu={e=>{ if (canFlag) e.preventDefault(); }}
+      // The tap that ends a completed long press must not also fire the icon's own
+      // onClick — on the roster that would silently re-filter the schedule.
+      onClickCapture={e=>{ if (fired.current) { e.preventDefault(); e.stopPropagation(); fired.current = false; } }}>
+      {children}
+      {held && (
+        // Closes in over the hold. A transition rather than a keyframe animation: this
+        // project has no stylesheet, every style here is inline, and there is nowhere to
+        // declare @keyframes.
+        <span aria-hidden="true" style={{ position:'absolute', inset:-6, borderRadius:'50%',
+          border:'2.5px solid #C42B1C', pointerEvents:'none',
+          opacity: closing ? 0.95 : 0.25, transform: closing ? 'scale(1)' : 'scale(1.35)',
+          transition:`opacity ${DISTRESS_MS}ms linear, transform ${DISTRESS_MS}ms linear` }} />
+      )}
+      {active && (
+        <span role="img" aria-label={`${name || 'Traveller'} needs help`} title={`${name || 'Traveller'} needs help`}
+          style={{ position:'absolute', top:-3, right:-3, width:badge, height:badge, borderRadius:'50%',
+            background:'#C42B1C', color:'#fff', border:'2px solid #F5EFE2', boxShadow:'0 1px 3px rgba(0,0,0,0.3)',
+            display:'grid', placeItems:'center', fontSize:Math.round(badge * 0.62), fontWeight:900,
+            lineHeight:1, pointerEvents:'none' }}>!</span>
+      )}
+    </span>
+  );
+}
+
 // ---- Status Tab ----  (per-traveler rollup of event/activity/span statuses per day)
 const ROAD_PHASE = {
   notracking: { label:'NOT TRACKING', tone:'#8A7A6D' },
@@ -2331,7 +2403,7 @@ function FlightTrackCard({ travel, dayISO }) {
   );
 }
 
-function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focusUserId=null, focusIds=[], sharingLoc=false, onToggleShare=null, shareToken=null }) {
+function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, onToggleDistress=null, focusUserId=null, focusIds=[], sharingLoc=false, onToggleShare=null, shareToken=null }) {
   const days = trip.days || [];
   // focusUserId (a traveler's share link) is one traveller; focusIds (header string)
   // may be several. Either narrows the roster to just the selected travellers.
@@ -2613,9 +2685,14 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
               const label = tr.status === 'done' ? 'Complete' : tr.status === 'active' ? 'In progress' : 'Not started';
               return (
                 <div key={tr.userId} style={{ display:'grid', gridTemplateColumns:'38px minmax(0, 1fr) auto', gap:10, alignItems:'flex-start', padding:'11px 2px', borderBottom:'1px solid #E8DED2' }}>
+                  <DistressIcon size={41} name={tr.name || tr.userId}
+                    active={!!(trip.distress||{})[tr.userId]}
+                    canFlag={!!session && (canUpdateOthers || tr.userId === session.userId)}
+                    onToggle={()=>onToggleDistress && onToggleDistress(tr.userId)}>
                   <span style={{ width:41, height:41, borderRadius:'50%', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#8A6A50', marginTop:1, border:RING_W+'px solid '+st.ring, boxSizing:'border-box' }}>
                     {picOf(tr.userId) ? <img src={picOf(tr.userId)} alt="" style={AVATAR_IMG} /> : initialsOf(tr.name, tr.userId)}
                   </span>
+                  </DistressIcon>
                   <span style={{ minWidth:0 }}>
                     <strong style={{ display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'#2E2320' }}>{tr.name || tr.userId}{session && tr.userId===session.userId ? ' (you)' : ''}</strong>
                     {tr.ongoing.length === 0
@@ -4142,6 +4219,13 @@ function MainApp() {
     });
     return userId;
   };
+  // Raised or cleared by the traveller themself, or by the captain — the rule the status
+  // controls already use. Gated at both call sites, not here.
+  const toggleDistress = (tripId, userId) => updateTrip(tripId, t => {
+    const cur = { ...(t.distress || {}) };
+    if (cur[userId]) delete cur[userId]; else cur[userId] = new Date().toISOString();
+    return { distress: cur };
+  });
   const removeMember = async (tripId, userId) => {
     updateTrip(tripId, t => ({ members: (t.members || []).filter(m => m.userId !== userId) }));
     if (isLocalMember(userId)) return;   // never had an auth uid to revoke
@@ -4199,7 +4283,8 @@ function MainApp() {
     if (tab === 'Schedule') return <ScheduleTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} canEdit={isTripCaptain(trip)} sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)} focus={focusTravellers} />;
     if (tab === 'Budget') return <BudgetTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} focus={focusTravellers} />;
     if (tab === 'Documents') return <DocumentsTab trip={trip} update={p=>updateTrip(trip.id,p)} session={session} canEdit={isTripCaptain(trip)} focus={focusTravellers} />;
-    return <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)} focusIds={focusTravellers}
+    return <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)}
+      onToggleDistress={(uid)=>toggleDistress(trip.id, uid)} focusIds={focusTravellers}
       sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)}
       shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${trip.shareToken ? `&k=${encodeURIComponent(trip.shareToken)}` : ''}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />;
   };
@@ -4434,11 +4519,16 @@ function MainApp() {
                 const shown = over ? ordered.slice(0,5) : ordered;
                 const hiddenSelected = over ? focusTravellers.filter(id => !shown.some(m=>m.userId===id)).length : 0;
                 const circle = (m,i) => { const on = focusTravellers.includes(m.userId); return (
-                  <button key={m.userId} type="button" aria-pressed={on} title={`${on?'Remove':'Add'} ${(m.name||m.userId)}${m.userId===me?' (you)':''}`}
+                  <DistressIcon key={m.userId} size={38} name={m.name||m.userId}
+                    active={!!(trip.distress||{})[m.userId]}
+                    canFlag={!!session && (isTripCaptain(trip) || m.userId === me)}
+                    onToggle={()=>toggleDistress(trip.id, m.userId)}>
+                  <button type="button" aria-pressed={on} title={`${on?'Remove':'Add'} ${(m.name||m.userId)}${m.userId===me?' (you)':''}`}
                     onClick={()=>toggleFocus(m.userId)}
                     style={{ width:38, height:38, marginLeft:i===0?0:-8, borderRadius:"50%", overflow:"hidden", border:on?"2px solid #6E1A10":"2px solid #F0EBE0", boxShadow:on?"0 0 0 2px #6E1A10":"0 0 0 1px #CFC2B5", background:"#A88977", color:"#fff", display:"grid", placeItems:"center", fontSize:13, fontWeight:800, cursor:"pointer", padding:0, transform:on?"translateY(-2px)":"none", zIndex:on?30:20-i, flexShrink:0 }}>
                     {hdrPicOf(m.userId) ? <img src={hdrPicOf(m.userId)} alt="" style={AVATAR_IMG}/> : initialsOf(m.name, m.userId)}
                   </button>
+                  </DistressIcon>
                 ); };
                 return (<>
                   {shown.map(circle)}
@@ -5449,6 +5539,8 @@ function reviewItinerary(trip, extraction) {
 // to put anything.
 function mergeItinerary(trip, rows) {
   const chosen = rows.filter(r => r.include);
+  const everyone = (trip.members || []).map(m => m.userId).filter(Boolean);
+  const tagged = (a) => (a && a.length) ? a : everyone;
   let days = (trip.days || []).map(d => ({ ...d, events:[...(d.events||[])], tasks:[...(d.tasks||[])] }));
   const spans = [...(trip.spans || [])];
   const ensureDay = (date) => {
@@ -5461,17 +5553,17 @@ function mergeItinerary(trip, rows) {
     if (it.kind === 'event') {
       const d = ensureDay(it.date); if (!d) return;
       d.events.push({ id:uid(), time:it.time||'', endTime:it.endTime||'', title:it.title||'', location:it.location||'',
-        locationLink:'', category:'Sightseeing', assignees:it.assignees||[], activities:[], docs:[] });
+        locationLink:'', category:'Sightseeing', assignees:tagged(it.assignees), activities:[], docs:[] });
     } else if (it.kind === 'task') {
       const d = ensureDay(it.date); if (!d) return;
-      d.tasks.push({ id:uid(), time:it.time||'', text:it.text||'', assignees:it.assignees||[], status:'todo' });
+      d.tasks.push({ id:uid(), time:it.time||'', text:it.text||'', assignees:tagged(it.assignees), status:'todo' });
     } else {
       // Travel and stays are spans: they cross days and are overlaid onto each one.
       ensureDay(it.startDate); ensureDay(it.endDate);
       spans.push({ id:uid(), type: it.kind === 'stay' ? 'Accommodation' : 'Travel',
         title:it.title||'', location:it.location||'', from:it.from||'', to:it.to||'',
         mode: it.kind === 'stay' ? '' : inferTravelMode(it), flightNo:it.flightNo||'',
-        assignees:it.assignees||[], startDate:it.startDate||'', startTime:it.startTime||'',
+        assignees:tagged(it.assignees), startDate:it.startDate||'', startTime:it.startTime||'',
         endDate:it.endDate||it.startDate||'', endTime:it.endTime||'', docs:[] });
     }
   });
