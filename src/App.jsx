@@ -1954,7 +1954,7 @@ function DistressIcon({ children, size = 38, active, canFlag, name, onToggle }) 
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  const badge = Math.max(14, Math.round(size * 0.44));
+  const badge = Math.max(15, Math.round(size * 0.5));
   return (
     <span style={{ position:'relative', display:'inline-flex', flexShrink:0, verticalAlign:'middle',
       zIndex: active ? 3 : undefined,
@@ -1982,7 +1982,7 @@ function DistressIcon({ children, size = 38, active, canFlag, name, onToggle }) 
       {active && (
         <>
           <span aria-hidden="true" style={{ position:'absolute', inset:0, borderRadius:'50%',
-            background:'#C42B1C', opacity:0.62, pointerEvents:'none' }} />
+            background:'#C42B1C', opacity:0.78, pointerEvents:'none' }} />
           <span aria-hidden="true" style={{ position:'absolute', inset:-2, borderRadius:'50%',
             border:'2.5px solid #C42B1C', pointerEvents:'none' }} />
           <span role="img" aria-label={`${name || 'Traveller'} needs help`} title={`${name || 'Traveller'} needs help`}
@@ -2868,10 +2868,19 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, onTo
                                       };
                                       return (<>
                                         {shown.map((mark, mi) => { const tap = tapOf(mark); return (
-                                          <button key={mark.userId} type="button" disabled={!tap} onClick={tap} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`} title={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`}
+                                          <DistressIcon key={mark.userId} size={AV} name={mark.name || mark.userId}
+                                            active={!!(trip.distress||{})[mark.userId]}
+                                            // `update` matters as well as permission: without it the button
+                                            // below is disabled, and a disabled button swallows the pointer
+                                            // events this wrapper needs. Claiming the icon is pressable when
+                                            // nothing can reach it is worse than not offering it.
+                                            canFlag={!!session && !!update && (canUpdateOthers || mark.userId === session.userId)}
+                                            onToggle={()=>onToggleDistress && onToggleDistress(mark.userId)}>
+                                          <button type="button" disabled={!tap} onClick={tap} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`} title={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`}
                                             style={{ width:AV, height:AV, flexShrink:0, marginLeft:mi===0?0:LAP, borderRadius:'50%', boxSizing:'border-box', border:RING_W+'px solid '+STATUS_META[mark.status].ring, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:17, fontWeight:700, color:'#7B675A', padding:0, cursor: tap?'pointer':'default', zIndex:7-mi }}>
                                             {picOf(mark.userId) ? <img src={picOf(mark.userId)} alt="" style={AVATAR_IMG} /> : initialsOf(mark.name, mark.userId)}
                                           </button>
+                                          </DistressIcon>
                                         ); })}
                                         {over && <button type="button" onClick={openModal} aria-label="Show all travellers" title={`+${it.marks.length-5} more — tap to see all`}
                                           style={{ width:AV, height:AV, flexShrink:0, marginLeft:LAP, borderRadius:'50%', border:'none', background:'#6E1A10', color:'#fff', fontSize:26, fontWeight:800, lineHeight:1, cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', zIndex:0 }}>+</button>}
