@@ -1897,6 +1897,17 @@ function MemberMark({ name, userId, status, pic, size=24, onClick }) {
 // if you are the trip captain.
 //
 
+function AssistantIcon({ size = 58 }) {
+  const [missing, setMissing] = useState(false);
+  if (missing) return (
+    <svg width={Math.round(size * 0.52)} height={Math.round(size * 0.52)} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 1.5a1 1 0 0 1 1 1V4h3.25A3.75 3.75 0 0 1 20 7.75V9h.75A1.25 1.25 0 0 1 22 10.25v3a1.25 1.25 0 0 1-1.25 1.25H20v1.75A3.75 3.75 0 0 1 16.25 20h-8.5A3.75 3.75 0 0 1 4 16.25V14.5h-.75A1.25 1.25 0 0 1 2 13.25v-3A1.25 1.25 0 0 1 3.25 9H4V7.75A3.75 3.75 0 0 1 7.75 4H11V2.5a1 1 0 0 1 1-1zM9 10.25a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zm6 0a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM8.75 16h6.5a.9.9 0 0 0 0-1.8h-6.5a.9.9 0 0 0 0 1.8z"/>
+    </svg>
+  );
+  return <img src="/assistant-robot.png" alt="" width={size} height={size} onError={()=>setMissing(true)}
+    style={{ display:'block', width:size, height:size, borderRadius:'50%', objectFit:'cover' }} />;
+}
+
 function DistressIcon({ children, size = 38, active, name }) {
   const badge = Math.max(15, Math.round(size * 0.5));
   if (!active) return children;
@@ -1909,7 +1920,7 @@ function DistressIcon({ children, size = 38, active, name }) {
         border:'2.5px solid #C42B1C', pointerEvents:'none' }} />
       {/* Top-left, the one corner the next overlapping avatar cannot cover. */}
       <span role="img" aria-label={`${name || 'Traveller'} needs help`} title={`${name || 'Traveller'} needs help`}
-        style={{ position:'absolute', top:-4, left:-4, width:badge, height:badge, borderRadius:'50%',
+        style={{ position:'absolute', top:0, left:0, zIndex:4, width:badge, height:badge, borderRadius:'50%',
           background:'#C42B1C', color:'#fff', border:'2px solid #F5EFE2', boxShadow:'0 1px 3px rgba(0,0,0,0.35)',
           display:'grid', placeItems:'center', fontSize:Math.round(badge * 0.66), fontWeight:900,
           lineHeight:1, pointerEvents:'none' }}>!</span>
@@ -4467,6 +4478,10 @@ function MainApp() {
                 const over = ordered.length > 6;
                 const shown = over ? ordered.slice(0,5) : ordered;
                 const hiddenSelected = over ? focusTravellers.filter(id => !shown.some(m=>m.userId===id)).length : 0;
+                // A traveller in trouble who does not fit on the row would otherwise be
+                // invisible; the plus circle carries their mark so there is something to open.
+                const hiddenFlagged = ordered.filter(m => !shown.some(x => x.userId === m.userId)
+                  && (trip.distress||{})[m.userId]).length;
                 const circle = (m,i) => { const on = focusTravellers.includes(m.userId); return (
                   <DistressIcon key={m.userId} size={38} name={m.name||m.userId}
                     active={!!(trip.distress||{})[m.userId]}>
@@ -4479,7 +4494,7 @@ function MainApp() {
                 ); };
                 return (<>
                   {shown.map(circle)}
-                  {over && <button type="button" onClick={()=>setShowTravPicker(true)} title="Select travellers" style={{ position:"relative", width:38, height:38, marginLeft:-8, borderRadius:"50%", border:"none", background:"#6E1A10", color:"#fff", fontSize:20, fontWeight:800, lineHeight:1, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", flexShrink:0, zIndex:1 }}>+{hiddenSelected>0 && <span style={{ position:"absolute", top:-2, right:-2, minWidth:16, height:16, borderRadius:8, background:"#3C8A3C", color:"#fff", fontSize:9, fontWeight:800, display:"grid", placeItems:"center", padding:"0 3px" }}>{hiddenSelected}</span>}</button>}
+                  <button type="button" onClick={()=>setShowTravPicker(true)} title="All travellers" aria-label="Open the traveller list" style={{ position:"relative", width:38, height:38, marginLeft:-8, borderRadius:"50%", border:"none", background:"#6E1A10", color:"#fff", fontSize:20, fontWeight:800, lineHeight:1, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", flexShrink:0, zIndex:2 }}>+{hiddenSelected>0 && <span style={{ position:"absolute", top:-2, right:-2, minWidth:16, height:16, borderRadius:8, background:"#3C8A3C", color:"#fff", fontSize:9, fontWeight:800, display:"grid", placeItems:"center", padding:"0 3px" }}>{hiddenSelected}</span>}{hiddenFlagged>0 && <span role="img" aria-label={`${hiddenFlagged} traveller${hiddenFlagged===1?'':'s'} not shown need help`} title={`${hiddenFlagged} not shown need help`} style={{ position:"absolute", top:0, left:0, zIndex:4, width:19, height:19, borderRadius:"50%", background:"#C42B1C", color:"#fff", border:"2px solid #F5EFE2", display:"grid", placeItems:"center", fontSize:12, fontWeight:900, lineHeight:1 }}>!</span>}</button>
                   {focusTravellers.length>0 && <button type="button" onClick={()=>setFocusTravellers([])} title="Show everyone" style={{ marginLeft:10, height:30, borderRadius:15, border:"1px solid #CFC2B5", background:"#fff", color:"#6E1A10", fontSize:11.5, fontWeight:700, padding:"0 12px", cursor:"pointer", flexShrink:0, whiteSpace:"nowrap" }}>All ✕</button>}
                 </>);
               })()}
@@ -4522,13 +4537,11 @@ function MainApp() {
             aria-label="Trip assistant" title="Ask the trip assistant"
             style={{ position:'fixed', right:16, zIndex:150,
               bottom:'calc(env(safe-area-inset-bottom, 0px) + 18px)',
-              width:58, height:58, borderRadius:'50%', border:'none',
+              width:58, height:58, borderRadius:'50%', border:'none', padding:0, overflow:'hidden',
               background:'#6E1A10', color:'#F5ECD7', cursor:'pointer',
               display:'grid', placeItems:'center',
               boxShadow:'0 6px 18px rgba(61,12,2,0.34)' }}>
-            <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M12 1.5a1 1 0 0 1 1 1V4h3.25A3.75 3.75 0 0 1 20 7.75V9h.75A1.25 1.25 0 0 1 22 10.25v3a1.25 1.25 0 0 1-1.25 1.25H20v1.75A3.75 3.75 0 0 1 16.25 20h-8.5A3.75 3.75 0 0 1 4 16.25V14.5h-.75A1.25 1.25 0 0 1 2 13.25v-3A1.25 1.25 0 0 1 3.25 9H4V7.75A3.75 3.75 0 0 1 7.75 4H11V2.5a1 1 0 0 1 1-1zM9 10.25a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zm6 0a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM8.75 16h6.5a.9.9 0 0 0 0-1.8h-6.5a.9.9 0 0 0 0 1.8z"/>
-            </svg>
+            <AssistantIcon size={58} />
           </button>
           {/* The itinerary-documents pull-up retired here — the Documents tab replaces it. */}
         </div>
@@ -4593,12 +4606,37 @@ function MainApp() {
           <div style={{ fontSize:12, color:'#8A7A6D', marginBottom:10 }}>Select one or more; every tab shows just them. None = everyone.</div>
           <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:'55vh', overflowY:'auto' }}>
             <button type="button" onClick={()=>{ setFocusTravellers([]); }} style={{ textAlign:'left', border:'1px solid #E0D2C5', borderRadius:10, padding:'10px 12px', background: focusTravellers.length===0?'#F1E7DD':'#fff', color:'#6E1A10', fontSize:13, fontWeight:700, cursor:'pointer' }}>Everyone</button>
-            {(trip.members||[]).map(m => { const on = focusTravellers.includes(m.userId); return (
-              <button key={m.userId} type="button" onClick={()=>toggleFocus(m.userId)} style={{ display:'flex', alignItems:'center', gap:10, textAlign:'left', border:'1px solid '+(on?'#6E1A10':'#E0D2C5'), borderRadius:10, padding:'8px 12px', background: on?'#F1E7DD':'#fff', color:'#5E463C', fontSize:13, fontWeight:700, cursor:'pointer' }}>
-                <span style={{ width:28,height:28,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>{hdrPicOf(m.userId)?<img src={hdrPicOf(m.userId)} alt="" style={AVATAR_IMG}/>:initialsOf(m.name, m.userId)}</span>
-                <span style={{ flex:1, minWidth:0 }}>{m.name||m.userId}{session && m.userId===session.userId?' (you)':''}</span>
-                <span style={{ width:20, height:20, borderRadius:5, border:'2px solid '+(on?'#3C8A3C':'#CFC2B5'), background:on?'#3C8A3C':'#fff', color:'#fff', display:'grid', placeItems:'center', fontSize:13, flexShrink:0 }}>{on?'✓':''}</span>
-              </button>
+            {(trip.members||[]).map(m => { const on = focusTravellers.includes(m.userId);
+              const flagged = !!(trip.distress||{})[m.userId];
+              // Your own, or anyone's if you are the trip captain — the rule the status
+              // controls use.
+              const mayFlag = !!session && (isTripCaptain(trip) || m.userId === session.userId);
+              return (
+              <div key={m.userId} style={{ display:'flex', alignItems:'center', gap:8,
+                border:'1px solid '+(on?'#6E1A10':'#E0D2C5'), borderRadius:10, padding:'8px 10px',
+                background: on?'#F7EDE6':'#fff' }}>
+                <button type="button" onClick={()=>toggleFocus(m.userId)} aria-pressed={on}
+                  style={{ flex:1, minWidth:0, display:'flex', alignItems:'center', gap:10, textAlign:'left',
+                    border:'none', background:'transparent', padding:0, cursor:'pointer', color:'#3D2E26', fontSize:14 }}>
+                  <span style={{ position:'relative', width:28,height:28,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>
+                    {hdrPicOf(m.userId)?<img src={hdrPicOf(m.userId)} alt="" style={AVATAR_IMG}/>:initialsOf(m.name, m.userId)}
+                  </span>
+                  <span style={{ flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.name||m.userId}{session && m.userId===session.userId?' (you)':''}</span>
+                </button>
+                {mayFlag && (
+                  <button type="button" onClick={()=>toggleDistress(trip.id, m.userId)} aria-pressed={flagged}
+                    title={flagged ? `Clear the help signal on ${m.name||m.userId}` : `Mark ${m.name||m.userId} as needing help`}
+                    style={{ flexShrink:0, minHeight:32, padding:'5px 12px', borderRadius:16, cursor:'pointer',
+                      border:'2px solid #C42B1C', background: flagged ? '#C42B1C' : '#fff',
+                      color: flagged ? '#fff' : '#C42B1C', fontSize:12, fontWeight:800, letterSpacing:'0.02em' }}>
+                    Help!
+                  </button>
+                )}
+                <button type="button" onClick={()=>toggleFocus(m.userId)} aria-label={`${on?'Deselect':'Select'} ${m.name||m.userId}`}
+                  style={{ flexShrink:0, border:'none', background:'transparent', padding:0, cursor:'pointer', display:'grid', placeItems:'center' }}>
+                  <span style={{ width:20, height:20, borderRadius:5, border:'2px solid '+(on?'#3C8A3C':'#CFC2B5'), background:on?'#3C8A3C':'#fff', color:'#fff', display:'grid', placeItems:'center', fontSize:13 }}>{on?'✓':''}</span>
+                </button>
+              </div>
             ); })}
           </div>
         </Modal>
