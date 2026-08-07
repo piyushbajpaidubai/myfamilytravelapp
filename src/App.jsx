@@ -1909,18 +1909,16 @@ function AssistantIcon({ size = 58 }) {
 }
 
 function DistressIcon({ children, size = 38, active, name }) {
-  const badge = Math.max(15, Math.round(size * 0.5));
+  const badge = Math.max(14, Math.round(size * 0.42));
   if (!active) return children;
   return (
-    // Lifted above its neighbours: the header roster overlaps avatars by 8px, so an
-    // unlifted mark is painted over by whoever comes next.
+    // Lifted above its neighbours: the header roster overlaps avatars, so an unlifted
+    // help mark can be painted over by whoever comes next.
     <span style={{ position:'relative', display:'inline-flex', flexShrink:0, verticalAlign:'middle', zIndex:3 }}>
       {children}
-      <span aria-hidden="true" style={{ position:'absolute', inset:-2, borderRadius:'50%',
-        border:'2.5px solid #C42B1C', pointerEvents:'none' }} />
-      {/* Top-left, the one corner the next overlapping avatar cannot cover. */}
+      {/* Top-left keeps the small alert visible without hiding the face or initials. */}
       <span role="img" aria-label={`${name || 'Traveller'} needs help`} title={`${name || 'Traveller'} needs help`}
-        style={{ position:'absolute', top:0, left:0, zIndex:4, width:badge, height:badge, borderRadius:'50%',
+        style={{ position:'absolute', top:-2, left:-2, zIndex:4, width:badge, height:badge, borderRadius:'50%',
           background:'#C42B1C', color:'#fff', border:'2px solid #F5EFE2', boxShadow:'0 1px 3px rgba(0,0,0,0.35)',
           display:'grid', placeItems:'center', fontSize:Math.round(badge * 0.66), fontWeight:900,
           lineHeight:1, pointerEvents:'none' }}>!</span>
@@ -4618,9 +4616,11 @@ function MainApp() {
                 <button type="button" onClick={()=>toggleFocus(m.userId)} aria-pressed={on}
                   style={{ flex:1, minWidth:0, display:'flex', alignItems:'center', gap:10, textAlign:'left',
                     border:'none', background:'transparent', padding:0, cursor:'pointer', color:'#3D2E26', fontSize:14 }}>
-                  <span style={{ position:'relative', width:28,height:28,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>
-                    {hdrPicOf(m.userId)?<img src={hdrPicOf(m.userId)} alt="" style={AVATAR_IMG}/>:initialsOf(m.name, m.userId)}
-                  </span>
+                  <DistressIcon size={28} name={m.name||m.userId} active={flagged}>
+                    <span style={{ position:'relative', width:28,height:28,borderRadius:'50%',overflow:'hidden',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>
+                      {hdrPicOf(m.userId)?<img src={hdrPicOf(m.userId)} alt="" style={AVATAR_IMG}/>:initialsOf(m.name, m.userId)}
+                    </span>
+                  </DistressIcon>
                   <span style={{ flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.name||m.userId}{session && m.userId===session.userId?' (you)':''}</span>
                 </button>
                 {mayFlag && (
