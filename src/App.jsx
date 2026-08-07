@@ -2645,12 +2645,9 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
               const label = tr.status === 'done' ? 'Complete' : tr.status === 'active' ? 'In progress' : 'Not started';
               return (
                 <div key={tr.userId} style={{ display:'grid', gridTemplateColumns:'38px minmax(0, 1fr) auto', gap:10, alignItems:'flex-start', padding:'11px 2px', borderBottom:'1px solid #E8DED2' }}>
-                  <DistressIcon size={41} name={tr.name || tr.userId}
-                    active={!!(trip.distress||{})[tr.userId]}>
                   <span style={{ width:41, height:41, borderRadius:'50%', background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#8A6A50', marginTop:1, border:RING_W+'px solid '+st.ring, boxSizing:'border-box' }}>
                     {picOf(tr.userId) ? <img src={picOf(tr.userId)} alt="" style={AVATAR_IMG} /> : initialsOf(tr.name, tr.userId)}
                   </span>
-                  </DistressIcon>
                   <span style={{ minWidth:0 }}>
                     <strong style={{ display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'#2E2320' }}>{tr.name || tr.userId}{session && tr.userId===session.userId ? ' (you)' : ''}</strong>
                     {tr.ongoing.length === 0
@@ -2795,13 +2792,10 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
                                       };
                                       return (<>
                                         {shown.map((mark, mi) => { const tap = tapOf(mark); return (
-                                          <DistressIcon key={mark.userId} size={AV} name={mark.name || mark.userId}
-                                            active={!!(trip.distress||{})[mark.userId]}>
-                                          <button type="button" disabled={!tap} onClick={tap} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`} title={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`}
+                                          <button key={mark.userId} type="button" disabled={!tap} onClick={tap} aria-label={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`} title={`${mark.name || mark.userId}: ${STATUS_WORD[mark.status]}${tap && !over ? ' — tap to update' : ''}`}
                                             style={{ width:AV, height:AV, flexShrink:0, marginLeft:mi===0?0:LAP, borderRadius:'50%', boxSizing:'border-box', border:RING_W+'px solid '+STATUS_META[mark.status].ring, background:'#E8E2D4', overflow:'hidden', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:17, fontWeight:700, color:'#7B675A', padding:0, cursor: tap?'pointer':'default', zIndex:7-mi }}>
                                             {picOf(mark.userId) ? <img src={picOf(mark.userId)} alt="" style={AVATAR_IMG} /> : initialsOf(mark.name, mark.userId)}
                                           </button>
-                                          </DistressIcon>
                                         ); })}
                                         {over && <button type="button" onClick={openModal} aria-label="Show all travellers" title={`+${it.marks.length-5} more — tap to see all`}
                                           style={{ width:AV, height:AV, flexShrink:0, marginLeft:LAP, borderRadius:'50%', border:'none', background:'#6E1A10', color:'#fff', fontSize:26, fontWeight:800, lineHeight:1, cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', zIndex:0 }}>+</button>}
