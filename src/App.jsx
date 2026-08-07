@@ -1912,13 +1912,12 @@ function DistressIcon({ children, size = 38, active, name }) {
   const badge = Math.max(14, Math.round(size * 0.42));
   if (!active) return children;
   return (
-    // Lifted above its neighbours: the header roster overlaps avatars, so an unlifted
-    // help mark can be painted over by whoever comes next.
-    <span style={{ position:'relative', display:'inline-flex', flexShrink:0, verticalAlign:'middle', zIndex:3 }}>
+    // Keep the Help layer above both the avatar button and the surrounding roster.
+    <span style={{ position:'relative', display:'inline-flex', flexShrink:0, verticalAlign:'middle', zIndex:40 }}>
       {children}
       {/* Top-left keeps the small alert visible without hiding the face or initials. */}
       <span role="img" aria-label={`${name || 'Traveller'} needs help`} title={`${name || 'Traveller'} needs help`}
-        style={{ position:'absolute', top:-2, left:-2, zIndex:4, width:badge, height:badge, borderRadius:'50%',
+        style={{ position:'absolute', top:-2, left:-2, zIndex:50, width:badge, height:badge, borderRadius:'50%',
           background:'#C42B1C', color:'#fff', border:'2px solid #F5EFE2', boxShadow:'0 1px 3px rgba(0,0,0,0.35)',
           display:'grid', placeItems:'center', fontSize:Math.round(badge * 0.66), fontWeight:900,
           lineHeight:1, pointerEvents:'none' }}>!</span>
