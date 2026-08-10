@@ -436,6 +436,41 @@ async function roadRouteFromCoords(lat, lon, dest) {
 // Records the moment a traveller marks a leg on-going — the app stores only the status
 // value, so without this there is no way to know how long they have been under way.
 // Cleared when they go back to not-started so a re-start begins from zero.
+// ── One thing on-going at a time ──────────────────────────────────────────────────
+// A traveller shown as on-going on four activities at once tells you nothing about where
+// they are. Starting something new therefore completes whatever they were already on:
+// they finished lunch and moved to the walk, which is what the tap actually meant.
+//
+// Accommodation is exempt on purpose. A hotel stay legitimately runs for days while
+// everything else happens inside it, so making it compete would be wrong.
+//
+// Returns { days, spans } to be merged into the trip. `keep` is the item being started,
+// so it is not closed by the sweep that is running on its behalf.
+const closeOtherActive = (t, userId, keep = {}) => {
+  const days = (t.days || []).map(d => ({
+    ...d,
+    events: (d.events || []).map(e =>
+      (memStOf(e, userId) === 'active' && !(keep.kind === 'event' && keep.evId === e.id))
+        ? { ...e, memberStatus: { ...(e.memberStatus || {}), [userId]: 'done' } } : e),
+    tasks: (d.tasks || []).map(tk =>
+      (memStOf(tk, userId) === 'active' && !(keep.kind === 'task' && keep.taskId === tk.id))
+        ? { ...tk, memberStatus: { ...(tk.memberStatus || {}), [userId]: 'done' } } : tk),
+  }));
+  const spans = (t.spans || []).map(s => {
+    if (s.type === 'Accommodation') return s;
+    // A span's status is per day, so close every on-going day of it, not the span itself.
+    const byDay = ((s.memberDayStatus || {})[userId]) || {};
+    let touched = false;
+    const next = { ...byDay };
+    Object.keys(byDay).forEach(iso => {
+      const isKeep = keep.kind === 'span' && keep.spanId === s.id && keep.dayISO === iso;
+      if (byDay[iso] === 'active' && !isKeep) { next[iso] = 'done'; touched = true; }
+    });
+    return touched ? { ...s, memberDayStatus: { ...(s.memberDayStatus || {}), [userId]: next } } : s;
+  });
+  return { days, spans };
+};
+
 const stampStart = (existing, userId, status) => {
   const map = { ...(existing || {}) };
   if (status === 'active' && !map[userId]) map[userId] = new Date().toISOString();
@@ -783,12 +818,19 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
 
   // ── Cycle status: not started → active → done → not started (per-traveler when logged in) ──
   const cycleEventStatus = (dayId, evId) =>
-    update(t => ({ days:(t.days||[]).map(d => d.id===dayId
-      ? { ...d, events:(d.events||[]).map(e => {
-          if (e.id!==evId) return e;
-          if (myId) return { ...e, memberStatus:{ ...(e.memberStatus||{}), [myId]: nextStatus(memStOf(e, myId)) } };
-          return { ...e, status: nextStatus(stOf(e)), done: undefined };
-        }) } : d) }));
+    update(t => {
+      const cur = ((t.days||[]).find(d => d.id===dayId)||{}).events || [];
+      const next = myId ? nextStatus(memStOf(cur.find(e => e.id===evId) || {}, myId)) : null;
+      const base = next === 'active'
+        ? closeOtherActive(t, myId, { kind:'event', evId })
+        : { days: t.days||[], spans: t.spans||[] };
+      return { spans: base.spans, days: base.days.map(d => d.id===dayId
+        ? { ...d, events:(d.events||[]).map(e => {
+            if (e.id!==evId) return e;
+            if (myId) return { ...e, memberStatus:{ ...(e.memberStatus||{}), [myId]: next } };
+            return { ...e, status: nextStatus(stOf(e)), done: undefined };
+          }) } : d) };
+    });
   // Activities are a simple two-state toggle: not started ⇄ done (no "active")
   const cycleActivityStatus = (dayId, evId, actId) =>
     update(t => ({ days:(t.days||[]).map(d => d.id===dayId
@@ -800,13 +842,20 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
             }) } : e) } : d) }));
 
   const cycleDayTaskStatus = (dayId, taskId) =>
-    update(t => ({ days:(t.days||[]).map(day => day.id===dayId
-      ? { ...day, tasks:(day.tasks||[]).map(task => {
-          if (task.id!==taskId) return task;
-          if (myId) return { ...task, memberStatus:{ ...(task.memberStatus||{}), [myId]:nextStatus(memStOf(task,myId)) } };
-          return { ...task, status:nextStatus(stOf(task)), done:undefined };
-        }) }
-      : day) }));
+    update(t => {
+      const cur = ((t.days||[]).find(d => d.id===dayId)||{}).tasks || [];
+      const next = myId ? nextStatus(memStOf(cur.find(x => x.id===taskId) || {}, myId)) : null;
+      const base = next === 'active'
+        ? closeOtherActive(t, myId, { kind:'task', taskId })
+        : { days: t.days||[], spans: t.spans||[] };
+      return { spans: base.spans, days: base.days.map(day => day.id===dayId
+        ? { ...day, tasks:(day.tasks||[]).map(task => {
+            if (task.id!==taskId) return task;
+            if (myId) return { ...task, memberStatus:{ ...(task.memberStatus||{}), [myId]: next } };
+            return { ...task, status:nextStatus(stOf(task)), done:undefined };
+          }) }
+        : day) };
+    });
 
   const setDayTaskAssignees = (dayId, taskId, assignees) =>
     update(t => ({ days:(t.days||[]).map(day => day.id===dayId
@@ -955,13 +1004,20 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     update(t => ({ spans:(t.spans||[]).filter(x=>x.id!==id), expenses:(t.expenses||[]).filter(e => e.eventId !== id) }));
   };
   const cycleSpanStatus = (id, dayISO) =>
-    update(t => ({ spans:(t.spans||[]).map(s => {
-      if (s.id !== id) return s;
-      if (myId) { const mds = { ...(s.memberDayStatus||{}) }; const next = nextStatus(spanMemStOf(s, myId, dayISO));
-        mds[myId] = { ...(mds[myId]||{}), [dayISO]: next };
-        return { ...s, memberDayStatus: mds, startedAt: stampStart(s.startedAt, myId, next) }; }
-      return { ...s, dayStatus: { ...(s.dayStatus||{}), [dayISO]: nextStatus(spanStOf(s, dayISO)) } };
-    }) }));
+    update(t => {
+      const s0 = (t.spans||[]).find(x => x.id === id) || {};
+      const next = myId ? nextStatus(spanMemStOf(s0, myId, dayISO)) : null;
+      const base = next === 'active'
+        ? closeOtherActive(t, myId, { kind:'span', spanId:id, dayISO })
+        : { days: t.days||[], spans: t.spans||[] };
+      return { days: base.days, spans: base.spans.map(s => {
+        if (s.id !== id) return s;
+        if (myId) { const mds = { ...(s.memberDayStatus||{}) };
+          mds[myId] = { ...(mds[myId]||{}), [dayISO]: next };
+          return { ...s, memberDayStatus: mds, startedAt: stampStart(s.startedAt, myId, next) }; }
+        return { ...s, dayStatus: { ...(s.dayStatus||{}), [dayISO]: nextStatus(spanStOf(s, dayISO)) } };
+      }) };
+    });
   const attachSpanDoc = async (id, file) => {
     let doc;
     try { const url = await uploadToStorage(session, file, 'docs'); doc = { id:uid(), name:file.name, size:file.size, type:file.type, url }; }
@@ -2440,14 +2496,24 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
     if (ref.kind === 'span') {
       const s0 = (trip.spans || []).find(s => s.id === ref.spanId);
       newStatus = nextStatus(spanMemStOf(s0 || {}, userId, ref.dayISO));
-      update(t => ({ spans:(t.spans||[]).map(s => s.id===ref.spanId
-        ? { ...s, memberDayStatus:{ ...(s.memberDayStatus||{}), [userId]:{ ...((s.memberDayStatus||{})[userId]||{}), [ref.dayISO]: newStatus } },
-            startedAt: stampStart(s.startedAt, userId, newStatus) } : s) }));
+      update(t => {
+        const base = newStatus === 'active'
+          ? closeOtherActive(t, userId, { kind:'span', spanId:ref.spanId, dayISO:ref.dayISO })
+          : { days: t.days||[], spans: t.spans||[] };
+        return { days: base.days, spans: base.spans.map(s => s.id===ref.spanId
+          ? { ...s, memberDayStatus:{ ...(s.memberDayStatus||{}), [userId]:{ ...((s.memberDayStatus||{})[userId]||{}), [ref.dayISO]: newStatus } },
+              startedAt: stampStart(s.startedAt, userId, newStatus) } : s) };
+      });
     } else if (ref.kind === 'event') {
       const e0 = ((trip.days || []).find(d => d.id === ref.dayId) || {}).events || [];
       newStatus = nextStatus(memStOf(e0.find(e => e.id === ref.evId) || {}, userId));
-      update(t => ({ days:(t.days||[]).map(d => d.id===ref.dayId
-        ? { ...d, events:(d.events||[]).map(e => e.id===ref.evId ? { ...e, memberStatus:{ ...(e.memberStatus||{}), [userId]: newStatus } } : e) } : d) }));
+      update(t => {
+        const base = newStatus === 'active'
+          ? closeOtherActive(t, userId, { kind:'event', evId:ref.evId })
+          : { days: t.days||[], spans: t.spans||[] };
+        return { spans: base.spans, days: base.days.map(d => d.id===ref.dayId
+          ? { ...d, events:(d.events||[]).map(e => e.id===ref.evId ? { ...e, memberStatus:{ ...(e.memberStatus||{}), [userId]: newStatus } } : e) } : d) };
+      });
     } else if (ref.kind === 'activity') {
       const d0 = (trip.days || []).find(d => d.id === ref.dayId) || {};
       const e0 = (d0.events || []).find(e => e.id === ref.evId) || {};
@@ -2460,8 +2526,13 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
       const d0 = (trip.days || []).find(d => d.id === ref.dayId) || {};
       const tk0 = (d0.tasks || []).find(tk => tk.id === ref.taskId) || {};
       newStatus = nextStatus(memStOf(tk0, userId));
-      update(t => ({ days:(t.days||[]).map(d => d.id===ref.dayId
-        ? { ...d, tasks:(d.tasks||[]).map(tk => tk.id===ref.taskId ? { ...tk, memberStatus:{ ...(tk.memberStatus||{}), [userId]: newStatus } } : tk) } : d) }));
+      update(t => {
+        const base = newStatus === 'active'
+          ? closeOtherActive(t, userId, { kind:'task', taskId:ref.taskId })
+          : { days: t.days||[], spans: t.spans||[] };
+        return { spans: base.spans, days: base.days.map(d => d.id===ref.dayId
+          ? { ...d, tasks:(d.tasks||[]).map(tk => tk.id===ref.taskId ? { ...tk, memberStatus:{ ...(tk.memberStatus||{}), [userId]: newStatus } } : tk) } : d) };
+      });
     }
     // Tell the trip's followers, if this trip has notifications switched on.
     if (newStatus && itemTitle) {
