@@ -614,8 +614,6 @@ function NativeStatusIcon({ name, size=20, stroke='currentColor' }) {
 function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, onToggleShare=null, focus=[] }) {
   const myId = session ? session.userId : null;
   // The status the current user sees/toggles on an item (per-traveler when logged in, else legacy shared)
-  const evStatus = (item) => myId ? memStOf(item, myId) : stOf(item);
-  const spStatus = (s, iso) => myId ? spanMemStOf(s, myId, iso) : spanStOf(s, iso);
   const [showDay, setShowDay] = useState(false);
   const [collapsedDays, setCollapsedDays] = useState({}); // { [dayId]: true } when collapsed
   const [expandedItems, setExpandedItems] = useState({});
@@ -816,46 +814,8 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     setEditing(null);
   };
 
-  // ── Cycle status: not started → active → done → not started (per-traveler when logged in) ──
-  const cycleEventStatus = (dayId, evId) =>
-    update(t => {
-      const cur = ((t.days||[]).find(d => d.id===dayId)||{}).events || [];
-      const next = myId ? nextStatus(memStOf(cur.find(e => e.id===evId) || {}, myId)) : null;
-      const base = next === 'active'
-        ? closeOtherActive(t, myId, { kind:'event', evId })
-        : { days: t.days||[], spans: t.spans||[] };
-      return { spans: base.spans, days: base.days.map(d => d.id===dayId
-        ? { ...d, events:(d.events||[]).map(e => {
-            if (e.id!==evId) return e;
-            if (myId) return { ...e, memberStatus:{ ...(e.memberStatus||{}), [myId]: next } };
-            return { ...e, status: nextStatus(stOf(e)), done: undefined };
-          }) } : d) };
-    });
-  // Activities are a simple two-state toggle: not started ⇄ done (no "active")
-  const cycleActivityStatus = (dayId, evId, actId) =>
-    update(t => ({ days:(t.days||[]).map(d => d.id===dayId
-      ? { ...d, events:(d.events||[]).map(e => e.id===evId
-          ? { ...e, activities:(e.activities||[]).map(a => {
-              if (a.id!==actId) return a;
-              if (myId) { const cur=memStOf(a, myId); return { ...a, memberStatus:{ ...(a.memberStatus||{}), [myId]: cur==='done'?'todo':'done' } }; }
-              return { ...a, status: stOf(a)==='done' ? 'todo' : 'done', done: undefined };
-            }) } : e) } : d) }));
-
-  const cycleDayTaskStatus = (dayId, taskId) =>
-    update(t => {
-      const cur = ((t.days||[]).find(d => d.id===dayId)||{}).tasks || [];
-      const next = myId ? nextStatus(memStOf(cur.find(x => x.id===taskId) || {}, myId)) : null;
-      const base = next === 'active'
-        ? closeOtherActive(t, myId, { kind:'task', taskId })
-        : { days: t.days||[], spans: t.spans||[] };
-      return { spans: base.spans, days: base.days.map(day => day.id===dayId
-        ? { ...day, tasks:(day.tasks||[]).map(task => {
-            if (task.id!==taskId) return task;
-            if (myId) return { ...task, memberStatus:{ ...(task.memberStatus||{}), [myId]: next } };
-            return { ...task, status:nextStatus(stOf(task)), done:undefined };
-          }) }
-        : day) };
-    });
+  // Status is not changed from the Schedule tab — the Status tab owns that entirely,
+  // so the cyclers that used to live here are gone rather than merely unwired.
 
   const setDayTaskAssignees = (dayId, taskId, assignees) =>
     update(t => ({ days:(t.days||[]).map(day => day.id===dayId
@@ -1003,21 +963,6 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     if (s && s.docs) s.docs.forEach(d => d.url && deleteFromStorage(session, d.url));
     update(t => ({ spans:(t.spans||[]).filter(x=>x.id!==id), expenses:(t.expenses||[]).filter(e => e.eventId !== id) }));
   };
-  const cycleSpanStatus = (id, dayISO) =>
-    update(t => {
-      const s0 = (t.spans||[]).find(x => x.id === id) || {};
-      const next = myId ? nextStatus(spanMemStOf(s0, myId, dayISO)) : null;
-      const base = next === 'active'
-        ? closeOtherActive(t, myId, { kind:'span', spanId:id, dayISO })
-        : { days: t.days||[], spans: t.spans||[] };
-      return { days: base.days, spans: base.spans.map(s => {
-        if (s.id !== id) return s;
-        if (myId) { const mds = { ...(s.memberDayStatus||{}) };
-          mds[myId] = { ...(mds[myId]||{}), [dayISO]: next };
-          return { ...s, memberDayStatus: mds, startedAt: stampStart(s.startedAt, myId, next) }; }
-        return { ...s, dayStatus: { ...(s.dayStatus||{}), [dayISO]: nextStatus(spanStOf(s, dayISO)) } };
-      }) };
-    });
   const attachSpanDoc = async (id, file) => {
     let doc;
     try { const url = await uploadToStorage(session, file, 'docs'); doc = { id:uid(), name:file.name, size:file.size, type:file.type, url }; }
@@ -1260,7 +1205,6 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     return items.sort((a, b) => (!a.t && !b.t) ? 0 : !a.t ? -1 : !b.t ? 1 : (a.t > b.t ? 1 : a.t < b.t ? -1 : 0));
   };
 
-  const scheduleStatusLabel = { todo:'Not started', active:'Ongoing', done:'Complete' };
   const scheduleCategoryIcon = (category) => ({ Food:'☕', Transport:'↗', Sightseeing:'◇', Accommodation:'⌂', Activity:'○', Other:'•' }[category] || '○');
   const itemPeople = (item) => (item.assignees || [])
     .map(id => members.find(member => member.userId===id)).filter(Boolean);
@@ -1289,14 +1233,13 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
     const expanded = !!expandedItems[detailKey];
     const roster = itemPeople(item);
     return <button type="button" aria-expanded={expanded} aria-label={`${expanded?'Collapse':'Expand'} ${item.title} details`} onClick={()=>toggleItemDetails(detailKey)} style={{ width:'100%',minHeight:48,border:'none',borderTop:'1px solid #D8C8B8',background:expanded?'#E4D7C8':'#E9DED1',padding:'8px 13px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8 }}>
-      <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} title={`${member.name||member.userId}: ${STATUS_WORD[memStOf(item,member.userId)]}`} style={{ width:31,height:31,marginLeft:index===0?0:-7,borderRadius:'50%',boxSizing:'border-box',overflow:'hidden',border:RING_W+'px solid '+STATUS_META[memStOf(item,member.userId)].ring,background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={AVATAR_IMG}/>:initialsOf(member.name, member.userId)}</span>)}<span style={{ marginLeft:7,color:'#7C675D',fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{itemPeopleLabel(item)}</span></span>
+      <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} title={member.name||member.userId} style={{ width:31,height:31,marginLeft:index===0?0:-7,borderRadius:'50%',boxSizing:'border-box',overflow:'hidden',border:RING_W+'px solid #D8C8B8',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:11,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={AVATAR_IMG}/>:initialsOf(member.name, member.userId)}</span>)}<span style={{ marginLeft:7,color:'#7C675D',fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{itemPeopleLabel(item)}</span></span>
       <span style={{ color:'#6E2118',transform:expanded?'rotate(180deg)':'none',transition:'transform .15s',display:'grid',placeItems:'center',flexShrink:0 }}><NativeStatusIcon name="chevron" size={16}/></span>
     </button>;
   };
 
   // Independent day task with separate status and traveler-tag interaction zones.
   const renderDayTask = (day, task) => {
-    const status = evStatus(task);
     const roster = itemPeople(task);
     const peopleKey = `${day.id}-${task.id}`;
     const peopleOpen = !!expandedTaskPeople[peopleKey];
@@ -1308,15 +1251,15 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
       setDayTaskAssignees(day.id,task.id,next);
     };
     return <article key={`day-task-${task.id}`} style={{ display:'grid',gridTemplateColumns:'32px minmax(0,1fr)',gap:8,position:'relative',marginBottom:12 }}>
-      <span aria-hidden="true" style={{ width:12,height:12,margin:'20px 0 0 10px',borderRadius:3,transform:'rotate(45deg)',background:STATUS_META[status].ring,border:'3px solid #F7F5F0',boxShadow:`0 0 0 1px ${STATUS_META[status].ring}`,boxSizing:'border-box',zIndex:2 }}/>
+      <span aria-hidden="true" style={{ width:12,height:12,margin:'20px 0 0 10px',borderRadius:3,transform:'rotate(45deg)',background:'#B9A99A',border:'3px solid #F7F5F0',boxShadow:'0 0 0 1px #B9A99A',boxSizing:'border-box',zIndex:2 }}/>
       <div style={{ border:'1.5px solid #C99B7C',borderRadius:15,background:'#FFF7EC',boxShadow:'0 4px 14px rgba(110,33,24,0.08)',overflow:'hidden' }}>
-        <button type="button" aria-label={`Update task ${task.text} status. Current status: ${scheduleStatusLabel[status]}`} onClick={()=>cycleDayTaskStatus(day.id,task.id)} style={{ position:'relative',width:'100%',minHeight:76,padding:'11px 13px 10px 35px',border:'none',background:'linear-gradient(135deg,#FFF1DF 0%,#FFF9F0 100%)',textAlign:'left',cursor:'pointer',color:'#302521',overflow:'hidden' }}>
+        <div style={{ position:'relative',width:'100%',minHeight:76,padding:'11px 13px 10px 35px',background:'linear-gradient(135deg,#FFF1DF 0%,#FFF9F0 100%)',color:'#302521',overflow:'hidden',boxSizing:'border-box' }}>
           <span aria-hidden="true" style={{ position:'absolute',left:0,top:0,bottom:0,width:21,background:'#8B0015',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:850,letterSpacing:'0.02em',writingMode:'vertical-rl',transform:'rotate(180deg)' }}>Task</span>
-          <span style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:10 }}><span style={{ color:'#8B2A14',fontSize:10.5,fontWeight:850,letterSpacing:'0.07em' }}>✓ {task.time} · TASK</span><span style={{ borderRadius:20,padding:'4px 8px',background:STATUS_META[status].bg,color:STATUS_META[status].color,fontSize:9.5,fontWeight:800,flexShrink:0 }}>{scheduleStatusLabel[status]}</span></span>
-          <span style={{ display:'block',marginTop:6,fontSize:14,fontWeight:850,textDecoration:status==='done'?'line-through':'none',opacity:status==='done'?0.65:1 }}>{task.text}</span>
-        </button>
+          <span style={{ display:'block',color:'#8B2A14',fontSize:10.5,fontWeight:850,letterSpacing:'0.07em' }}>✓ {task.time} · TASK</span>
+          <span style={{ display:'block',marginTop:6,fontSize:14,fontWeight:850 }}>{task.text}</span>
+        </div>
         <button type="button" disabled={!canEdit} aria-expanded={peopleOpen} aria-label={`${peopleOpen?'Close':'Edit'} tagged travelers for task ${task.text}`} onClick={()=>toggleTaskPeople(peopleKey)} style={{ width:'100%',minHeight:42,padding:'6px 13px',border:'none',borderTop:'1px solid #D6BDAA',background:peopleOpen?'#DFCDBE':'#E9DED1',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,textAlign:'left',cursor:canEdit?'pointer':'default',opacity:1 }}>
-          <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} title={`${member.name||member.userId}: ${STATUS_WORD[memStOf(task,member.userId)]}`} style={{ width:29,height:29,marginLeft:index===0?0:-7,borderRadius:'50%',boxSizing:'border-box',overflow:'hidden',border:RING_W+'px solid '+STATUS_META[memStOf(task,member.userId)].ring,background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={AVATAR_IMG}/>:initialsOf(member.name, member.userId)}</span>)}<span style={{ marginLeft:7,color:'#6F574C',fontSize:10.5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{peopleLabel}</span></span>
+          <span style={{ display:'flex',alignItems:'center',minWidth:0 }}>{roster.slice(0,4).map((member,index)=><span key={member.userId} title={member.name||member.userId} style={{ width:29,height:29,marginLeft:index===0?0:-7,borderRadius:'50%',boxSizing:'border-box',overflow:'hidden',border:RING_W+'px solid #D8C8B8',background:'#A88977',color:'#fff',display:'grid',placeItems:'center',fontSize:10,fontWeight:800,flexShrink:0 }}>{(picOf(member.userId)||member.pic)?<img src={picOf(member.userId)||member.pic} alt="" style={AVATAR_IMG}/>:initialsOf(member.name, member.userId)}</span>)}<span style={{ marginLeft:7,color:'#6F574C',fontSize:10.5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{peopleLabel}</span></span>
           {canEdit&&<span style={{ color:'#6E2118',transform:peopleOpen?'rotate(180deg)':'none',transition:'transform .15s',display:'grid',placeItems:'center',flexShrink:0 }}><NativeStatusIcon name="chevron" size={15}/></span>}
         </button>
         {peopleOpen&&canEdit&&<div role="region" aria-label={`Traveler tags for task ${task.text}`} style={{ padding:'9px 10px 10px',borderTop:'1px solid #D6BDAA',background:'#F8F0E7',display:'flex',flexWrap:'wrap',gap:6 }}>
@@ -1331,17 +1274,16 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
 
   // ── Native mobile card for multi-day spans (hotel / travel) ──
   const renderSpanStrip = (day, s) => {
-    const status = spStatus(s, day.date);
     const detailKey = `span-${day.id}-${s.id}`;
     const expanded = !!expandedItems[detailKey];
     return <article key={`${day.id}-${s.id}`} style={{ display:'grid',gridTemplateColumns:'32px minmax(0,1fr)',gap:8,position:'relative',marginBottom:12 }}>
-      <span aria-hidden="true" style={{ width:13,height:13,margin:'21px 0 0 10px',borderRadius:'50%',background:STATUS_META[status].ring,border:'3px solid #F7F5F0',boxShadow:`0 0 0 1px ${STATUS_META[status].ring}`,boxSizing:'border-box',zIndex:2 }}/>
+      <span aria-hidden="true" style={{ width:13,height:13,margin:'21px 0 0 10px',borderRadius:'50%',background:'#B9A99A',border:'3px solid #F7F5F0',boxShadow:'0 0 0 1px #B9A99A',boxSizing:'border-box',zIndex:2 }}/>
       <div style={{ background:'#FFF9ED',border:'1px solid #E7D7B6',borderRadius:18,boxShadow:'0 4px 14px rgba(63,47,40,0.06)',overflow:'hidden' }}>
-        <button type="button" aria-label={`Update ${s.title} status. Current status: ${scheduleStatusLabel[status]}`} onClick={()=>cycleSpanStatus(s.id,day.date)} style={{ display:'block',width:'100%',padding:'13px',border:'none',background:'transparent',textAlign:'left',cursor:'pointer',outline:'none' }}>
-          <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:10 }}><span style={{ color:'#8D786E',fontSize:10.5,fontWeight:750 }}>{spanIcon(s)} {s.startTime||'All day'} · {s.type}</span><span style={{ borderRadius:20,padding:'4px 8px',background:STATUS_META[status].bg,color:STATUS_META[status].color,fontSize:9.5,fontWeight:800 }}>{scheduleStatusLabel[status]}</span></div>
+        <div style={{ width:'100%',padding:'13px',boxSizing:'border-box' }}>
+          <div style={{ color:'#8D786E',fontSize:10.5,fontWeight:750 }}>{spanIcon(s)} {s.startTime||'All day'} · {s.type}</div>
           <div style={{ marginTop:7,fontSize:15,fontWeight:800,color:'#302521' }}>{s.title||'(untitled)'}</div>
           <div style={{ display:'flex',alignItems:'center',gap:4,marginTop:5,color:'#99867C',fontSize:10.5 }}><NativeStatusIcon name="pin" size={12}/>{spanLocationText(s)||'Location not set'}</div>
-        </button>
+        </div>
         {renderPeopleRow(s,detailKey)}
         {expanded && <div style={{ padding:'12px 13px 14px',borderTop:'1px solid #E8DDD0',background:'#FCFAF6' }}>
           <div style={{ color:'#8B786E',fontSize:10.5,lineHeight:1.45 }}>{spanSegLabel(s,day.date)} · {fmtDate(s.startDate)}{s.startTime?` ${s.startTime}`:''} → {fmtDate(s.endDate)}{s.endTime?` ${s.endTime}`:''}</div>
@@ -1365,20 +1307,16 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
 
   // ── Native mobile card for single-day timed events ──
   const renderEventBlock = (day, ev) => {
-    const status = evStatus(ev);
     const detailKey = `event-${day.id}-${ev.id}`;
     const expanded = !!expandedItems[detailKey];
     return <article key={ev.id} style={{ display:'grid',gridTemplateColumns:'32px minmax(0,1fr)',gap:8,position:'relative',marginBottom:12 }}>
-      <span aria-hidden="true" style={{ width:13,height:13,margin:'21px 0 0 10px',borderRadius:'50%',background:STATUS_META[status].ring,border:'3px solid #F7F5F0',boxShadow:`0 0 0 1px ${STATUS_META[status].ring}`,boxSizing:'border-box',zIndex:2 }}/>
+      <span aria-hidden="true" style={{ width:13,height:13,margin:'21px 0 0 10px',borderRadius:'50%',background:'#B9A99A',border:'3px solid #F7F5F0',boxShadow:'0 0 0 1px #B9A99A',boxSizing:'border-box',zIndex:2 }}/>
       <div style={{ background:'#fff',border:'1px solid #E7E0D8',borderRadius:18,boxShadow:'0 4px 14px rgba(63,47,40,0.06)',overflow:'hidden' }}>
-        <button type="button" aria-label={`Update ${ev.title} status. Current status: ${scheduleStatusLabel[status]}`} onClick={()=>cycleEventStatus(day.id,ev.id)} style={{ display:'block',width:'100%',padding:'13px',border:'none',background:'transparent',textAlign:'left',cursor:'pointer',outline:'none' }}>
-          <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:10 }}>
-            <span style={{ display:'inline-flex',alignItems:'center',gap:4,color:'#8D786E',fontSize:10.5,fontWeight:750 }}>{scheduleCategoryIcon(ev.category)} {ev.time||'--:--'}<span>–</span>{ev.endTime||'--:--'}</span>
-            <span style={{ borderRadius:20,padding:'4px 8px',background:STATUS_META[status].bg,color:STATUS_META[status].color,fontSize:9.5,fontWeight:800,flexShrink:0 }}>{scheduleStatusLabel[status]}</span>
-          </div>
+        <div style={{ width:'100%',padding:'13px',boxSizing:'border-box' }}>
+          <div style={{ display:'inline-flex',alignItems:'center',gap:4,color:'#8D786E',fontSize:10.5,fontWeight:750 }}>{scheduleCategoryIcon(ev.category)} {ev.time||'--:--'}<span>–</span>{ev.endTime||'--:--'}</div>
           <div style={{ marginTop:7,fontSize:15,fontWeight:800,color:'#302521' }}>{ev.title||'(untitled)'}</div>
           <div style={{ display:'flex',alignItems:'center',gap:4,marginTop:5,color:'#99867C',fontSize:10.5 }}><NativeStatusIcon name="pin" size={12}/>{ev.location||'Location not set'}</div>
-        </button>
+        </div>
         {renderPeopleRow(ev,detailKey)}
         {expanded && <div style={{ padding:'12px 13px 14px',borderTop:'1px solid #E8DDD0',background:'#FCFAF6' }}>
           {/* notes removed — travellers are assigned instead */}
@@ -1391,9 +1329,8 @@ function ScheduleTab({ trip, update, session, canEdit=true, sharingLoc=false, on
 
           {(ev.activities||[]).length>0 && <div style={{ margin:'11px 0',padding:'10px',borderRadius:13,background:'#F3EFE9' }}>
             <div style={{ marginBottom:7,fontSize:9.5,fontWeight:850,letterSpacing:'0.09em',color:'#8D7A70' }}>TASKS</div>
-            {(ev.activities||[]).map(act=><div key={act.id} style={{ display:'grid',gridTemplateColumns:'24px minmax(0,1fr) auto',alignItems:'start',gap:7,padding:'6px 0' }}>
-              <StatusBox status={evStatus(act)} onClick={()=>cycleActivityStatus(day.id,ev.id,act.id)} size={16}/>
-              <div style={{ minWidth:0 }}><span onClick={e=>e.stopPropagation()}>{Editable({ kind:'activity', ids:{ dayId:day.id, evId:ev.id, actId:act.id }, value:act.text, placeholder:'(empty)', spanStyle:{ fontSize:11.5,color:'#4E3D36',textDecoration:evStatus(act)==='done'?'line-through':'none' }, inputWidth:190 })}</span><DocList docs={act.docs||[]} onAdd={(file)=>attachDoc(day.id,ev.id,act.id,file)} onDel={canEdit?(docId)=>delDoc(day.id,ev.id,act.id,docId):null}/>{canEdit&&<Assignees members={members} value={act.assignees} onChange={(list)=>setTaskAssignees(day.id,ev.id,act.id,list)}/>}</div>
+            {(ev.activities||[]).map(act=><div key={act.id} style={{ display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',alignItems:'start',gap:7,padding:'6px 0' }}>
+              <div style={{ minWidth:0 }}><span onClick={e=>e.stopPropagation()}>{Editable({ kind:'activity', ids:{ dayId:day.id, evId:ev.id, actId:act.id }, value:act.text, placeholder:'(empty)', spanStyle:{ fontSize:11.5,color:'#4E3D36' }, inputWidth:190 })}</span><DocList docs={act.docs||[]} onAdd={(file)=>attachDoc(day.id,ev.id,act.id,file)} onDel={canEdit?(docId)=>delDoc(day.id,ev.id,act.id,docId):null}/>{canEdit&&<Assignees members={members} value={act.assignees} onChange={(list)=>setTaskAssignees(day.id,ev.id,act.id,list)}/>}</div>
               {canEdit && <span style={{ display:'flex',gap:4 }}><label title="Attach task document" style={{ width:27,height:27,borderRadius:8,background:'#E6DED4',display:'grid',placeItems:'center',cursor:'pointer',color:'#6E2118' }}>⌕<input type="file" style={{ display:'none' }} onChange={e=>{ if(e.target.files[0]) attachDoc(day.id,ev.id,act.id,e.target.files[0]); e.target.value=''; }}/></label><button type="button" title="Delete task" onClick={()=>delActivity(day.id,ev.id,act.id)} style={{ width:27,height:27,border:'none',borderRadius:8,background:'#F5DFDA',color:'#A43828',cursor:'pointer' }}>×</button></span>}
             </div>)}
           </div>}
