@@ -4665,7 +4665,7 @@ function MainApp() {
       )}
 
       {showChat && trip && (
-        <TripChat trip={trip} onClose={()=>setShowChat(false)}
+        <TripChat trip={trip} session={session} canSearch={isTripCaptain(trip)} onClose={()=>setShowChat(false)}
           onApply={(resolved)=>{
             // Through updateTrip, which records history — so the header's undo reverses
             // a whole applied batch, and nothing new was needed to make that true.
@@ -6028,11 +6028,16 @@ const CHAT_FN = 'https://mytravelhub.netlify.app/.netlify/functions/tripchat';
 
 // Same start-and-poll shape as the itinerary import: an ordinary function takes the call
 // (its CORS headers survive) and hands off to a background one that has room to think.
-async function askTripChat(trip, history) {
+async function askTripChat(trip, history, session) {
   const jobId = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  // The trip id and a live token travel with the question so the function can establish
+  // for itself whether this person captains this trip, and may therefore use web search.
+  // Deliberately not a flag set here: the browser is not where that decision belongs.
+  const s = await freshSession(session, null);
   const started = await fetch(CHAT_FN, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jobId, summary: tripSummaryForChat(trip), history }),
+    body: JSON.stringify({ jobId, tripId: trip.id, authToken: (s && s.accessToken) || '',
+      summary: tripSummaryForChat(trip), history }),
   });
   if (!started.ok && started.status !== 202) throw new Error('The assistant could not be reached (error ' + started.status + ').');
 
@@ -6053,7 +6058,7 @@ async function askTripChat(trip, history) {
 }
 
 // ---- Trip assistant: ask for a change in words, approve it before it happens ----
-function TripChat({ trip, onClose, onApply }) {
+function TripChat({ trip, session, canSearch = false, onClose, onApply }) {
   const [turns, setTurns] = useState([]);      // { role, text, resolved? }
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -6068,11 +6073,11 @@ function TripChat({ trip, onClose, onApply }) {
     setDraft('');
     setBusy(true);
     try {
-      const out = await askTripChat(trip, history);
+      const out = await askTripChat(trip, history, session);
       // Resolved against the trip here, not taken on trust: the preview below is built
       // from what would actually happen, never from the assistant's description of it.
       const resolved = out.status === 'proposed' ? resolveChatEdits(trip, out.edits) : [];
-      setTurns(t => [...t, { role:'assistant', text: out.reply || '', resolved }]);
+      setTurns(t => [...t, { role:'assistant', text: out.reply || '', resolved, finds: out.finds || [] }]);
     } catch (e) {
       setTurns(t => [...t, { role:'assistant', text: (e && e.message) || 'Something went wrong.', resolved:[], failed:true }]);
     } finally { setBusy(false); }
@@ -6118,6 +6123,7 @@ function TripChat({ trip, onClose, onApply }) {
               “what time do we land in Dubai?”<br />
               “move the desert safari to 4pm”<br />
               “the Mumbai leg is a flight, not a drive”
+              {canSearch && <><br />“good places to eat near the hotel on Friday”</>}
             </div>
             <div style={{ marginTop:14, fontSize:11.5, color:'#8A7A6D' }}>Nothing changes until you approve it.</div>
           </div>
@@ -6126,6 +6132,26 @@ function TripChat({ trip, onClose, onApply }) {
         {turns.map((t, i) => (
           <div key={i} style={{ display:'flex', flexDirection:'column', gap:7, alignItems: t.role === 'user' ? 'flex-end' : 'flex-start' }}>
             <div style={{ ...bubble(t.role === 'user'), ...(t.failed ? { color:'#B54030', background:'#FBE9E4', border:'1px solid #E8C0B4' } : {}) }}>{t.text}</div>
+
+            {t.finds && t.finds.length > 0 && (
+              <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:7 }}>
+                {t.finds.map((f, n) => (
+                  <div key={n} style={{ border:'1px solid #D9CBB8', borderRadius:12, background:'#FFFDF8', padding:'10px 11px' }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:'#3D2E26' }}>{f.name}</div>
+                    {f.what && <div style={{ fontSize:12, color:'#6B5A50', marginTop:3, lineHeight:1.45 }}>{f.what}</div>}
+                    {f.where && <div style={{ fontSize:11.5, color:'#8A7A6D', marginTop:3 }}>◎ {f.where}</div>}
+                    {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer"
+                      style={{ display:'inline-block', marginTop:7, fontSize:12, fontWeight:700, color:'#6E1A10',
+                        textDecoration:'none', border:'1px solid #D9CBB8', borderRadius:8, padding:'6px 10px' }}>Open ↗</a>}
+                  </div>
+                ))}
+                {/* Booking happens in their own browser, with their own card. The app's
+                    part starts again when the confirmation comes back as a document. */}
+                <div style={{ fontSize:11, color:'#8A7A6D', padding:'0 2px', lineHeight:1.5 }}>
+                  Book these yourself, then upload the confirmation — the app will read it onto the schedule.
+                </div>
+              </div>
+            )}
 
             {t.resolved && t.resolved.length > 0 && (
               <div style={{ width:'100%', border:'1px solid #D6C3B2', borderRadius:12, background:'#FFFDF8', padding:'10px 11px' }}>
