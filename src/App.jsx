@@ -5782,7 +5782,7 @@ function applyChatEdits(trip, resolved) {
       const d = ensureDay(r.date);
       if (r.target === 'task') d.tasks.push({ id: uid(), time: r.fields.time || '', text: r.fields.text || '', assignees: r.assignees || [], status: 'todo' });
       else d.events.push({ id: uid(), time: r.fields.time || '', endTime: r.fields.endTime || '', title: r.fields.title || '',
-        location: r.fields.location || '', locationLink: '', category: r.fields.category || 'Sightseeing',
+        location: r.fields.location || '', locationLink: r.fields.locationLink || '', category: r.fields.category || 'Sightseeing',
         assignees: r.assignees || [], activities: [], docs: [] });
       return;
     }
@@ -6057,11 +6057,18 @@ async function askTripChat(trip, history, session) {
   throw new Error('That took longer than expected. Try again, or ask for less at once.');
 }
 
+const findFieldWrap = { flex:1, minWidth:0, display:'flex', flexDirection:'column', gap:3,
+  fontSize:10, fontWeight:800, letterSpacing:'0.06em', textTransform:'uppercase', color:'#8A7A6D' };
+const findInput = { width:'100%', boxSizing:'border-box', padding:'8px 9px', border:'1px solid #DCCDBE',
+  borderRadius:8, fontSize:12.5, color:'#3D2E26', background:'#fff', fontFamily:'inherit' };
+
 // ---- Trip assistant: ask for a change in words, approve it before it happens ----
 function TripChat({ trip, session, canSearch = false, onClose, onApply }) {
   const [turns, setTurns] = useState([]);      // { role, text, resolved? }
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(null);   // the card being placed on a day
+  const [added, setAdded] = useState({});       // which cards already went on, and when
   const endRef = useRef(null);
   useEffect(() => { if (endRef.current) endRef.current.scrollIntoView({ behavior:'smooth' }); }, [turns, busy]);
 
@@ -6081,6 +6088,32 @@ function TripChat({ trip, session, canSearch = false, onClose, onApply }) {
     } catch (e) {
       setTurns(t => [...t, { role:'assistant', text: (e && e.message) || 'Something went wrong.', resolved:[], failed:true }]);
     } finally { setBusy(false); }
+  };
+
+  // Days the trip already has, so the form opens on a date that means something.
+  const tripDays = [...new Set((trip.days || []).map(d => (d.date || '').slice(0, 10)).filter(Boolean))].sort();
+  const openAdd = (key, f) => setAdding({
+    key, date: tripDays[0] || (trip.startDate || '').slice(0, 10) || '',
+    time: '', endTime: '', title: f.name || '', location: f.where || '',
+    category: 'Food', url: f.url || '',
+  });
+
+  // Built here rather than asked of the assistant: the app knows the day and the time,
+  // and a second round trip could only get them wrong. It goes through the same apply
+  // path as every other change, so the header's undo reverses it too.
+  const confirmAdd = () => {
+    const a = adding;
+    if (!a || !a.date || !a.title.trim()) return;
+    onApply([{
+      op:'add', target:'event', id:'', date:a.date, adds:true, label:a.title.trim(), changes:[],
+      fields: { time:a.time || '', endTime:a.endTime || '', title:a.title.trim(),
+        location:a.location || '', category:a.category, locationLink:a.url || '' },
+      // An item nobody is tagged on shows for nobody, so it would land on the schedule
+      // and then be invisible. Everyone is the recoverable default; retag on the tile.
+      assignees: (trip.members || []).map(m => m.userId),
+    }]);
+    setAdded(m => ({ ...m, [a.key]: a.date }));
+    setAdding(null);
   };
 
   const applyTurn = (i) => {
@@ -6140,9 +6173,51 @@ function TripChat({ trip, session, canSearch = false, onClose, onApply }) {
                     <div style={{ fontSize:13, fontWeight:800, color:'#3D2E26' }}>{f.name}</div>
                     {f.what && <div style={{ fontSize:12, color:'#6B5A50', marginTop:3, lineHeight:1.45 }}>{f.what}</div>}
                     {f.where && <div style={{ fontSize:11.5, color:'#8A7A6D', marginTop:3 }}>◎ {f.where}</div>}
-                    {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer"
-                      style={{ display:'inline-block', marginTop:7, fontSize:12, fontWeight:700, color:'#6E1A10',
-                        textDecoration:'none', border:'1px solid #D9CBB8', borderRadius:8, padding:'6px 10px' }}>Open ↗</a>}
+                    <div style={{ display:'flex', gap:7, marginTop:7, flexWrap:'wrap' }}>
+                      {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize:12, fontWeight:700, color:'#6E1A10', textDecoration:'none',
+                          border:'1px solid #D9CBB8', borderRadius:8, padding:'6px 10px' }}>Open ↗</a>}
+                      {added[`${i}-${n}`]
+                        ? <span style={{ fontSize:12, fontWeight:700, color:'#2F7A2F', padding:'6px 2px' }}>
+                            ✓ On {fmtDate(added[`${i}-${n}`])}
+                          </span>
+                        : <button type="button" onClick={()=>openAdd(`${i}-${n}`, f)}
+                            style={{ fontSize:12, fontWeight:700, color:'#fff', background:'#6E1A10', border:'none',
+                              borderRadius:8, padding:'7px 11px', cursor:'pointer' }}>＋ Add to schedule</button>}
+                    </div>
+
+                    {adding && adding.key === `${i}-${n}` && (
+                      <div style={{ marginTop:9, paddingTop:9, borderTop:'1px solid #EFE7DC', display:'grid', gap:7 }}>
+                        <div style={{ display:'flex', gap:7 }}>
+                          <label style={findFieldWrap}>Day
+                            <input type="date" value={adding.date} onChange={e=>setAdding(a=>({...a, date:e.target.value}))} style={findInput}/></label>
+                          <label style={findFieldWrap}>Start
+                            <input type="time" value={adding.time} onChange={e=>setAdding(a=>({...a, time:e.target.value}))} style={findInput}/></label>
+                          <label style={findFieldWrap}>End
+                            <input type="time" value={adding.endTime} onChange={e=>setAdding(a=>({...a, endTime:e.target.value}))} style={findInput}/></label>
+                        </div>
+                        <label style={findFieldWrap}>Title
+                          <input value={adding.title} onChange={e=>setAdding(a=>({...a, title:e.target.value}))} style={findInput}/></label>
+                        <label style={findFieldWrap}>Location
+                          <input value={adding.location} onChange={e=>setAdding(a=>({...a, location:e.target.value}))} style={findInput}/></label>
+                        <label style={findFieldWrap}>Category
+                          <select value={adding.category} onChange={e=>setAdding(a=>({...a, category:e.target.value}))} style={findInput}>
+                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select></label>
+                        <div style={{ fontSize:11, color:'#8A7A6D', lineHeight:1.45 }}>
+                          Everyone on the trip is tagged — change that on the schedule tile.
+                        </div>
+                        <div style={{ display:'flex', gap:7 }}>
+                          <button type="button" onClick={()=>setAdding(null)}
+                            style={{ flex:1, border:'1px solid #D9CBB8', background:'#fff', borderRadius:9, padding:'9px 10px',
+                              fontSize:12, fontWeight:700, color:'#6B5A50', cursor:'pointer' }}>Cancel</button>
+                          <button type="button" onClick={confirmAdd} disabled={!adding.date || !adding.title.trim()}
+                            style={{ flex:2, border:'none', borderRadius:9, padding:'9px 10px', fontSize:12, fontWeight:800, color:'#fff',
+                              background: (!adding.date || !adding.title.trim()) ? '#C6B8AC' : '#6E1A10',
+                              cursor: (!adding.date || !adding.title.trim()) ? 'default' : 'pointer' }}>Add to schedule</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {/* Booking happens in their own browser, with their own card. The app's
