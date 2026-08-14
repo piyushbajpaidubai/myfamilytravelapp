@@ -6053,7 +6053,13 @@ async function askTripChat(trip, history, session, onProgress) {
     } catch (e) { /* a dropped poll is not a failure — try again */ }
     if (!rec) continue;
     if (rec.status === 'not-configured') throw new Error('The assistant isn’t switched on yet.');
-    if (rec.status === 'error') throw new Error(rec.error || 'Could not answer that.');
+    if (rec.status === 'error') {
+      // An API-side failure is worth another attempt; one this function raised about the
+      // request itself is not, and offering a retry for it would only waste the tap.
+      const err = new Error(rec.error || 'Could not answer that.');
+      err.retryable = !!rec.retryable;
+      throw err;
+    }
     if (rec.status === 'done' && rec.data) return rec.data;
     if (onProgress) onProgress(rec);
   }
@@ -6076,15 +6082,15 @@ function TripChat({ trip, session, canSearch = false, onClose, onApply }) {
   const endRef = useRef(null);
   useEffect(() => { if (endRef.current) endRef.current.scrollIntoView({ behavior:'smooth' }); }, [turns, busy]);
 
-  const send = async () => {
-    const text = draft.trim();
-    if (!text || busy) return;
-    const history = [...turns.map(t => ({ role:t.role, text:t.text })), { role:'user', text }];
-    setTurns(t => [...t, { role:'user', text }]);
-    setDraft('');
+  // Asking and asking again are the same thing; the only difference is whether the answer
+  // lands at the end or replaces a turn that failed. The history that produced a failure
+  // is kept on it, so retrying re-asks exactly the question that did not get through.
+  const run = async (history, replaceAt) => {
     setBusy(true);
     setProgress(null);
     const askedAt = Date.now();
+    const land = (turn) => setTurns(ts => replaceAt == null
+      ? [...ts, turn] : ts.map((t, k) => k === replaceAt ? turn : t));
     try {
       const out = await askTripChat(trip, history, session, rec => setProgress({
         searches: rec.searches || 0, seconds: Math.round((Date.now() - askedAt) / 1000),
@@ -6092,10 +6098,29 @@ function TripChat({ trip, session, canSearch = false, onClose, onApply }) {
       // Resolved against the trip here, not taken on trust: the preview below is built
       // from what would actually happen, never from the assistant's description of it.
       const resolved = out.status === 'proposed' ? resolveChatEdits(trip, out.edits) : [];
-      setTurns(t => [...t, { role:'assistant', text: out.reply || '', resolved, finds: out.finds || [] }]);
+      land({ role:'assistant', text: out.reply || '', resolved, finds: out.finds || [] });
     } catch (e) {
-      setTurns(t => [...t, { role:'assistant', text: (e && e.message) || 'Something went wrong.', resolved:[], failed:true }]);
+      land({ role:'assistant', text: (e && e.message) || 'Something went wrong.',
+        resolved: [], failed: true, retryable: !!(e && e.retryable), askedWith: history });
     } finally { setBusy(false); setProgress(null); }
+  };
+
+  const send = async () => {
+    const text = draft.trim();
+    if (!text || busy) return;
+    // A failed turn carries an apology, not an answer. Sending it back as conversation
+    // would have the assistant reasoning about its own outage.
+    const history = [...turns.filter(t => !t.failed).map(t => ({ role:t.role, text:t.text })),
+      { role:'user', text }];
+    setTurns(t => [...t, { role:'user', text }]);
+    setDraft('');
+    run(history);
+  };
+
+  const retry = (i) => {
+    const turn = turns[i];
+    if (!turn || !turn.askedWith || busy) return;
+    run(turn.askedWith, i);
   };
 
   // Days the trip already has, so the form opens on a date that means something.
@@ -6173,6 +6198,11 @@ function TripChat({ trip, session, canSearch = false, onClose, onApply }) {
         {turns.map((t, i) => (
           <div key={i} style={{ display:'flex', flexDirection:'column', gap:7, alignItems: t.role === 'user' ? 'flex-end' : 'flex-start' }}>
             <div style={{ ...bubble(t.role === 'user'), ...(t.failed ? { color:'#B54030', background:'#FBE9E4', border:'1px solid #E8C0B4' } : {}) }}>{t.text}</div>
+            {t.failed && t.retryable && t.askedWith && !busy && (
+              <button type="button" onClick={()=>retry(i)}
+                style={{ border:'1px solid #E8C0B4', background:'#fff', color:'#B54030', borderRadius:9,
+                  padding:'7px 12px', fontSize:12, fontWeight:700, cursor:'pointer' }}>Try again</button>
+            )}
 
             {t.finds && t.finds.length > 0 && (
               <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:7 }}>

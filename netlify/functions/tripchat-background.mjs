@@ -155,6 +155,23 @@ async function callerIsTripCaptain(authToken, tripId) {
   }
 }
 
+// The SDK puts the raw response body in .message, so an upstream hiccup reached the
+// traveller as a wall of JSON. Anything carrying a status came from the API and is said
+// in plain words here; anything else is a message this function wrote for itself, and is
+// already in plain words — unless it too looks like JSON, in which case it is not shown.
+function friendlyError(e) {
+  const status = e && (e.status || e.statusCode);
+  if (!status) {
+    const m = String((e && e.message) || '');
+    return (!m.trim() || m.trim().startsWith('{')) ? 'Could not answer that.' : m;
+  }
+  if (status === 429) return 'The assistant is being asked for a lot right now. Give it a minute and try again.';
+  if (status === 529 || status >= 500) return 'The assistant is unusually busy at the moment — this is at their end, not yours. Try again in a moment.';
+  if (status === 401 || status === 403) return 'The assistant is not set up correctly on the server.';
+  if (status === 400) return 'That request could not be processed. Try putting it a different way.';
+  return 'Could not answer that.';
+}
+
 // The JSON lives in a text block, but with search on it is not the only block in the
 // message — tool calls and their results sit alongside it. Take the first block that
 // parses into the shape we asked for rather than assuming a position.
@@ -189,7 +206,11 @@ export default async (req) => {
 
     const maySearch = await callerIsTripCaptain(body && body.authToken, body && body.tripId);
 
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    // Two retries is the SDK default and is not enough for a transient overload — the
+    // failure is momentary and backs off exponentially, so a few more attempts turn a
+    // dead end into a slightly slower answer. There is a background function's fifteen
+    // minutes to spend, and the app waits three.
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 5 });
     const messages = [
       // The schedule leads, and it is the same every turn within a conversation, so it
       // sits where the cache can hold it — which it now actually does. The breakpoint was
@@ -269,7 +290,7 @@ export default async (req) => {
       secondsTaken: Math.round((Date.now() - startedAt) / 1000),
     });
   } catch (e) {
-    await write({ status:'error', error: (e && e.message) || 'Could not answer that.',
+    await write({ status:'error', error: friendlyError(e), retryable: !!(e && (e.status || e.statusCode)),
       secondsTaken: Math.round((Date.now() - startedAt) / 1000) });
   }
   return new Response('', { status: 202 });
