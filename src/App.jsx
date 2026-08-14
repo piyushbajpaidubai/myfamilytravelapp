@@ -6028,7 +6028,7 @@ const CHAT_FN = 'https://mytravelhub.netlify.app/.netlify/functions/tripchat';
 
 // Same start-and-poll shape as the itinerary import: an ordinary function takes the call
 // (its CORS headers survive) and hands off to a background one that has room to think.
-async function askTripChat(trip, history, session) {
+async function askTripChat(trip, history, session, onProgress) {
   const jobId = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   // The trip id and a live token travel with the question so the function can establish
   // for itself whether this person captains this trip, and may therefore use web search.
@@ -6041,7 +6041,9 @@ async function askTripChat(trip, history, session) {
   });
   if (!started.ok && started.status !== 202) throw new Error('The assistant could not be reached (error ' + started.status + ').');
 
-  const deadline = Date.now() + 2 * 60000;
+  // Three minutes rather than two. A turn that searches runs longer than one that only
+  // reads the schedule, and giving up at two threw away work already paid for.
+  const deadline = Date.now() + 3 * 60000;
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 2000));
     let rec = null;
@@ -6053,6 +6055,7 @@ async function askTripChat(trip, history, session) {
     if (rec.status === 'not-configured') throw new Error('The assistant isn’t switched on yet.');
     if (rec.status === 'error') throw new Error(rec.error || 'Could not answer that.');
     if (rec.status === 'done' && rec.data) return rec.data;
+    if (onProgress) onProgress(rec);
   }
   throw new Error('That took longer than expected. Try again, or ask for less at once.');
 }
@@ -6067,6 +6070,7 @@ function TripChat({ trip, session, canSearch = false, onClose, onApply }) {
   const [turns, setTurns] = useState([]);      // { role, text, resolved? }
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(null); // what the running turn is up to
   const [adding, setAdding] = useState(null);   // the card being placed on a day
   const [added, setAdded] = useState({});       // which cards already went on, and when
   const endRef = useRef(null);
@@ -6079,15 +6083,19 @@ function TripChat({ trip, session, canSearch = false, onClose, onApply }) {
     setTurns(t => [...t, { role:'user', text }]);
     setDraft('');
     setBusy(true);
+    setProgress(null);
+    const askedAt = Date.now();
     try {
-      const out = await askTripChat(trip, history, session);
+      const out = await askTripChat(trip, history, session, rec => setProgress({
+        searches: rec.searches || 0, seconds: Math.round((Date.now() - askedAt) / 1000),
+      }));
       // Resolved against the trip here, not taken on trust: the preview below is built
       // from what would actually happen, never from the assistant's description of it.
       const resolved = out.status === 'proposed' ? resolveChatEdits(trip, out.edits) : [];
       setTurns(t => [...t, { role:'assistant', text: out.reply || '', resolved, finds: out.finds || [] }]);
     } catch (e) {
       setTurns(t => [...t, { role:'assistant', text: (e && e.message) || 'Something went wrong.', resolved:[], failed:true }]);
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setProgress(null); }
   };
 
   // Days the trip already has, so the form opens on a date that means something.
@@ -6266,7 +6274,14 @@ function TripChat({ trip, session, canSearch = false, onClose, onApply }) {
           </div>
         ))}
 
-        {busy && <div style={{ ...bubble(false), color:'#8A7A6D' }}>Thinking…</div>}
+        {busy && (
+          <div style={{ ...bubble(false), color:'#8A7A6D' }}>
+            {progress && progress.searches
+              ? `Searching the web — ${progress.searches} search${progress.searches === 1 ? '' : 'es'} so far`
+              : 'Thinking…'}
+            {progress && progress.seconds >= 10 ? ` · ${progress.seconds}s` : ''}
+          </div>
+        )}
         <div ref={endRef} />
       </div>
 

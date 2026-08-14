@@ -28,7 +28,11 @@ export const jobKey = (id) => String(id || '').replace(/[^A-Za-z0-9_-]/g, '').sl
 const USD_PER_INPUT_TOKEN  = 5 / 1e6;
 const USD_PER_OUTPUT_TOKEN = 25 / 1e6;
 const USD_PER_SEARCH       = 0.01;
-const MAX_SEARCHES_PER_TURN = 8;   // bounds one question, not the trip
+// Four is enough to answer "where is the nearest X" well and keeps the turn inside the
+// time a person will actually wait. Eight searches plus four page reads regularly ran
+// past two minutes, which the app read as a failure.
+const MAX_SEARCHES_PER_TURN = 4;
+const MAX_FETCHES_PER_TURN = 2;
 const MAX_CONTINUATIONS = 4;       // pause_turn resumes before giving up
 
 const OP_FIELDS = {
@@ -188,8 +192,11 @@ export default async (req) => {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const messages = [
       // The schedule leads, and it is the same every turn within a conversation, so it
-      // sits where the cache can hold it. The person's messages follow.
-      { role:'user', content: `Here is the trip as it stands.\n\n${summary}` },
+      // sits where the cache can hold it — which it now actually does. The breakpoint was
+      // described here from the start but never set, so every turn re-read the whole
+      // schedule at full price and full latency.
+      { role:'user', content: [{ type:'text', text: `Here is the trip as it stands.\n\n${summary}`,
+        cache_control: { type:'ephemeral' } }] },
       { role:'assistant', content: 'Got it — I have the schedule. What would you like to do?' },
       ...history.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text || '').slice(0, 4000) })),
     ];
@@ -198,26 +205,40 @@ export default async (req) => {
       model: 'claude-opus-5',
       max_tokens: maySearch ? 16000 : 8000,
       system: maySearch ? BASE_SYSTEM + SEARCH_SYSTEM : BASE_SYSTEM,
-      // Searching is agentic work and goes badly at low effort — the model stops
-      // reaching for the tool. Without search this stays the cheap schema-filling job
-      // it has always been.
-      output_config: { effort: maySearch ? 'high' : 'low', format: { type:'json_schema', schema: SCHEMA } },
+      // Searching still needs more than the schema-filling job does — at low effort the
+      // model stops reaching for the tool at all — but high was wrong. This model
+      // respects effort strictly, and at high it deliberated its way past the two
+      // minutes the app waits. Medium finds a coffee shop just as well, far quicker.
+      output_config: { effort: maySearch ? 'medium' : 'low', format: { type:'json_schema', schema: SCHEMA } },
       ...(maySearch ? { tools: [
         { type:'web_search_20260209', name:'web_search', max_uses: MAX_SEARCHES_PER_TURN },
-        { type:'web_fetch_20260209', name:'web_fetch', max_uses: 4 },
+        { type:'web_fetch_20260209', name:'web_fetch', max_uses: MAX_FETCHES_PER_TURN },
       ] } : {}),
     };
 
     // A turn that uses server-side tools can stop with pause_turn when the server's own
     // loop hits its limit. Re-sending with the partial assistant turn appended resumes it.
     let msg = null;
-    const totals = { input_tokens:0, output_tokens:0, searches:0, fetches:0 };
+    let seen = 0;
+    const totals = { input_tokens:0, output_tokens:0, cache_write:0, cache_read:0, searches:0, fetches:0 };
     for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
       const run = client.messages.stream({ ...request, messages });
+      // The stream is consumed only to report progress. A search turn takes long enough
+      // that an unchanging "Thinking…" reads as a hang, and the app has nothing else to
+      // go on — it is polling a blob, not holding a connection.
+      for await (const ev of run) {
+        if (ev.type === 'content_block_start' && ev.content_block
+            && ev.content_block.type === 'server_tool_use') {
+          seen++;
+          write({ status:'working', phase:'searching', searches: seen }).catch(() => {});
+        }
+      }
       msg = await run.finalMessage();
       const u = msg.usage || {};
       totals.input_tokens += u.input_tokens || 0;
       totals.output_tokens += u.output_tokens || 0;
+      totals.cache_write += u.cache_creation_input_tokens || 0;
+      totals.cache_read += u.cache_read_input_tokens || 0;
       totals.searches += (u.server_tool_use && u.server_tool_use.web_search_requests) || 0;
       totals.fetches += (u.server_tool_use && u.server_tool_use.web_fetch_requests) || 0;
       if (msg.stop_reason !== 'pause_turn') break;
@@ -234,7 +255,11 @@ export default async (req) => {
     if (!Array.isArray(data.finds)) data.finds = [];
 
     // Recorded per turn so real usage can be measured before any budget is set on it.
+    // Cache writes cost about a quarter more than plain input; cache reads about a tenth
+    // of it. Counting them at flat input price would overstate a cached turn badly.
     const cost = totals.input_tokens * USD_PER_INPUT_TOKEN
+      + totals.cache_write * USD_PER_INPUT_TOKEN * 1.25
+      + totals.cache_read * USD_PER_INPUT_TOKEN * 0.1
       + totals.output_tokens * USD_PER_OUTPUT_TOKEN
       + totals.searches * USD_PER_SEARCH;
 
