@@ -3821,9 +3821,16 @@ function SwipeableTabPanels({ activeTab, onChange, renderTab, slideTo }) {
   // opened from inside a tab (Add Task, Add Activity...) inside this clipped frame.
   const sliding = motion.offset !== 0 || targetIndex != null || motion.animate;
 
+  // The assistant button is fixed over the bottom-right corner, so without room to scroll
+  // past it the last thing on any tab sits underneath it — which is how the flight card's
+  // Refresh link became untappable. 58px of button, its own offset, and a margin so
+  // nothing merely touches it.
+  const clearOfAssistant = 'calc(env(safe-area-inset-bottom, 0px) + 92px)';
+
   return (
     <div ref={frameRef} onPointerDown={onPointerStart} onPointerMove={onPointerMove} onPointerUp={onPointerEnd} onPointerCancel={onPointerEnd}
-      style={{ position:'relative', overflow: sliding ? 'hidden' : 'visible', touchAction:'pan-y' }}>
+      style={{ position:'relative', overflow: sliding ? 'hidden' : 'visible', touchAction:'pan-y',
+        paddingBottom: clearOfAssistant }}>
       <div style={{ position:'relative', transform: sliding ? `translate3d(${motion.offset}px,0,0)` : 'none', transition, willChange: motion.offset ? 'transform' : 'auto' }}>
         {renderTab(activeTab)}
       </div>
