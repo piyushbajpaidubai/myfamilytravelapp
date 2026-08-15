@@ -25,6 +25,22 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Two apps from one codebase. They differ in identity and in which backend they talk
+    // to, never in source. `travel` keeps the original applicationId — changing it would
+    // make every installed copy unable to update, since Android treats a different
+    // package as a different app entirely.
+    flavorDimensions "app"
+    productFlavors {
+        travel {
+            dimension "app"
+            applicationId "mytravelhub.app"
+        }
+        school {
+            dimension "app"
+            applicationId "schooltrips.app"
+        }
+    }
+
     signingConfigs {
         release {
             if (keystorePropsFile.exists()) {
@@ -41,6 +57,29 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             if (keystorePropsFile.exists()) {
                 signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+// `npx cap sync` copies the web bundle into one shared assets directory, so assembling
+// the school app straight after building the travel one would package the travel app
+// under the school's name — silently, and pointing at the travel database. The web build
+// stamps which variant it is; refuse the mismatch rather than ship it.
+android.applicationVariants.all { variant ->
+    def flavour = variant.flavorName
+    variant.mergeAssetsProvider.configure { task ->
+        task.doFirst {
+            def stamp = file("src/main/assets/public/variant.txt")
+            def rebuild = "  node scripts/build-variant.mjs ${flavour} && npx cap sync android"
+            if (stamp.exists()) {
+                def built = stamp.text.trim()
+                if (built != flavour) throw new GradleException(
+                    "The web bundle in assets was built as '${built}', but this is the '${flavour}' app.\n" + rebuild)
+            } else if (flavour == "school") {
+                // No stamp means a plain `npm run build`, which is the travel app.
+                throw new GradleException(
+                    "The web bundle carries no variant stamp, so it is the travel app.\n" + rebuild)
             }
         }
     }

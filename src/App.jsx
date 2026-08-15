@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Geolocation } from "@capacitor/geolocation";
+import { BRAND, FN } from "./brand";
 
 const TABS = ["Status", "Schedule", "Budget", "Documents"];
 const CATEGORIES = ["Transport", "Hotel", "Food", "Sightseeing", "Other"];
@@ -162,7 +163,7 @@ const gmapsNavUrl = (to) =>
 // no key, flight not in the feed, quota spent, offline — the card falls back to the
 // times the traveller typed and says so. It never invents a status.
 
-const FLIGHT_FN = 'https://mytravelhub.netlify.app/.netlify/functions/flightstatus';
+const FLIGHT_FN = FN('flightstatus');
 
 const FLIGHT_PHASE = {
   scheduled:  { label:'SCHEDULED',      tone:'#6E655B' },
@@ -260,7 +261,7 @@ async function fetchFlightStatus(travel, dayISO) {
 // A page can't read another tab's URL, so the round-trip is: open Maps → build the
 // route there → copy the link → paste it back here. These helpers turn that pasted
 // link into { from, to }.
-const RESOLVE_FN = 'https://mytravelhub.netlify.app/.netlify/functions/resolvelink';
+const RESOLVE_FN = FN('resolvelink');
 const isShortMapsLink = (u) => u.hostname === 'maps.app.goo.gl' || (u.hostname === 'goo.gl' && /^\/maps/.test(u.pathname));
 const isGoogleHost = (h) => h === 'maps.app.goo.gl' || h === 'goo.gl' || /(^|\.)google\.[a-z.]{2,}$/.test(h);
 // Maps percent-encodes and uses '+' for spaces in the path form.
@@ -2883,8 +2884,8 @@ function StatusTab({ trip, session, update, shareUrl, canUpdateOthers=true, focu
 }
 
 // Supabase cloud sync helpers
-const SUPA_URL = 'https://lafpiwlpjvongtdtzuam.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhZnBpd2xwanZvbmd0ZHR6dWFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyNjUyNDgsImV4cCI6MjA5Njg0MTI0OH0.cdDldzH4xrPYWZgdqeYOCBk7u34CtZWT6L2ldx3qYRk';
+const SUPA_URL = BRAND.supabaseUrl;
+const SUPA_KEY = BRAND.supabaseAnonKey;
 const supaHeaders = { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY };
 async function loadFromCloud() {
   try {
@@ -2957,8 +2958,8 @@ const gmapsPinUrl = (lat, lon) => 'https://www.google.com/maps?q=' + lat + ',' +
 // the notify() Netlify function's env. The send-function lives at the public
 // Netlify domain (works when the traveler is on the phone app too).
 const VAPID_PUBLIC = 'BAa-b04xoM_bBMoDI5swB7prW9uWkVr1AchqETMVemZC0u-SP_BCooth8VYx00K_dsBn5WiTklpT3ERzjoj4_gc';
-const NOTIFY_FN = 'https://mytravelhub.netlify.app/.netlify/functions/notify';
-const SUBSCRIBE_FN = 'https://mytravelhub.netlify.app/.netlify/functions/subscribe';
+const NOTIFY_FN = FN('notify');
+const SUBSCRIBE_FN = FN('subscribe');
 const pushSupported = () => typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 const urlB64ToU8 = (b64) => {
   const pad = '='.repeat((4 - (b64.length % 4)) % 4);
@@ -3316,9 +3317,9 @@ function ViewerHome({ session, profile, trips, onOpenAccount }) {
     <div style={{ fontFamily:'var(--font-body)', maxWidth:680, margin:'0 auto', minHeight:'100vh', background:'#F0EBE0', paddingBottom:'env(safe-area-inset-bottom, 0px)', color:'#6E1A10' }}>
       <div style={{ background:'#5C1A1A', boxShadow:'0 2px 12px rgba(0,0,0,0.18)' }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, padding:'calc(env(safe-area-inset-top, 0px) + 16px) 20px 14px' }}>
-          <img src="/logo-travelhub.png" alt="My Travel Hub" width="38" height="38" style={{ borderRadius:9, flexShrink:0, display:'block' }} />
+          <img src={BRAND.logo} alt={BRAND.appName} width="38" height="38" style={{ borderRadius:9, flexShrink:0, display:'block' }} />
           <div style={{ flex:1, minWidth:0 }}>
-            <h1 style={{ margin:0, fontSize:18, fontWeight:800, color:'#F5ECD7', letterSpacing:'0.03em', textTransform:'uppercase', lineHeight:1.15 }}>My Travel Hub</h1>
+            <h1 style={{ margin:0, fontSize:18, fontWeight:800, color:'#F5ECD7', letterSpacing:'0.03em', textTransform:'uppercase', lineHeight:1.15 }}>{BRAND.appName}</h1>
             <p style={{ margin:'2px 0 0', fontSize:10.5, color:'rgba(245,236,215,0.6)', letterSpacing:'0.08em', textTransform:'uppercase' }}>Viewer</p>
           </div>
           <button onClick={onOpenAccount} title={`Signed in as ${(session && session.name) || ''}`} aria-label="Account"
@@ -3454,9 +3455,9 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
       {wide && (
         <aside style={{ width: 244, flexShrink: 0, background: '#5C1A1A', color: '#F5ECD7', display: 'flex', flexDirection: 'column', padding: '22px 14px 18px', position: 'sticky', top: 0, height: '100vh', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px 22px' }}>
-            <img src="/logo-travelhub.png" alt="" width="38" height="38" style={{ borderRadius: 10, flexShrink: 0, display: 'block' }} />
+            <img src={BRAND.logo} alt="" width="38" height="38" style={{ borderRadius: 10, flexShrink: 0, display: 'block' }} />
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 19, fontWeight: 800, lineHeight: 1.15 }}>My Travel Hub</div>
+              <div style={{ fontSize: 19, fontWeight: 800, lineHeight: 1.15 }}>{BRAND.appName}</div>
               <div style={{ fontSize: 10.5, color: 'rgba(245,236,215,0.55)', marginTop: 3, lineHeight: 1.35 }}>Every Trip, Every Document, Everyone</div>
             </div>
           </div>
@@ -3494,9 +3495,9 @@ function Dashboard({ session, profile, trips, canCreate=true, onOpenTrip, onOpen
         ) : (
           <div style={{ background: '#5C1A1A', boxShadow: '0 2px 12px rgba(0,0,0,0.18)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(env(safe-area-inset-top, 0px) + 14px) 16px 12px' }}>
-              <img src="/logo-travelhub.png" alt="" width="34" height="34" style={{ borderRadius: 9, display: 'block', flexShrink: 0 }} />
+              <img src={BRAND.logo} alt="" width="34" height="34" style={{ borderRadius: 9, display: 'block', flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 17.5, fontWeight: 800, color: '#F5ECD7', lineHeight: 1.15 }}>My Travel Hub</div>
+                <div style={{ fontSize: 17.5, fontWeight: 800, color: '#F5ECD7', lineHeight: 1.15 }}>{BRAND.appName}</div>
                 <div style={{ fontSize: 9.5, color: 'rgba(245,236,215,0.55)', letterSpacing: '0.04em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.35 }}>Every Trip, Every Document, Everyone</div>
               </div>
               {canCreate && (
@@ -4255,7 +4256,7 @@ function MainApp() {
     return <StatusTab trip={trip} session={session} update={p=>updateTrip(trip.id,p)} canUpdateOthers={isTripCaptain(trip)}
       focusIds={focusTravellers}
       sharingLoc={sharingTripId===trip.id} onToggleShare={()=>toggleSharing(trip.id)}
-      shareUrl={`https://mytravelhub.netlify.app/?view=${trip.id}${trip.shareToken ? `&k=${encodeURIComponent(trip.shareToken)}` : ''}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />;
+      shareUrl={`${BRAND.site}/?view=${trip.id}${trip.shareToken ? `&k=${encodeURIComponent(trip.shareToken)}` : ''}${!isTripCaptain(trip) && session ? `&t=${encodeURIComponent(session.userId)}` : ''}`} />;
   };
 
   // ── Landing page for logged-out visitors ──
@@ -4271,8 +4272,8 @@ function MainApp() {
       <div style={{ fontFamily:"var(--font-body)", maxWidth:680, margin:"0 auto", minHeight:"100vh", background:"#F0EBE0", paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
         {/* Hero */}
         <div style={{ background:"radial-gradient(120% 90% at 50% 0%, #7A241A 0%, #5C1A1A 58%)", padding:"calc(env(safe-area-inset-top, 0px) + 56px) 24px 52px", textAlign:"center", boxShadow:"0 2px 18px rgba(0,0,0,0.22)" }}>
-          <img src="/logo-travelhub.png" alt="My Travel Hub" width="86" height="86" style={{ borderRadius:22, display:"block", margin:"0 auto 18px", boxShadow:"0 8px 26px rgba(0,0,0,0.32)" }} />
-          <h1 style={{ margin:0, fontSize:30, fontWeight:800, color:"#F5ECD7", letterSpacing:"0.06em", textTransform:"uppercase", lineHeight:1.1 }}>My Travel Hub</h1>
+          <img src={BRAND.logo} alt={BRAND.appName} width="86" height="86" style={{ borderRadius:22, display:"block", margin:"0 auto 18px", boxShadow:"0 8px 26px rgba(0,0,0,0.32)" }} />
+          <h1 style={{ margin:0, fontSize:30, fontWeight:800, color:"#F5ECD7", letterSpacing:"0.06em", textTransform:"uppercase", lineHeight:1.1 }}>{BRAND.appName}</h1>
           <p style={{ margin:"14px auto 0", fontSize:15.5, lineHeight:1.55, color:"rgba(245,236,215,0.82)", maxWidth:430 }}>
             Every trip, every document, everyone — in one place.
           </p>
@@ -4372,7 +4373,7 @@ function MainApp() {
         {/* Row 1: compact trip card (replaces the old title/tagline) — only when a trip is open */}
         {trip ? (
           <div style={{ display:"flex",alignItems:"center",gap:10,padding:"calc(env(safe-area-inset-top, 0px) + 14px) 16px 0" }}>
-            <img src="/logo-travelhub.png" alt="" width="34" height="34" style={{ flexShrink:0, borderRadius:8, display:"block" }} />
+            <img src={BRAND.logo} alt="" width="34" height="34" style={{ flexShrink:0, borderRadius:8, display:"block" }} />
             <div style={{ minWidth:0, flex:1 }}>
               <div style={{ fontSize:16, fontWeight:800, color:"#F5ECD7", lineHeight:1.15, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{trip.name || "Unnamed"}</div>
               <div style={{ fontSize:10.5, color:"rgba(245,236,215,0.72)", marginTop:2, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
@@ -4393,8 +4394,8 @@ function MainApp() {
           </div>
         ) : (
           <div style={{ display:"flex",alignItems:"center",gap:10,padding:"calc(env(safe-area-inset-top, 0px) + 16px) 20px 0" }}>
-            <img src="/logo-travelhub.png" alt="My Travel Hub" width="34" height="34" style={{ flexShrink:0, borderRadius:8, display:"block" }} />
-            <h1 style={{ margin:0,fontSize:19,fontWeight:800,color:"#F5ECD7",letterSpacing:"0.03em",lineHeight:1.15,textTransform:"uppercase" }}>My Travel Hub</h1>
+            <img src={BRAND.logo} alt={BRAND.appName} width="34" height="34" style={{ flexShrink:0, borderRadius:8, display:"block" }} />
+            <h1 style={{ margin:0,fontSize:19,fontWeight:800,color:"#F5ECD7",letterSpacing:"0.03em",lineHeight:1.15,textTransform:"uppercase" }}>{BRAND.appName}</h1>
           </div>
         )}
         {/* Row 2: action toolbar */}
@@ -5397,7 +5398,7 @@ function extractItineraryStub(trip) {
     ],
   };
 }
-const EXTRACT_FN = 'https://mytravelhub.netlify.app/.netlify/functions/extractitinerary';
+const EXTRACT_FN = FN('extractitinerary');
 const POLL_EVERY_MS = 2500;
 const POLL_FOR_MS = 5 * 60000;   // the reader has 15 minutes; well past this it is stuck
 
@@ -6031,7 +6032,7 @@ function ImportReview({ trip, doc, onClose, onApply }) {
   );
 }
 
-const CHAT_FN = 'https://mytravelhub.netlify.app/.netlify/functions/tripchat';
+const CHAT_FN = FN('tripchat');
 
 // Same start-and-poll shape as the itinerary import: an ordinary function takes the call
 // (its CORS headers survive) and hands off to a background one that has room to think.
@@ -6742,9 +6743,9 @@ function ViewerApp({ tripId, token, focusUserId }) {
     <div style={{ fontFamily:"var(--font-body)", maxWidth:680, margin:"0 auto", minHeight:"100vh", background:"#F0EBE0", paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
       <div style={{ background:"#5C1A1A", boxShadow:"0 2px 12px rgba(0,0,0,0.18)" }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top, 0px) + 16px) 20px 14px" }}>
-          <img src="/logo-travelhub.png" alt="My Travel Hub" width="34" height="34" style={{ borderRadius:8, flexShrink:0, display:"block" }} />
+          <img src={BRAND.logo} alt={BRAND.appName} width="34" height="34" style={{ borderRadius:8, flexShrink:0, display:"block" }} />
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:16, fontWeight:800, color:"#F5ECD7", letterSpacing:"0.03em", textTransform:"uppercase", lineHeight:1.1 }}>My Travel Hub</div>
+            <div style={{ fontSize:16, fontWeight:800, color:"#F5ECD7", letterSpacing:"0.03em", textTransform:"uppercase", lineHeight:1.1 }}>{BRAND.appName}</div>
             <div style={{ fontSize:10.5, color:"rgba(245,236,215,0.6)", letterSpacing:"0.1em", textTransform:"uppercase", marginTop:2 }}>Live trip status</div>
           </div>
           <span style={{ display:"inline-flex", alignItems:"center", gap:6, fontSize:11, fontWeight:700, color:"#A8E6A0", background:"rgba(125,184,122,0.18)", border:"1px solid rgba(125,184,122,0.5)", borderRadius:20, padding:"3px 10px" }}>
