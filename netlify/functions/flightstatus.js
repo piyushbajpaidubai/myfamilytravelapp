@@ -76,17 +76,37 @@ const hhmmAtOffset = (date, offMin) => {
   return String(t.getUTCHours()).padStart(2, '0') + ':' + String(t.getUTCMinutes()).padStart(2, '0');
 };
 
-// preferPredicted: AeroDataBox gives two forecasts per endpoint. `revisedTime` is the
-// airport's published figure; `predictedTime` is AeroDataBox's own. Observed on a live
-// EK507: the departure's revisedTime tracked reality while the arrival's did not — it
-// still implied a 2h29m flight on a 3h05m route after a 62-minute late departure, while
-// predictedTime had moved. So the arrival prefers predictedTime once airborne.
-const side = (mv, preferPredicted) => {
+// AeroDataBox gives up to three times per endpoint: `revisedTime` is the airport's
+// published figure, `predictedTime` is AeroDataBox's own forecast, `runwayTime` is the
+// actual wheels-up/wheels-down once it has happened.
+//
+// This used to prefer predictedTime for the arrival, on one observation of an EK507 whose
+// arrival revisedTime sat frozen at the scheduled time while predictedTime had moved.
+// Checked against a live BA198 (15 Aug 2026, verified minute by minute against
+// FlightAware) that turned out to be the wrong lesson:
+//
+//   mid-flight   revisedTime  17:37Z   →  6 minutes from the real touchdown
+//                predictedTime 18:18Z  → 35 minutes out, and it never moved all flight
+//
+// The distinguishing thing was not that arrivals differ. It was that EK507's revisedTime
+// was still EQUAL to the schedule, so it carried no information. When it has actually
+// moved it is the better figure, at both ends.
+const pickTime = (mv) => {
+  if (!mv) return null;
+  // Once it is on the ground this is fact, not a forecast.
+  if (mv.runwayTime) return mv.runwayTime;
+  const sched = (mv.scheduledTime && mv.scheduledTime.utc) || '';
+  const rev = (mv.revisedTime && mv.revisedTime.utc) || '';
+  if (rev && rev !== sched) return mv.revisedTime;
+  // Only when the airport's figure is merely echoing the schedule is AeroDataBox's own
+  // forecast the only signal there is.
+  return mv.predictedTime || mv.revisedTime || null;
+};
+
+const side = (mv) => {
   const airport = (mv && mv.airport) || {};
   const scheduled = mv && mv.scheduledTime;
-  const revised = (mv && (preferPredicted
-    ? (mv.predictedTime || mv.revisedTime)
-    : (mv.revisedTime || mv.predictedTime))) || null;
+  const revised = pickTime(mv);
   const schedHHMM = hhmm(scheduled);
   const revHHMM = hhmm(revised);
   return {
@@ -106,9 +126,11 @@ const side = (mv, preferPredicted) => {
 
 function normalise(flight) {
   const statusPhase = PHASE_BY_STATUS[flight.status] || 'scheduled';
-  const flying = statusPhase === 'airborne' || statusPhase === 'approaching';
-  const dep = side(flight.departure, false);
-  const arr = side(flight.arrival, flying);
+  // Both ends pick their time the same way now — being airborne no longer changes which
+  // field is trusted, only which of them has moved off the schedule. (That is why there
+  // is no longer a `flying` flag here: nothing downstream needed it.)
+  const dep = side(flight.departure);
+  const arr = side(flight.arrival);
 
   let phase = statusPhase;
   // A flight can be running late without the feed setting status=Delayed, which is how
