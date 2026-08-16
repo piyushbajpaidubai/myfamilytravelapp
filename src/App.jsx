@@ -2334,9 +2334,14 @@ function FlightTrackCard({ travel, dayISO }) {
           <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginTop:10, fontSize:10, color:'#A2917F' }}>
             {!data ? <span>{loading ? 'Checking…' : ''}</span> : data.live ? (
               <>
-                {/* The "updated N ago" line is gone from view, but the age is what tells
-                    you whether a reading is trustworthy — so it lives on the tooltip. */}
-                <span title={`Last updated ${fmtAgo(data.updatedAt)}`}>Source: {data.source}</span>
+                {/* The age is what tells you whether a reading is worth trusting, and it
+                    was on a tooltip — invisible on the phone this is mostly used on. A
+                    BA198 record was over four hours old mid-flight with nothing on screen
+                    to say so. Stale enough to mislead is shown in amber. */}
+                <span style={(Date.now() - data.updatedAt) > 30 * 60000
+                  ? { color:'#B07A2A', fontWeight:700 } : undefined}>
+                  Source: {data.source} · as of {fmtAgo(data.updatedAt)}
+                </span>
                 <button type="button" onClick={()=>setReloadTick(t=>t+1)} disabled={loading}
                   style={{ marginLeft:'auto', border:'none', background:'transparent', color:'#8B2A14', padding:0, fontSize:10, fontWeight:700, textDecoration:'underline', cursor: loading?'default':'pointer' }}>
                   {loading ? 'Checking…' : 'Refresh'}

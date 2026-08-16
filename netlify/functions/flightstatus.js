@@ -207,6 +207,13 @@ function normalise(flight) {
   else if (phase === 'landed') {
     if (arrDelay != null && arrDelay >= 10) note = `Arrived about ${lateText(arrDelay)} late.`;
   }
+  // Once it is off the ground the departure delay is history, and saying it is actively
+  // misleading: BA198 left 59 minutes late and landed 28 late, so the card announced a
+  // delay twice the one that mattered for nine hours. What a person meeting the flight
+  // needs is when it now gets in — and if it is making the time up, nothing at all.
+  else if (phase === 'airborne' || phase === 'approaching') {
+    if (arrDelay != null && arrDelay >= 10) note = `Arriving about ${lateText(arrDelay)} late.`;
+  }
   else if (depDelay != null && depDelay >= 5) note = `Departure is running about ${lateText(depDelay)} late.`;
   else if (arrDelay != null && arrDelay >= 10) note = `Arrival is running about ${lateText(arrDelay)} late.`;
 
