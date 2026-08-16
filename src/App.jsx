@@ -4547,7 +4547,7 @@ function MainApp() {
           <SwipeableTabPanels activeTab={activeTab} onChange={setActiveTab} renderTab={renderTripTab} slideTo={slideTo} />
           <button type="button" onClick={()=>setShowChat(true)}
             aria-label="Trip assistant" title="Ask the trip assistant"
-            style={{ position:'fixed', right:16, zIndex:150,
+            style={{ position:'fixed', right:16, zIndex:90,
               bottom:'calc(env(safe-area-inset-bottom, 0px) + 18px)',
               width:58, height:58, borderRadius:'50%', border:'none', padding:0, overflow:'hidden',
               background:'#6E1A10', color:'#F5ECD7', cursor:'pointer',
@@ -4660,8 +4660,6 @@ function MainApp() {
           trip={trip}
           session={session}
           rlsActive={cloudMode.current === 'rls'}
-          distress={trip.distress || {}}
-          onToggleDistress={(uid)=>toggleDistress(trip.id, uid)}
           onAdd={(m)=>addMember(trip.id, m)}
           onAddLocal={(name)=>addLocalMember(trip.id, name)}
           onRemove={(uid)=>removeMember(trip.id, uid)}
@@ -4867,7 +4865,7 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
 }
 
 // ---- Trip travelers: view the roster, add/remove by User ID ----
-function TravelersModal({ trip, session, rlsActive, distress = {}, onToggleDistress, onAdd, onAddLocal, onRemove, onAddViewer, onRemoveViewer, onSetRole, onNeedLogin, onClose }) {
+function TravelersModal({ trip, session, rlsActive, onAdd, onAddLocal, onRemove, onAddViewer, onRemoveViewer, onSetRole, onNeedLogin, onClose }) {
   const [userId, setUserId] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -4939,8 +4937,8 @@ function TravelersModal({ trip, session, rlsActive, distress = {}, onToggleDistr
         {members.map(m => {
           const isCaptainRole = m.userId === owner || m.role === 'captain';
           return (
-          <div key={m.userId} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid #E8E2D4' }}>
-            <div style={{ width:38, height:38, borderRadius:'50%', background:'#E8E2D4', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:16, fontWeight:700, color:'#B7A08F' }}>{initial(m.name || m.userId)}</div>
+          <div key={m.userId} style={{ display:'flex', alignItems:'center', gap:9, padding:'6px 0', borderBottom:'1px solid #E8E2D4' }}>
+            <div style={{ width:32, height:32, borderRadius:'50%', background:'#E8E2D4', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:14, fontWeight:700, color:'#B7A08F' }}>{initial(m.name || m.userId)}</div>
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ fontSize:14, fontWeight:600, color:'#6E1A10', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
                 {m.name || m.userId}
@@ -4949,23 +4947,12 @@ function TravelersModal({ trip, session, rlsActive, distress = {}, onToggleDistr
                 {m.userId === myId && <span style={{ fontSize:10, fontWeight:700, color:'#3C8A3C', background:'#DCEEDC', borderRadius:4, padding:'1px 6px' }}>YOU</span>}
               </div>
               <div style={{ fontSize:12, color:'#9A8478' }}>@{m.userId}</div>
-              {/* Your own, or anyone's if you are the captain — the rule the status
-                  controls use. A tap, because a two-second hold never survived Android. */}
-              {!!session && (isOwner || m.userId === myId) && (
-                <button type="button" onClick={()=>onToggleDistress && onToggleDistress(m.userId)}
-                  aria-pressed={!!distress[m.userId]}
-                  style={{ marginTop:6, display:'inline-flex', alignItems:'center', gap:6,
-                    border:'1px solid ' + (distress[m.userId] ? '#C42B1C' : '#D5C5B8'), borderRadius:16,
-                    padding:'5px 11px', minHeight:32, cursor:'pointer', fontSize:11.5, fontWeight:700,
-                    background: distress[m.userId] ? '#C42B1C' : '#fff',
-                    color: distress[m.userId] ? '#fff' : '#8A7A6D' }}>
-                  <span aria-hidden="true" style={{ fontWeight:900 }}>!</span>
-                  {distress[m.userId] ? 'Needs help — tap to clear' : 'Mark as needing help'}
-                </button>
-              )}
+              {/* Raising a help signal lives on the header roster, where it is one tap
+                  from anywhere in the trip. Having it here as well made every row twice
+                  the height for a control nobody opens this list to reach. */}
             </div>
             {isOwner && m.userId !== owner && (
-              <div style={{ display:'flex', flexDirection:'column', gap:4, alignItems:'flex-end', flexShrink:0 }}>
+              <div style={{ display:'flex', gap:5, alignItems:'center', justifyContent:'flex-end', flexWrap:'wrap', flexShrink:0, maxWidth:'46%' }}>
                 <button onClick={()=>onSetRole(m.userId, m.role === 'captain' ? 'traveler' : 'captain')}
                   title={m.role === 'captain' ? 'Demote to traveler' : 'Promote to trip captain'}
                   style={{ background:'#EFE3CC', border:'none', borderRadius:6, color:'#8B5A3C', cursor:'pointer', fontSize:11.5, fontWeight:600, padding:'4px 10px', whiteSpace:'nowrap' }}>
