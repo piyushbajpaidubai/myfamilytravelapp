@@ -3135,7 +3135,10 @@ async function postStory(session, tripId, file, caption) {
     // said, so the next failure names itself.
     let why = '';
     try { const j = JSON.parse(await up.text()); why = j.message || j.error || ''; } catch (e) {}
-    throw new Error('That photo would not upload (' + up.status + ')' + (why ? ': ' + why : '.'));
+    // The path is what the storage policy actually decides on, and four rounds of
+    // diagnosis were spent reasoning about a path nobody had looked at. Show it.
+    throw new Error('That photo would not upload (' + up.status + ')'
+      + (why ? ': ' + why : '.') + '\n\npath sent: ' + path);
   }
 
   const ins = await fetch(SUPA_URL + '/rest/v1/trip_stories', {
