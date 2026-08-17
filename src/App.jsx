@@ -3136,9 +3136,17 @@ async function postStory(session, tripId, file, caption) {
     let why = '';
     try { const j = JSON.parse(await up.text()); why = j.message || j.error || ''; } catch (e) {}
     // The path is what the storage policy actually decides on, and four rounds of
-    // diagnosis were spent reasoning about a path nobody had looked at. Show it.
+    // diagnosis were spent reasoning about a path nobody had looked at. Show it —
+    // along with whether this request even went out as a signed-in user, since every
+    // insert policy on the bucket is `to authenticated` and the anon key would be
+    // refused in exactly these words. No token is printed, only its state.
+    const tok = (s && s.accessToken) || '';
+    const exp = tok ? jwtExpMs(tok) : 0;
+    const authNote = !tok ? 'NO TOKEN — sent the anon key'
+      : (exp && exp < Date.now()) ? 'token EXPIRED ' + Math.round((Date.now() - exp) / 60000) + 'm ago'
+      : 'signed-in token, valid';
     throw new Error('That photo would not upload (' + up.status + ')'
-      + (why ? ': ' + why : '.') + '\n\npath sent: ' + path);
+      + (why ? ': ' + why : '.') + '\n\npath: ' + path + '\nauth: ' + authNote);
   }
 
   const ins = await fetch(SUPA_URL + '/rest/v1/trip_stories', {
