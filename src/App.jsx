@@ -207,6 +207,9 @@ const fmtTime12 = (t) => {
   const h = +m[1], ap = h < 12 ? 'AM' : 'PM';
   return `${((h + 11) % 12) + 1}:${m[2]} ${ap}`;
 };
+const fmtClock = (iso) => { try {
+  return new Date(iso).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+} catch (e) { return 'shortly'; } };
 const fmtAgo = (ms) => { const s = Math.max(0, Math.round((Date.now()-ms)/1000));
   if (s < 60) return 'just now'; const m = Math.round(s/60);
   return m < 60 ? `${m}m ago` : `${Math.floor(m/60)}h ${m%60}m ago`; };
@@ -3059,6 +3062,96 @@ async function deleteFromStorage(session, url) {
   } catch(e) {}
 }
 
+// ── Trip Stories ─────────────────────────────────────────────────────────────
+// A traveller's first photo starts an hour. Up to three go in it, and later ones
+// do NOT extend it — that rule lives here and in the row's own expires_at, which
+// every item of a session copies from the first.
+//
+// Its own private bucket, not trip-media: that one keeps an anon read policy so
+// shared links can render documents, which is exactly the audience stories shut out.
+const STORY_BUCKET = 'trip-stories';
+const STORY_MAX_ITEMS = 3;
+const STORY_ITEM_MS = 10000;          // each photo shows for ten seconds
+const STORY_SESSION_MS = 60 * 60 * 1000;
+const STORY_MAX_BYTES = 8 * 1024 * 1024;
+const STORY_COLS = 'id,trip_id,author_uid,session_id,session_start,expires_at,slot,kind,storage_path,caption,duration_ms';
+
+const newUuid = () => (window.crypto && window.crypto.randomUUID)
+  ? window.crypto.randomUUID()
+  : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16); });
+
+// Everything still live on this trip. No expiry filter is sent: the policy itself
+// requires expires_at > now(), so what comes back is by definition current — and
+// nothing here depends on the phone's clock being right.
+async function storiesFetch(session, tripId) {
+  if (!session || !tripId) return [];
+  try {
+    const s = await freshSession(session);
+    const res = await fetch(SUPA_URL + '/rest/v1/trip_stories?trip_id=eq.' + encodeURIComponent(tripId)
+      + '&select=' + STORY_COLS + '&order=session_start.desc,slot.asc', { headers: authHeaders(s) });
+    if (!res.ok) return [];
+    const rows = await res.json();
+    return Array.isArray(rows) ? rows : [];
+  } catch (e) { return []; }
+}
+
+// Post one photo. Returns the row that landed.
+async function postStory(session, tripId, file, caption) {
+  if (!file) throw new Error('Nothing to post.');
+  if (!/^image\//.test(file.type || '')) throw new Error('Stories take photos for now — video is coming later.');
+  if (file.size > STORY_MAX_BYTES) throw new Error('That photo is over 8 MB. Try a smaller one.');
+
+  const s = await freshSession(session);
+  if (!s || !s.uid) throw new Error('Sign in to post to your story.');
+
+  const mine = (await storiesFetch(s, tripId)).filter(r => r.author_uid === s.uid);
+  const live = mine.length ? mine[0] : null;
+  if (live && mine.length >= STORY_MAX_ITEMS) {
+    throw new Error('Your story is full — three at a time. It clears at ' + fmtClock(live.expires_at) + '.');
+  }
+
+  // An existing session keeps its own start and expiry. Copying them onto the new
+  // row is what makes "adding does not extend the hour" true.
+  const sessionId = live ? live.session_id : newUuid();
+  const sessionStart = live ? live.session_start : new Date().toISOString();
+  const expiresAt = live ? live.expires_at : new Date(Date.now() + STORY_SESSION_MS).toISOString();
+  // The lowest free slot, not one past the highest — deleting the middle of a story
+  // would otherwise push the next one to 4, which the table refuses.
+  const used = new Set(mine.map(r => r.slot));
+  const slot = [1, 2, 3].find(k => !used.has(k));
+  if (!slot) throw new Error('Your story is full — three at a time.');
+
+  const ext = (file.type.split('/')[1] || 'jpg').replace(/[^a-z0-9]/g, '').slice(0, 4) || 'jpg';
+  const path = tripId + '/' + sessionId + '/' + slot + '.' + ext;
+
+  const up = await fetch(SUPA_URL + '/storage/v1/object/' + STORY_BUCKET + '/' + path, {
+    method: 'POST', body: file,
+    headers: { ...authHeaders(s), 'Content-Type': file.type, 'x-upsert': 'true' },
+  });
+  if (!up.ok) throw new Error('That photo would not upload (' + up.status + ').');
+
+  const ins = await fetch(SUPA_URL + '/rest/v1/trip_stories', {
+    method: 'POST',
+    headers: { ...authHeaders(s), 'Content-Type': 'application/json', Prefer: 'return=representation' },
+    body: JSON.stringify({ trip_id: tripId, author_uid: s.uid, session_id: sessionId,
+      session_start: sessionStart, expires_at: expiresAt, slot, kind: 'photo',
+      storage_path: path, caption: String(caption || '').slice(0, 200), duration_ms: STORY_ITEM_MS }),
+  });
+  if (!ins.ok) {
+    // The row is what makes the file reachable and what expires it. Without one the
+    // upload is litter that nothing will ever clean up.
+    try {
+      await fetch(SUPA_URL + '/storage/v1/object/' + STORY_BUCKET + '/' + path,
+        { method: 'DELETE', headers: authHeaders(s) });
+    } catch (e) {}
+    const why = ins.status === 409 ? 'Someone got there first — try again.' : 'Could not post that (' + ins.status + ').';
+    throw new Error(why);
+  }
+  const rows = await ins.json();
+  return Array.isArray(rows) ? rows[0] : rows;
+}
+
 // ── Traveler accounts (Supabase Auth / GoTrue REST) ──
 // Travelers sign up with a unique User ID + password. We map the User ID to a
 // synthetic internal email so no real email is needed yet; a real email / Gmail
@@ -4238,6 +4331,7 @@ function MainApp() {
   // travellers — every tab narrows to whoever is selected; empty = everyone.
   const [focusTravellers, setFocusTravellers] = useState([]);
   const [showTravPicker, setShowTravPicker] = useState(false);
+  const [showStoryPost, setShowStoryPost] = useState(false);
   useEffect(() => { setFocusTravellers([]); }, [activeTrip]); // clear when switching trips
   const toggleFocus = (uid) => setFocusTravellers(prev => prev.includes(uid) ? prev.filter(x=>x!==uid) : [...prev, uid]);
   const [hdrPics, setHdrPics] = useState({});
@@ -4494,14 +4588,31 @@ function MainApp() {
                 // invisible; the plus circle carries their mark so there is something to open.
                 const hiddenFlagged = ordered.filter(m => !shown.some(x => x.userId === m.userId)
                   && (trip.distress||{})[m.userId]).length;
-                const circle = (m,i) => { const on = focusTravellers.includes(m.userId); return (
+                const circle = (m,i) => { const on = focusTravellers.includes(m.userId); const isMe = m.userId === me; return (
                   <DistressIcon key={m.userId} size={38} name={m.name||m.userId}
                     active={!!(trip.distress||{})[m.userId]}>
+                  {/* Its own positioning context: DistressIcon hands the child straight
+                      back when there is no help flag, so there is nothing to anchor to.
+                      The badge is a SIBLING of the avatar button — nested buttons never
+                      fire, which cost this app a feature once already. */}
+                  <span style={{ position:'relative', display:'inline-flex', flexShrink:0 }}>
                   <button type="button" aria-pressed={on} title={`${on?'Remove':'Add'} ${(m.name||m.userId)}${m.userId===me?' (you)':''}`}
                     onClick={()=>toggleFocus(m.userId)}
                     style={{ width:38, height:38, marginLeft:0, borderRadius:"50%", overflow:"hidden", border:on?"2px solid #6E1A10":"2px solid #F0EBE0", boxShadow:on?"0 0 0 2px #6E1A10":"0 0 0 1px #CFC2B5", background:"#A88977", color:"#fff", display:"grid", placeItems:"center", fontSize:13, fontWeight:800, cursor:"pointer", padding:0, transform:on?"translateY(-2px)":"none", zIndex:on?30:20-i, flexShrink:0 }}>
                     {hdrPicOf(m.userId) ? <img src={hdrPicOf(m.userId)} alt="" style={AVATAR_IMG}/> : initialsOf(m.name, m.userId)}
                   </button>
+                  {isMe && !!session && (
+                    <button type="button" onClick={()=>setShowStoryPost(true)}
+                      aria-label="Add to your story" title="Add to your story"
+                      style={{ position:'absolute', right:-3, bottom:-3, zIndex:35, width:17, height:17,
+                        borderRadius:'50%', border:'2px solid #F0EBE0', background:'#6E1A10', color:'#fff',
+                        padding:0, cursor:'pointer', display:'grid', placeItems:'center', lineHeight:1 }}>
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9zm3 5.5a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
+                      </svg>
+                    </button>
+                  )}
+                  </span>
                   </DistressIcon>
                 ); };
                 return (<>
@@ -4611,6 +4722,10 @@ function MainApp() {
           onOpenDetails={()=>{ setShowAccount(false); setShowProfile(true); }}
           onClose={()=>setShowAccount(false)}
         />
+      )}
+
+      {showStoryPost && trip && session && (
+        <StoryComposer trip={trip} session={session} onClose={()=>setShowStoryPost(false)} />
       )}
 
       {showTravPicker && trip && (
@@ -4865,6 +4980,113 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
 }
 
 // ---- Trip travelers: view the roster, add/remove by User ID ----
+// ---- Trip Stories: add a photo to your own hour ----------------------------------
+// Three photos, and the hour runs from the first — so the thing this screen has to be
+// honest about is how much of it is left, before someone spends a slot finding out.
+function StoryComposer({ trip, session, onClose }) {
+  const [mine, setMine] = useState(null);   // my live items; null while still looking
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState('');
+  const [caption, setCaption] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [posted, setPosted] = useState(0);
+
+  useEffect(() => {
+    let dead = false;
+    storiesFetch(session, trip.id).then(rows => {
+      if (!dead) setMine(rows.filter(r => r.author_uid === session.uid));
+    });
+    return () => { dead = true; };
+  }, [trip.id, session, posted]);
+
+  // Object URLs are held by the browser until told otherwise.
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+
+  const pick = (f) => {
+    setErr('');
+    if (!f) return;
+    if (preview) URL.revokeObjectURL(preview);
+    setFile(f);
+    setPreview(URL.createObjectURL(f));
+  };
+
+  const send = async () => {
+    if (!file || busy) return;
+    setBusy(true); setErr('');
+    try {
+      await postStory(session, trip.id, file, caption);
+      if (preview) URL.revokeObjectURL(preview);
+      setFile(null); setPreview(''); setCaption('');
+      setPosted(p => p + 1);
+    } catch (e) {
+      setErr((e && e.message) || 'Could not post that.');
+    } finally { setBusy(false); }
+  };
+
+  const used = mine ? mine.length : 0;
+  const left = STORY_MAX_ITEMS - used;
+  const clearsAt = mine && mine.length ? mine[0].expires_at : null;
+
+  return (
+    <Modal title="Your story" onClose={onClose}>
+      {/* Three pips rather than a number: it is the same shape the story itself is
+          played back in, so what you fill here is what a viewer will see. */}
+      <div style={{ display:'flex', gap:5, marginBottom:10 }}>
+        {[1,2,3].map(k => (
+          <span key={k} style={{ flex:1, height:4, borderRadius:2,
+            background: k <= used ? '#2F6FB0' : '#DCD2C4' }} />
+        ))}
+      </div>
+
+      <div style={{ fontSize:12, color:'#8A7A6D', lineHeight:1.5, marginBottom:12 }}>
+        {mine === null ? 'Checking your story…'
+          : clearsAt
+            ? `${used} of ${STORY_MAX_ITEMS} posted. This story clears at ${fmtClock(clearsAt)} — adding to it does not extend that.`
+            : 'Nothing running. Your first photo starts an hour, and you can add three in total.'}
+      </div>
+
+      {left > 0 ? (
+        <>
+          <label style={{ display:'block', border:'1.5px dashed #C8B09A', borderRadius:12,
+            padding: preview ? 8 : '22px 14px', textAlign:'center', cursor:'pointer', background:'#FFFDF8' }}>
+            {preview
+              ? <img src={preview} alt="" style={{ display:'block', width:'100%', maxHeight:260,
+                  objectFit:'contain', borderRadius:8 }} />
+              : <span style={{ fontSize:13, fontWeight:700, color:'#6E1A10' }}>Choose a photo</span>}
+            <input type="file" accept="image/*" style={{ display:'none' }}
+              onChange={e => { pick(e.target.files && e.target.files[0]); e.target.value = ''; }} />
+          </label>
+
+          <input value={caption} onChange={e=>setCaption(e.target.value)} maxLength={200}
+            placeholder="Say something (optional)"
+            style={{ width:'100%', boxSizing:'border-box', marginTop:10, padding:'10px 11px',
+              border:'1px solid #DCCDBE', borderRadius:9, fontSize:13, color:'#3D2E26',
+              background:'#fff', fontFamily:'inherit' }} />
+
+          {err && <div style={{ marginTop:10, fontSize:12.5, color:'#B54030', lineHeight:1.45 }}>{err}</div>}
+
+          <button type="button" onClick={send} disabled={!file || busy}
+            style={{ width:'100%', marginTop:12, border:'none', borderRadius:10, padding:'12px',
+              background: (!file || busy) ? '#C6B8AC' : '#6E1A10', color:'#fff', fontSize:13.5,
+              fontWeight:800, cursor: (!file || busy) ? 'default' : 'pointer' }}>
+            {busy ? 'Posting…' : clearsAt ? `Add to your story · ${left} left` : 'Start your story'}
+          </button>
+          <div style={{ marginTop:9, fontSize:11, color:'#8A7A6D', lineHeight:1.5 }}>
+            Photos only for now. Everyone on this trip can see it, including viewers —
+            people with a share link cannot.
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize:13, color:'#6B5A50', lineHeight:1.55 }}>
+          Your story is full — three at a time. Once it clears
+          {clearsAt ? ` at ${fmtClock(clearsAt)}` : ''}, the next photo starts a fresh hour.
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function TravelersModal({ trip, session, rlsActive, onAdd, onAddLocal, onRemove, onAddViewer, onRemoveViewer, onSetRole, onNeedLogin, onClose }) {
   const [userId, setUserId] = useState('');
   const [busy, setBusy] = useState(false);
