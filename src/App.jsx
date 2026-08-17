@@ -3129,7 +3129,14 @@ async function postStory(session, tripId, file, caption) {
     method: 'POST', body: file,
     headers: { ...authHeaders(s), 'Content-Type': file.type, 'x-upsert': 'true' },
   });
-  if (!up.ok) throw new Error('That photo would not upload (' + up.status + ').');
+  if (!up.ok) {
+    // A bare status number sent us hunting: a 400 here turned out to mean the bucket did
+    // not exist, which the body said in as many words. Carry what the server actually
+    // said, so the next failure names itself.
+    let why = '';
+    try { const j = JSON.parse(await up.text()); why = j.message || j.error || ''; } catch (e) {}
+    throw new Error('That photo would not upload (' + up.status + ')' + (why ? ': ' + why : '.'));
+  }
 
   const ins = await fetch(SUPA_URL + '/rest/v1/trip_stories', {
     method: 'POST',
@@ -3145,8 +3152,11 @@ async function postStory(session, tripId, file, caption) {
       await fetch(SUPA_URL + '/storage/v1/object/' + STORY_BUCKET + '/' + path,
         { method: 'DELETE', headers: authHeaders(s) });
     } catch (e) {}
-    const why = ins.status === 409 ? 'Someone got there first — try again.' : 'Could not post that (' + ins.status + ').';
-    throw new Error(why);
+    let detail = '';
+    try { const j = JSON.parse(await ins.text()); detail = j.message || j.hint || ''; } catch (e) {}
+    throw new Error(ins.status === 409
+      ? 'Someone got there first — try again.'
+      : 'Could not post that (' + ins.status + ')' + (detail ? ': ' + detail : '.'));
   }
   const rows = await ins.json();
   return Array.isArray(rows) ? rows[0] : rows;

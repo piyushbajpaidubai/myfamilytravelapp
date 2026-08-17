@@ -167,9 +167,14 @@ using (
 --    Nothing anonymous is granted here, ever.
 --    Path convention: <trip_id>/<session_id>/<slot>.<ext>
 -- ---------------------------------------------------------------------
-insert into storage.buckets (id, name, public)
-values ('trip-stories', 'trip-stories', false)
-on conflict (id) do nothing;
+-- NOTE: creating the bucket from here did NOT work — the editor role may not own
+-- storage.buckets depending on how the project was provisioned, and the statement is
+-- skipped without stopping the script. Create it in the dashboard instead (Storage →
+-- New bucket, name trip-stories, Public OFF) and then run supabase-stories-storage.sql,
+-- which checks it exists and is private before adding the policies below.
+-- insert into storage.buckets (id, name, public)
+-- values ('trip-stories', 'trip-stories', false)
+-- on conflict (id) do nothing;
 
 drop policy if exists "trip can read its live stories"  on storage.objects;
 drop policy if exists "members upload their stories"    on storage.objects;
