@@ -3125,9 +3125,20 @@ async function postStory(session, tripId, file, caption) {
   const ext = (file.type.split('/')[1] || 'jpg').replace(/[^a-z0-9]/g, '').slice(0, 4) || 'jpg';
   const path = tripId + '/' + sessionId + '/' + slot + '.' + ext;
 
+  // No x-upsert. With it the service must first decide whether the object already
+  // exists, which evaluates the SELECT policy — and that one requires a live row in
+  // trip_stories for this path. On a first post no such row exists, and cannot: the
+  // row is written after the upload succeeds. So the check could never pass, and the
+  // refusal arrived as an RLS violation on a policy that looked correct.
+  //
+  // trip-media gets away with upsert because its SELECT policy is a bare bucket test
+  // with nothing in it that can fail. Comparing the two is what misled me.
+  //
+  // Nothing is lost: the path carries the lowest free slot, so a collision means the
+  // slot was genuinely taken, and overwriting it silently would be wrong anyway.
   const up = await fetch(SUPA_URL + '/storage/v1/object/' + STORY_BUCKET + '/' + path, {
     method: 'POST', body: file,
-    headers: { ...authHeaders(s), 'Content-Type': file.type, 'x-upsert': 'true' },
+    headers: { ...authHeaders(s), 'Content-Type': file.type },
   });
   if (!up.ok) {
     // A bare status number sent us hunting: a 400 here turned out to mean the bucket did
