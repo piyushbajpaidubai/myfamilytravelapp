@@ -3172,7 +3172,7 @@ async function postStory(session, tripId, file, caption) {
     // upload is litter that nothing will ever clean up.
     try {
       await fetch(SUPA_URL + '/storage/v1/object/' + STORY_BUCKET + '/' + path,
-        { method: 'DELETE', headers: authHeaders(s) });
+        { method: 'DELETE', headers: storageHeaders(s) });
     } catch (e) {}
     let detail = '';
     try { const j = JSON.parse(await ins.text()); detail = j.message || j.hint || ''; } catch (e) {}
@@ -3183,6 +3183,13 @@ async function postStory(session, tripId, file, caption) {
   const rows = await ins.json();
   return Array.isArray(rows) ? rows[0] : rows;
 }
+
+// A DELETE to storage carries no body, and authHeaders sets Content-Type:
+// application/json for the REST API's benefit. Storage refuses the pair outright —
+// "Body cannot be empty when content-type is set to 'application/json'" — so the
+// header has to come off. Only for the bodyless calls: the upload sets its own
+// Content-Type from the file and must keep it.
+const storageHeaders = (s) => { const h = { ...authHeaders(s) }; delete h['Content-Type']; return h; };
 
 // A URL the browser can actually load. The bucket is private on purpose, so an
 // <img src> pointing straight at it gets nothing; the signature is what carries
@@ -3218,7 +3225,7 @@ async function storyDelete(session, row) {
   if (!s || !s.uid) throw new Error('Sign in to remove a story.');
 
   const del = await fetch(SUPA_URL + '/storage/v1/object/' + STORY_BUCKET + '/' + row.storage_path,
-    { method: 'DELETE', headers: authHeaders(s) });
+    { method: 'DELETE', headers: storageHeaders(s) });
   // Already gone is the state we were after, not a failure.
   if (!del.ok && del.status !== 404) {
     let why = '';
