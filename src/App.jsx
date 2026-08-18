@@ -3074,7 +3074,7 @@ const STORY_MAX_ITEMS = 3;
 const STORY_ITEM_MS = 10000;          // each photo shows for ten seconds
 const STORY_SESSION_MS = 60 * 60 * 1000;
 const STORY_MAX_BYTES = 8 * 1024 * 1024;
-const STORY_COLS = 'id,trip_id,author_uid,session_id,session_start,expires_at,slot,kind,storage_path,caption,duration_ms';
+const STORY_COLS = 'id,trip_id,author_uid,session_id,session_start,expires_at,slot,kind,storage_path,caption,duration_ms,created_at';
 
 const newUuid = () => (window.crypto && window.crypto.randomUUID)
   ? window.crypto.randomUUID()
@@ -3182,6 +3182,26 @@ async function postStory(session, tripId, file, caption) {
   }
   const rows = await ins.json();
   return Array.isArray(rows) ? rows[0] : rows;
+}
+
+// A URL the browser can actually load. The bucket is private on purpose, so an
+// <img src> pointing straight at it gets nothing; the signature is what carries
+// the caller's right to see the file, and it is checked against the same policy
+// as everything else. Short-lived by design — long enough to watch a story,
+// not long enough to be worth passing on.
+async function storySignedUrl(session, path) {
+  try {
+    const s = await freshSession(session);
+    const r = await fetch(SUPA_URL + '/storage/v1/object/sign/' + STORY_BUCKET + '/' + path, {
+      method: 'POST',
+      headers: { ...authHeaders(s), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expiresIn: 900 }),
+    });
+    if (!r.ok) return '';
+    const j = await r.json();
+    // What comes back is a path, not a URL: /object/sign/<bucket>/<path>?token=...
+    return j && j.signedURL ? SUPA_URL + '/storage/v1' + j.signedURL : '';
+  } catch (e) { return ''; }
 }
 
 // ── Traveler accounts (Supabase Auth / GoTrue REST) ──
@@ -3417,12 +3437,14 @@ async function directoryGetProfiles(userIds) {
     if (!ids.length) return {};
     const list = ids.map(u => encodeURIComponent(u)).join(',');
     let legacy = false;
-    let r = await fetch(SUPA_URL + '/rest/v1/profiles_public?user_id=in.(' + list + ')&select=user_id,name,pic', { headers: supaHeaders });
+    // auth_uid comes back too: stories are written by auth uid and the roster is
+    // keyed by app user id, and this is the only thing that joins the two.
+    let r = await fetch(SUPA_URL + '/rest/v1/profiles_public?user_id=in.(' + list + ')&select=user_id,name,pic,auth_uid', { headers: supaHeaders });
     if (r.status === 404) { legacy = true; r = await fetch(SUPA_URL + '/rest/v1/profiles?user_id=in.(' + list + ')&select=user_id,name,profile', { headers: supaHeaders }); }
     if (!r.ok) return {};
     const rows = await r.json();
     const map = {};
-    (rows || []).forEach(row => { map[row.user_id] = { name: row.name, pic: (legacy ? (row.profile && row.profile.pic) : row.pic) || '' }; });
+    (rows || []).forEach(row => { map[row.user_id] = { name: row.name, pic: (legacy ? (row.profile && row.profile.pic) : row.pic) || '', uid: row.auth_uid || '' }; });
     return map;
   } catch(e) { return {}; }
 }
@@ -4376,6 +4398,47 @@ function MainApp() {
   }, [hdrKey]);
   const hdrPicOf = (uid) => (hdrPics[uid] || {}).pic || '';
 
+  // Live stories on this trip. No expiry filtering happens here: the read policy
+  // itself requires expires_at > now(), so whatever comes back is current and
+  // ours to see. The ring cannot show something that has already gone, and it
+  // does not depend on this phone's clock being right.
+  const [storyRows, setStoryRows] = useState([]);
+  const [storyTick, setStoryTick] = useState(0);
+  const [storyOpenAt, setStoryOpenAt] = useState(-1);
+  const storyTripId = trip ? trip.id : '';
+  const storySessUid = session ? session.uid : '';
+  const storySessRef = useRef(session);
+  storySessRef.current = session;
+  useEffect(() => {
+    let cancelled = false;
+    if (!storyTripId || !storySessUid) { setStoryRows([]); return undefined; }
+    const load = () => storiesFetch(storySessRef.current, storyTripId)
+      .then(rows => { if (!cancelled) setStoryRows(rows); });
+    load();
+    // An hour is the lifetime; a minute is soon enough to notice one arrive or
+    // expire, and it is one small indexed query.
+    const iv = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [storyTripId, storySessUid, storyTick]);
+  useEffect(() => { setStoryOpenAt(-1); }, [activeTrip]);
+
+  // One entry per traveller who has something live, in roster order, so the
+  // player walks the row left to right the way it is drawn.
+  const storyGroups = (() => {
+    if (!trip || !storyRows.length) return [];
+    const out = [];
+    (trip.members || []).forEach(m => {
+      // My own always resolves, even if the directory lookup missed.
+      const uid = (hdrPics[m.userId] || {}).uid
+        || (session && m.userId === session.userId ? session.uid : '');
+      if (!uid) return;
+      const rows = storyRows.filter(r => r.author_uid === uid).sort((a, b) => a.slot - b.slot);
+      if (rows.length) out.push({ userId: m.userId, name: m.name || m.userId, pic: hdrPicOf(m.userId), rows });
+    });
+    return out;
+  })();
+  const storyIndexOf = (uid) => storyGroups.findIndex(g => g.userId === uid);
+
   // Local calendar date as YYYY-MM-DD, for the Today's Plan view
   const todayISO = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; })();
   const dateRange = trip ? tripDateRange(trip) : { start:"", end:"" };
@@ -4620,7 +4683,8 @@ function MainApp() {
                 // invisible; the plus circle carries their mark so there is something to open.
                 const hiddenFlagged = ordered.filter(m => !shown.some(x => x.userId === m.userId)
                   && (trip.distress||{})[m.userId]).length;
-                const circle = (m,i) => { const on = focusTravellers.includes(m.userId); const isMe = m.userId === me; return (
+                const circle = (m,i) => { const on = focusTravellers.includes(m.userId); const isMe = m.userId === me;
+                  const sIdx = storyIndexOf(m.userId); const hasStory = sIdx >= 0; return (
                   <DistressIcon key={m.userId} size={38} name={m.name||m.userId}
                     active={!!(trip.distress||{})[m.userId]}>
                   {/* Its own positioning context: DistressIcon hands the child straight
@@ -4628,9 +4692,16 @@ function MainApp() {
                       The badge is a SIBLING of the avatar button — nested buttons never
                       fire, which cost this app a feature once already. */}
                   <span style={{ position:'relative', display:'inline-flex', flexShrink:0 }}>
-                  <button type="button" aria-pressed={on} title={`${on?'Remove':'Add'} ${(m.name||m.userId)}${m.userId===me?' (you)':''}`}
-                    onClick={()=>toggleFocus(m.userId)}
-                    style={{ width:38, height:38, marginLeft:0, borderRadius:"50%", overflow:"hidden", border:on?"2px solid #6E1A10":"2px solid #F0EBE0", boxShadow:on?"0 0 0 2px #6E1A10":"0 0 0 1px #CFC2B5", background:"#A88977", color:"#fff", display:"grid", placeItems:"center", fontSize:13, fontWeight:800, cursor:"pointer", padding:0, transform:on?"translateY(-2px)":"none", zIndex:on?30:20-i, flexShrink:0 }}>
+                  {/* Tapping a face used to add it to the filter. That gesture belongs to
+                      the story now, so filtering moved into the "+" popup — which was
+                      already a full picker — and a face with nothing live does nothing at
+                      all. A tap that filters sometimes and plays other times is one you
+                      cannot predict before you make it, and unpredictable is worse than
+                      inert. The blue ring is the whole signal: no ring, nothing to watch. */}
+                  <button type="button" disabled={!hasStory}
+                    title={(hasStory ? 'Watch ' + (m.name||m.userId) + "'s story" : (m.name||m.userId) + (isMe?' (you)':'')) + (on ? ' — in the filter' : '')}
+                    onClick={hasStory ? (()=>setStoryOpenAt(sIdx)) : undefined}
+                    style={{ width:38, height:38, marginLeft:0, borderRadius:"50%", overflow:"hidden", border:on?"2px solid #6E1A10":"2px solid #F0EBE0", boxShadow:[on?"0 0 0 2px #6E1A10":"0 0 0 1px #CFC2B5", hasStory?(on?"0 0 0 4px #2F6FED":"0 0 0 3px #2F6FED"):""].filter(Boolean).join(", "), background:"#A88977", color:"#fff", display:"grid", placeItems:"center", fontSize:13, fontWeight:800, cursor:hasStory?"pointer":"default", padding:0, transform:on?"translateY(-2px)":"none", zIndex:on?30:20-i, flexShrink:0 }}>
                     {hdrPicOf(m.userId) ? <img src={hdrPicOf(m.userId)} alt="" style={AVATAR_IMG}/> : initialsOf(m.name, m.userId)}
                   </button>
                   {isMe && !!session && (
@@ -4649,7 +4720,7 @@ function MainApp() {
                 ); };
                 return (<>
                   {shown.map(circle)}
-                  <button type="button" onClick={()=>setShowTravPicker(true)} title="All travellers" aria-label="Open the traveller list" style={{ position:"relative", width:38, height:38, marginLeft:0, borderRadius:"50%", border:"none", background:"#6E1A10", color:"#fff", fontSize:20, fontWeight:800, lineHeight:1, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", flexShrink:0, zIndex:2 }}>+{hiddenSelected>0 && <span style={{ position:"absolute", top:-2, right:-2, minWidth:16, height:16, borderRadius:8, background:"#3C8A3C", color:"#fff", fontSize:9, fontWeight:800, display:"grid", placeItems:"center", padding:"0 3px" }}>{hiddenSelected}</span>}{hiddenFlagged>0 && <span role="img" aria-label={`${hiddenFlagged} traveller${hiddenFlagged===1?'':'s'} not shown need help`} title={`${hiddenFlagged} not shown need help`} style={{ position:"absolute", top:0, left:0, zIndex:4, width:19, height:19, borderRadius:"50%", background:"#C42B1C", color:"#fff", border:"2px solid #F5EFE2", display:"grid", placeItems:"center", fontSize:12, fontWeight:900, lineHeight:1 }}>!</span>}</button>
+                  <button type="button" onClick={()=>setShowTravPicker(true)} title="Filter by traveller" aria-label="Filter by traveller" style={{ position:"relative", width:38, height:38, marginLeft:0, borderRadius:"50%", border:"none", background:"#6E1A10", color:"#fff", fontSize:20, fontWeight:800, lineHeight:1, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", flexShrink:0, zIndex:2 }}>+{hiddenSelected>0 && <span style={{ position:"absolute", top:-2, right:-2, minWidth:16, height:16, borderRadius:8, background:"#3C8A3C", color:"#fff", fontSize:9, fontWeight:800, display:"grid", placeItems:"center", padding:"0 3px" }}>{hiddenSelected}</span>}{hiddenFlagged>0 && <span role="img" aria-label={`${hiddenFlagged} traveller${hiddenFlagged===1?'':'s'} not shown need help`} title={`${hiddenFlagged} not shown need help`} style={{ position:"absolute", top:0, left:0, zIndex:4, width:19, height:19, borderRadius:"50%", background:"#C42B1C", color:"#fff", border:"2px solid #F5EFE2", display:"grid", placeItems:"center", fontSize:12, fontWeight:900, lineHeight:1 }}>!</span>}</button>
                   {focusTravellers.length>0 && <button type="button" onClick={()=>setFocusTravellers([])} title="Show everyone" style={{ marginLeft:10, height:30, borderRadius:15, border:"1px solid #CFC2B5", background:"#fff", color:"#6E1A10", fontSize:11.5, fontWeight:700, padding:"0 12px", cursor:"pointer", flexShrink:0, whiteSpace:"nowrap" }}>All ✕</button>}
                 </>);
               })()}
@@ -4757,7 +4828,13 @@ function MainApp() {
       )}
 
       {showStoryPost && trip && session && (
-        <StoryComposer trip={trip} session={session} onClose={()=>setShowStoryPost(false)} />
+        <StoryComposer trip={trip} session={session}
+          onClose={()=>{ setShowStoryPost(false); setStoryTick(t=>t+1); }} />
+      )}
+
+      {storyOpenAt >= 0 && session && storyGroups.length > 0 && (
+        <StoryPlayer groups={storyGroups} startAt={storyOpenAt} session={session}
+          onClose={()=>setStoryOpenAt(-1)} />
       )}
 
       {showTravPicker && trip && (
@@ -5015,6 +5092,148 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
 // ---- Trip Stories: add a photo to your own hour ----------------------------------
 // Three photos, and the hour runs from the first — so the thing this screen has to be
 // honest about is how much of it is left, before someone spends a slot finding out.
+// ── The story player ────────────────────────────────────────────────────────
+// Ten seconds a photo, up to three to a story, then on to the next traveller who
+// has one; past the last, it closes. Tap the right of the screen to go forward,
+// the left to go back, swipe down or press × to leave.
+//
+// Every item is fetched through a short-lived signed URL, because the bucket is
+// private. A whole story is signed at once so the second photo is ready before
+// the first has finished showing.
+function StoryPlayer({ groups, startAt, session, onClose }) {
+  const [gi, setGi] = useState(() => Math.max(0, Math.min(startAt, groups.length - 1)));
+  const [ii, setIi] = useState(0);
+  const [urls, setUrls] = useState({});
+  const [ms, setMs] = useState(0);
+
+  const sessionRef = useRef(session); sessionRef.current = session;
+  const closeRef = useRef(onClose);   closeRef.current = onClose;
+  const touch = useRef({ y: 0, swiped: false });
+
+  const group = groups[gi] || null;
+  const item = group ? (group.rows[ii] || null) : null;
+  const src = item ? (urls[item.storage_path] || '') : '';
+  const total = item ? (item.duration_ms || STORY_ITEM_MS) : STORY_ITEM_MS;
+  // A string, not the array: the parent rebuilds storyGroups on every render, so
+  // depending on the object would re-sign the whole story each time.
+  const paths = group ? group.rows.map(r => r.storage_path).join('|') : '';
+
+  const go = (dir) => {
+    if (touch.current.swiped || !group) return;
+    const nextI = ii + dir;
+    if (nextI >= 0 && nextI < group.rows.length) { setIi(nextI); return; }
+    const nextG = gi + dir;
+    if (nextG < 0) { setIi(0); return; }                  // already at the very beginning
+    if (nextG >= groups.length) { closeRef.current(); return; }  // past the last story
+    setGi(nextG);
+    setIi(dir > 0 ? 0 : Math.max(0, groups[nextG].rows.length - 1));
+  };
+  const goRef = useRef(go); goRef.current = go;
+
+  useEffect(() => {
+    if (!paths) return undefined;
+    let cancelled = false;
+    Promise.all(paths.split('|').map(p => storySignedUrl(sessionRef.current, p).then(u => [p, u])))
+      .then(pairs => {
+        if (cancelled) return;
+        setUrls(prev => { const next = { ...prev }; pairs.forEach(pr => { next[pr[0]] = pr[1]; }); return next; });
+      });
+    return () => { cancelled = true; };
+  }, [paths]);
+
+  // The clock starts when the photo is on screen, not when it is asked for —
+  // otherwise a slow signature spends the ten seconds showing nothing.
+  useEffect(() => {
+    if (!src) return undefined;
+    const started = Date.now();
+    setMs(0);
+    const iv = setInterval(() => {
+      const el = Date.now() - started;
+      setMs(el);
+      if (el >= total) { clearInterval(iv); goRef.current(1); }
+    }, 100);
+    return () => clearInterval(iv);
+  }, [src, total]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') closeRef.current();
+      else if (e.key === 'ArrowRight') goRef.current(1);
+      else if (e.key === 'ArrowLeft') goRef.current(-1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // A story can expire while it is being watched — the minute poll will drop it
+  // from the group list underneath us. Leave rather than sit on a blank screen.
+  useEffect(() => { if (!group) closeRef.current(); }, [group]);
+  useEffect(() => { if (group && ii >= group.rows.length) setIi(0); }, [group, ii]);
+
+  if (!group || !item) return null;
+
+  const posted = new Date(item.created_at || item.session_start).getTime();
+  const mins = Math.max(0, Math.round((Date.now() - posted) / 60000));
+  const ago = !posted || isNaN(posted) ? '' : (mins < 1 ? 'just now' : mins + 'm ago');
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label={group.name + "'s story"}
+      onTouchStart={(e)=>{ const t = e.touches[0]; if (t) touch.current = { y: t.clientY, swiped: false }; }}
+      onTouchEnd={(e)=>{ const t = e.changedTouches && e.changedTouches[0];
+        if (t && t.clientY - touch.current.y > 70) { touch.current.swiped = true; onClose(); } }}
+      style={{ position:'fixed', inset:0, zIndex:200, background:'#000',
+        display:'flex', flexDirection:'column', touchAction:'none' }}>
+
+      {/* One bar per item: filled behind, filling now, empty ahead. */}
+      <div style={{ display:'flex', gap:4, padding:'calc(env(safe-area-inset-top, 0px) + 10px) 12px 0', flexShrink:0 }}>
+        {group.rows.map((r, k) => (
+          <div key={r.id} style={{ flex:1, height:3, borderRadius:2, background:'rgba(255,255,255,0.32)', overflow:'hidden' }}>
+            <div style={{ height:'100%', background:'#fff', transition: k===ii ? 'width 120ms linear' : 'none',
+              width: (k < ii ? 100 : k > ii ? 0 : Math.min(100, (ms / total) * 100)) + '%' }} />
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display:'flex', alignItems:'center', gap:9, padding:'11px 12px 8px', color:'#fff', flexShrink:0 }}>
+        <span style={{ width:30, height:30, borderRadius:'50%', overflow:'hidden', background:'#A88977',
+          display:'grid', placeItems:'center', fontSize:11, fontWeight:800, flexShrink:0 }}>
+          {group.pic ? <img src={group.pic} alt="" style={AVATAR_IMG} /> : initialsOf(group.name, group.userId)}
+        </span>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:13.5, fontWeight:800, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{group.name}</div>
+          <div style={{ fontSize:11, opacity:0.72 }}>
+            {ago}{ago ? ' · ' : ''}clears at {fmtClock(item.expires_at)}
+          </div>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close" title="Close"
+          style={{ flexShrink:0, width:34, height:34, borderRadius:'50%', border:'none', padding:0,
+            background:'rgba(255,255,255,0.14)', color:'#fff', fontSize:21, lineHeight:1, cursor:'pointer' }}>×</button>
+      </div>
+
+      <div style={{ flex:1, position:'relative', minHeight:0 }}>
+        {src
+          ? <img src={src} alt={item.caption || 'Story photo'}
+              style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'contain' }} />
+          : <div style={{ position:'absolute', inset:0, display:'grid', placeItems:'center',
+              color:'rgba(255,255,255,0.6)', fontSize:13 }}>Loading…</div>}
+
+        {/* Tap targets over the photo. The back third is deliberately the smaller
+            one: forward is the gesture people make without looking. */}
+        <button type="button" onClick={()=>go(-1)} aria-label="Previous photo"
+          style={{ position:'absolute', left:0, top:0, bottom:0, width:'33%', background:'transparent', border:'none', cursor:'pointer', padding:0 }} />
+        <button type="button" onClick={()=>go(1)} aria-label="Next photo"
+          style={{ position:'absolute', right:0, top:0, bottom:0, width:'67%', background:'transparent', border:'none', cursor:'pointer', padding:0 }} />
+
+        {!!item.caption && (
+          <div style={{ position:'absolute', left:0, right:0, bottom:0, pointerEvents:'none',
+            padding:'44px 16px calc(env(safe-area-inset-bottom, 0px) + 18px)', color:'#fff', fontSize:14.5, lineHeight:1.45,
+            background:'linear-gradient(to top, rgba(0,0,0,0.72), rgba(0,0,0,0))' }}>{item.caption}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StoryComposer({ trip, session, onClose }) {
   const [mine, setMine] = useState(null);   // my live items; null while still looking
   const [file, setFile] = useState(null);
