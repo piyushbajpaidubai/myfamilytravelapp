@@ -3204,6 +3204,38 @@ async function storySignedUrl(session, path) {
   } catch (e) { return ''; }
 }
 
+// Take one photo down. The FILE goes first and the row second, and that order is
+// not cosmetic: the storage delete policy admits an author by finding a
+// trip_stories row that points at this path and names them. Delete the row first
+// and the author has just revoked their own right to delete the file, which then
+// sits in the bucket with nothing left that will ever clean it up. A captain is
+// unaffected — their branch of the policy asks is_trip_captain, which reads the
+// path, not the row — but the author is the ordinary case, so there is only one
+// safe order. The same shape of mistake as the x-upsert one: a policy that reads
+// a row, evaluated at a moment when the row is not what you assumed.
+async function storyDelete(session, row) {
+  const s = await freshSession(session);
+  if (!s || !s.uid) throw new Error('Sign in to remove a story.');
+
+  const del = await fetch(SUPA_URL + '/storage/v1/object/' + STORY_BUCKET + '/' + row.storage_path,
+    { method: 'DELETE', headers: authHeaders(s) });
+  // Already gone is the state we were after, not a failure.
+  if (!del.ok && del.status !== 404) {
+    let why = '';
+    try { const j = JSON.parse(await del.text()); why = j.message || j.error || ''; } catch (e) {}
+    throw new Error('Could not remove that photo (' + del.status + ')' + (why ? ': ' + why : '.'));
+  }
+
+  const r = await fetch(SUPA_URL + '/rest/v1/trip_stories?id=eq.' + encodeURIComponent(row.id),
+    { method: 'DELETE', headers: authHeaders(s) });
+  if (!r.ok) {
+    // The photo is gone either way; what is left is an entry pointing at nothing,
+    // which expires within the hour and is swept after that. Say so rather than
+    // implying nothing happened.
+    throw new Error('The photo was removed, but its entry did not go (' + r.status + '). It will clear on its own within the hour.');
+  }
+}
+
 // ── Traveler accounts (Supabase Auth / GoTrue REST) ──
 // Travelers sign up with a unique User ID + password. We map the User ID to a
 // synthetic internal email so no real email is needed yet; a real email / Gmail
@@ -4832,8 +4864,13 @@ function MainApp() {
           onClose={()=>{ setShowStoryPost(false); setStoryTick(t=>t+1); }} />
       )}
 
-      {storyOpenAt >= 0 && session && storyGroups.length > 0 && (
+      {storyOpenAt >= 0 && trip && session && storyGroups.length > 0 && (
         <StoryPlayer groups={storyGroups} startAt={storyOpenAt} session={session}
+          canModerate={isTripCaptain(trip)} myUid={session.uid}
+          // Drop it here and now rather than waiting for the next poll: the groups
+          // rebuild from this, so the player moves on — or closes, if that was the
+          // last one — without needing to be told.
+          onDeleted={(id)=>setStoryRows(rows => rows.filter(r => r.id !== id))}
           onClose={()=>setStoryOpenAt(-1)} />
       )}
 
@@ -5100,14 +5137,18 @@ function AccountModal({ session, profile, startMode='login', onAuth, onLogout, o
 // Every item is fetched through a short-lived signed URL, because the bucket is
 // private. A whole story is signed at once so the second photo is ready before
 // the first has finished showing.
-function StoryPlayer({ groups, startAt, session, onClose }) {
+function StoryPlayer({ groups, startAt, session, canModerate, myUid, onDeleted, onClose }) {
   const [gi, setGi] = useState(() => Math.max(0, Math.min(startAt, groups.length - 1)));
   const [ii, setIi] = useState(0);
   const [urls, setUrls] = useState({});
   const [ms, setMs] = useState(0);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
 
   const sessionRef = useRef(session); sessionRef.current = session;
   const closeRef = useRef(onClose);   closeRef.current = onClose;
+  const deletedRef = useRef(onDeleted); deletedRef.current = onDeleted;
   const touch = useRef({ y: 0, swiped: false });
 
   const group = groups[gi] || null;
@@ -5144,7 +5185,9 @@ function StoryPlayer({ groups, startAt, session, onClose }) {
   // The clock starts when the photo is on screen, not when it is asked for —
   // otherwise a slow signature spends the ten seconds showing nothing.
   useEffect(() => {
-    if (!src) return undefined;
+    // Paused while a deletion is being confirmed — otherwise the ten seconds run
+    // out mid-question and the answer lands on the next photo.
+    if (!src || confirming) return undefined;
     const started = Date.now();
     setMs(0);
     const iv = setInterval(() => {
@@ -5153,7 +5196,10 @@ function StoryPlayer({ groups, startAt, session, onClose }) {
       if (el >= total) { clearInterval(iv); goRef.current(1); }
     }, 100);
     return () => clearInterval(iv);
-  }, [src, total]);
+  }, [src, total, confirming]);
+
+  // A question asked about one photo must not survive onto the next.
+  useEffect(() => { setConfirming(false); setErr(''); }, [gi, ii]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -5171,6 +5217,22 @@ function StoryPlayer({ groups, startAt, session, onClose }) {
   useEffect(() => { if (group && ii >= group.rows.length) setIi(0); }, [group, ii]);
 
   if (!group || !item) return null;
+
+  const mine = !!myUid && item.author_uid === myUid;
+  const mayDelete = mine || !!canModerate;
+  const doDelete = async () => {
+    if (!item || busy) return;
+    setBusy(true); setErr('');
+    try {
+      await storyDelete(sessionRef.current, item);
+      setConfirming(false);
+      // The parent drops it from its own list, which flows back through groups —
+      // so the guards above move us on, or out, without any special case here.
+      if (deletedRef.current) deletedRef.current(item.id);
+    } catch (e) {
+      setErr((e && e.message) || 'Could not remove that.');
+    } finally { setBusy(false); }
+  };
 
   const posted = new Date(item.created_at || item.session_start).getTime();
   const mins = Math.max(0, Math.round((Date.now() - posted) / 60000));
@@ -5205,10 +5267,46 @@ function StoryPlayer({ groups, startAt, session, onClose }) {
             {ago}{ago ? ' · ' : ''}clears at {fmtClock(item.expires_at)}
           </div>
         </div>
+        {mayDelete && !confirming && (
+          <button type="button" onClick={()=>setConfirming(true)}
+            aria-label={mine ? 'Delete this photo' : 'Remove this photo'}
+            title={mine ? 'Delete this photo' : 'Remove this photo'}
+            style={{ flexShrink:0, width:34, height:34, borderRadius:'50%', border:'none', padding:0,
+              background:'rgba(255,255,255,0.14)', color:'#fff', cursor:'pointer', display:'grid', placeItems:'center' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M9 3h6l1 2h4v2H4V5h4l1-2zM6 9h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 9zm3 2v9h2v-9H9zm4 0v9h2v-9h-2z"/>
+            </svg>
+          </button>
+        )}
         <button type="button" onClick={onClose} aria-label="Close" title="Close"
           style={{ flexShrink:0, width:34, height:34, borderRadius:'50%', border:'none', padding:0,
             background:'rgba(255,255,255,0.14)', color:'#fff', fontSize:21, lineHeight:1, cursor:'pointer' }}>×</button>
       </div>
+
+      {confirming && (
+        <div style={{ margin:'0 12px 8px', padding:'11px 12px', borderRadius:10, flexShrink:0,
+          background:'rgba(255,255,255,0.13)', color:'#fff', display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{ flex:1, minWidth:0, fontSize:12.5, lineHeight:1.45 }}>
+            {mine
+              ? 'Delete this photo? It cannot be undone.'
+              : 'Remove this from ' + group.name + "'s story? They are not told."}
+          </span>
+          <button type="button" onClick={()=>setConfirming(false)} disabled={busy}
+            style={{ flexShrink:0, minHeight:32, padding:'6px 13px', borderRadius:16, cursor:'pointer',
+              border:'1px solid rgba(255,255,255,0.45)', background:'transparent', color:'#fff', fontSize:12.5, fontWeight:700 }}>Keep</button>
+          <button type="button" onClick={doDelete} disabled={busy}
+            style={{ flexShrink:0, minHeight:32, padding:'6px 13px', borderRadius:16, cursor:busy?'default':'pointer',
+              border:'none', background:'#C42B1C', color:'#fff', fontSize:12.5, fontWeight:800, opacity:busy?0.7:1 }}>
+            {busy ? 'Removing…' : (mine ? 'Delete' : 'Remove')}
+          </button>
+        </div>
+      )}
+
+      {!!err && (
+        <div style={{ margin:'0 12px 8px', padding:'9px 12px', borderRadius:9, flexShrink:0,
+          background:'rgba(196,43,28,0.24)', border:'1px solid rgba(255,255,255,0.24)',
+          color:'#fff', fontSize:12, lineHeight:1.45, whiteSpace:'pre-wrap' }}>{err}</div>
+      )}
 
       <div style={{ flex:1, position:'relative', minHeight:0 }}>
         {src
@@ -5219,9 +5317,9 @@ function StoryPlayer({ groups, startAt, session, onClose }) {
 
         {/* Tap targets over the photo. The back third is deliberately the smaller
             one: forward is the gesture people make without looking. */}
-        <button type="button" onClick={()=>go(-1)} aria-label="Previous photo"
+        <button type="button" onClick={()=>go(-1)} aria-label="Previous photo" disabled={confirming}
           style={{ position:'absolute', left:0, top:0, bottom:0, width:'33%', background:'transparent', border:'none', cursor:'pointer', padding:0 }} />
-        <button type="button" onClick={()=>go(1)} aria-label="Next photo"
+        <button type="button" onClick={()=>go(1)} aria-label="Next photo" disabled={confirming}
           style={{ position:'absolute', right:0, top:0, bottom:0, width:'67%', background:'transparent', border:'none', cursor:'pointer', padding:0 }} />
 
         {!!item.caption && (
